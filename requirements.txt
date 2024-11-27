@@ -1,2 +1,4 @@
 matplotlib==3.9.2
 numpy==2.1.3
+
+./libraries/fourierfun # This is relative to the current working directory, make sure to cd into this project!
