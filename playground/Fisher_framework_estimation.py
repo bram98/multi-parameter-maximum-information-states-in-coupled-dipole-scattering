@@ -113,20 +113,20 @@ for i in range(1):
 
     I0_out = measure_once(S0, E_in, scale=scale)
     I1_out = measure_once(S1, E_in, scale=scale)
-
+    
     # I0_out = np.abs(E0_out)**2
     # I1_out = np.abs(E1_out)**2
-
+    
     dI_dtheta = (I1_out - I0_out)/dtheta
     a = np.zeros(len(I1_out))
-
+    
     zeros = dI_dtheta == 0
     a[zeros] = 0
     a[~zeros] = dI_dtheta[~zeros] / I0_out[~zeros]
     est_a += a
     est_b += dI_dtheta
-
-
+    
+    
 #%%
 '''
 Test random estimator
@@ -135,16 +135,16 @@ ref_results = []
 shift_results = []
 for i in range(10):
     E_in = np.random.rand(n)
-
+    
     I0_out = measure_once(S0, E_in, scale=scale)
     I1_out = measure_once(S1, E_in, scale=scale)
-
+    
     # I0_out = np.abs(E0_out)**2
     # I1_out = np.abs(E1_out)**2
-
-    ref_results.append(estimateI(I0_out, est_a, est_b))
+    
+    ref_results.append(estimateI(I0_out, est_a, est_b))    
     shift_results.append(estimateI(I1_out, est_a, est_b))
-
+    
 plt.plot(ref_results, label='ref')
 plt.plot(shift_results, label='shift')
 plt.legend()
@@ -161,12 +161,12 @@ for i in range(1):
 
     I0_out = measure_once(S0, E_in, scale=scale)
     I1_out = measure_once(S1, E_in, scale=scale)
-
+    
     # I0_out = np.abs(E0_out)**2
     # I1_out = np.abs(E1_out)**2
-
+    
     dI_dtheta = (I1_out - I0_out)/dtheta
-
+    
     J = (E_in @ F @ E_in)[0, 0]
     a = np.zeros(len(I1_out))
     nonzero = dI_dtheta != 0
@@ -189,12 +189,12 @@ for i in range(20):
 
     I0_out = measure_once(S0, E_in, scale=scale)
     I1_out = measure_once(S1, E_in, scale=scale)
-
+    
     # I0_out = np.abs(E0_out)**2
     # I1_out = np.abs(E1_out)**2
-
+    
     dI_dtheta = (I1_out - I0_out)/dtheta
-
+    
     a = np.zeros(len(I0_out))
     b = np.zeros(len(I0_out))
     nonzero = dI_dtheta != 0
@@ -219,13 +219,13 @@ for i in range(10):
 
     I0_out = measure_once(S0, E_in, scale=scale)
     I1_out = measure_once(S1, E_in, scale=scale)
-
+    
     # I0_out = np.abs(E0_out)**2
     # I1_out = np.abs(E1_out)**2
-
-    ref_results.append(estimateI(I0_out, est_a, est_b))
+    
+    ref_results.append(estimateI(I0_out, est_a, est_b))    
     shift_results.append(estimateI(I1_out, est_a, est_b))
-    # ref_results.append(estimate(E0_out, est_E0_f, est_dE_f))
+    # ref_results.append(estimate(E0_out, est_E0_f, est_dE_f))    
     # shift_results.append(estimate(E1_out, est_E0_f, est_dE_f))
 
 ref_results = np.array(ref_results)
