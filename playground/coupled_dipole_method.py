@@ -16,7 +16,7 @@ lambda_0 = 1.0  # Wavelength (normalized)
 k = 2 * np.pi / lambda_0  # Wave number
 Lz = 10 * lambda_0
 Lx =  8 * lambda_0  # Dimensions of the slab (z is horizontal)
-Ns = 2  # Number of scatterers
+Ns = 5  # Number of scatterers
 alpha = 4j / k**2  # Polarizability of scatterers (resonant)
 exclusion_radius = lambda_0 / 10  # Minimum spacing between particles
 
