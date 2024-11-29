@@ -24,6 +24,11 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
    git clone git@git.science.uu.nl:linx/multi-parameter-maximum-information-states-in-coupled-dipole-scattering.git
    cd multi-parameter-max-info-states
    ```
+2. Update the submodules:
+```
+    git submodule update --init
+    git submodule update --recursive
+```
 2. Install dependencies with `pip`:
    ```bash
    pip install -r requirements.txt
