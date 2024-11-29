@@ -72,7 +72,7 @@ class CoupledDipoleSimulator:
         self.exclusion_radius = exclusion_radius * self.lambda_0
         self.grid_points_x = grid_points_x
         self.theta_inc_deg = theta_inc_deg
-        self.theta_inc = np.deg2rad(self.theta_inc_deg)
+        # self.theta_inc = np.deg2rad(self.theta_inc_deg)
         self.seed = seed
 
         # Derive grid points along z based on x sampling
@@ -236,7 +236,12 @@ class CoupledDipoleSimulator:
 
         self.E_output = E_output
         return self.E_output
-
+    
+    def reset(self):
+        self.fields = None
+        self.E_output = None
+        self.E_total = None
+    
     def visualize_scatterers(self):
         """Visualizes the positions of scatterers within the slab."""
         plt.figure(figsize=(12, 12 * self.Lx / self.Lz))
@@ -346,6 +351,15 @@ class CoupledDipoleSimulator:
 
         self.E_output = self.E_total[:, -1]
         return self.E_output
+    
+    @property
+    def theta_inc_deg(self):
+        return np.rad2deg(self.theta_inc)
+    
+    
+    @theta_inc_deg.setter
+    def theta_inc_deg(self, deg):
+        self.theta_inc = np.deg2rad(deg)
 
 if __name__ == '__main__':
     import time  # Import the time module for performance measurement
