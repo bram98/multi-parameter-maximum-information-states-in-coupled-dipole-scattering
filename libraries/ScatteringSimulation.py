@@ -98,6 +98,9 @@ class CoupledDipoleSimulator:
         Returns:
             numpy.ndarray: Array of scatterer positions (shape: (2, Ns)).
         """
+        if self.Ns == 0:
+            return np.array([[], []])
+        
         scatterers = [np.array([self.Lz / 2, self.Lx / 2])]  # First scatterer always centered
         np.random.seed(self.seed)  # For reproducibility
         while len(scatterers) < self.Ns:
@@ -124,6 +127,14 @@ class CoupledDipoleSimulator:
         G = (1j / 4) * hankel1(0, k * distances)
         G[distances == 0] = 0.0  # Handle singularity
         return G
+
+    def theta2k_x(self, theta):
+        k_x = self.k * np.sin(theta)
+        return k_x
+    
+    def k_x2theta(self, k_x):
+        theta = np.arcsin(k_x / self.k)
+        return theta
 
     def solve_fields(self):
         """Solves the coupled dipole equations to find induced electric fields.
@@ -160,7 +171,7 @@ class CoupledDipoleSimulator:
             return self.E_total
 
         # Ensure that induced fields are computed
-        if self.fields is None:
+        if self.fields is None and self.Ns > 0:
             self.solve_fields()
 
         # Compute wavevector components
@@ -258,26 +269,52 @@ class CoupledDipoleSimulator:
         plt.tight_layout()
         plt.show()
 
-    def visualize_intensity(self):
-        """Visualizes the intensity distribution over the entire slab."""
+    def _visualize(self, display_function, title):
+        '''
+        Helper function that applies `display_function` to the entire field
+        before plotting it.
+        '''
         # Ensure that E_total is computed
         if self.E_total is None:
             self.compute_total_field()
 
         plt.figure(figsize=(10, 8 * self.Lx / self.Lz))
         plt.pcolormesh(self.Z_grid / self.lambda_0, self.X_grid / self.lambda_0,
-                       np.abs(self.E_total)**2, shading='auto', cmap='viridis')
+                       display_function(self.E_total), 
+                       shading='auto', 
+                       cmap='viridis')
         plt.colorbar(label=r'$|E|^2$')
         plt.scatter(self.scatterers[0, :] / self.lambda_0,
                     self.scatterers[1, :] / self.lambda_0,
-                    c='red', s=100, label='Scatterers')
-        plt.title(f'Electric Field Intensity Over Slab (θ = {self.theta_inc_deg}°)')
+                    c='red',
+                    s=100, 
+                    label='Scatterers')
+        plt.title(title)
         plt.xlabel(r'$z/\lambda$')
         plt.ylabel(r'$x/\lambda$')
         plt.legend()
         plt.gca().set_aspect('equal')
         plt.tight_layout()
         plt.show()
+
+
+    def visualize_intensity(self):
+        """Visualizes the intensity distribution over the entire slab."""
+        
+        self._visualize(display_function=lambda field: np.abs(field)**2, 
+                        title=f'Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)')
+    
+    def visualize_abs(self):
+        """Visualizes the absolute value of the field over the entire slab."""
+        
+        self._visualize(display_function=np.abs, 
+                        title=f'Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)')
+        
+    def visualize_real(self):
+        """Visualizes the real value of the field over the entire slab."""
+        
+        self._visualize(display_function=np.real, 
+                        title=f'Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)')
 
     def visualize_output_field(self, plot_intensity_only=False,
                             direct_computation=True):
