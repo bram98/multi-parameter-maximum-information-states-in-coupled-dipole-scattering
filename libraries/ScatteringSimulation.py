@@ -9,10 +9,11 @@ It handles multiple scatterers, computes induced electric fields, and visualizes
 Authors: Jacob Seifert - j.seifert@uu.nl, Bram Verreussel
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import hankel1
+import numpy as np
 from scipy.spatial.distance import cdist
+from scipy.special import hankel1
+
 
 class CoupledDipoleSimulator:
     """Simulates wave scattering in a 2D slab using the Coupled Dipole Method (CDM).
@@ -40,16 +41,18 @@ class CoupledDipoleSimulator:
         seed (int): Random seed for scatterer placement.
     """
 
-    def __init__(self,
-                 lambda_0=1.0,
-                 Lz=16.0,
-                 Lx=8.0,
-                 Ns=10,
-                 alpha=4j / (2 * np.pi / 1.0)**2,
-                 exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-                 grid_points_x=400,
-                 theta_inc_deg=0.0,
-                 seed=0):
+    def __init__(
+        self,
+        lambda_0=1.0,
+        Lz=16.0,
+        Lx=8.0,
+        Ns=10,
+        alpha=4j / (2 * np.pi / 1.0) ** 2,
+        exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
+        grid_points_x=400,
+        theta_inc_deg=0.0,
+        seed=0,
+    ):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters.
 
         Args:
@@ -63,6 +66,7 @@ class CoupledDipoleSimulator:
             theta_inc_deg (float, optional): Incident angle in degrees. Defaults to 0.0.
             seed (int, optional): Random seed for scatterer placement. Defaults to 0.
         """
+
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / self.lambda_0
         self.Lz = Lz * self.lambda_0
@@ -98,12 +102,18 @@ class CoupledDipoleSimulator:
         Returns:
             numpy.ndarray: Array of scatterer positions (shape: (2, Ns)).
         """
-        scatterers = [np.array([self.Lz / 2, self.Lx / 2])]  # First scatterer always centered
+        scatterers = [
+            np.array([self.Lz / 2, self.Lx / 2])
+        ]  # First scatterer always centered
         np.random.seed(self.seed)  # For reproducibility
         while len(scatterers) < self.Ns:
-            candidate = np.array([np.random.uniform(0, self.Lz),
-                                  np.random.uniform(0, self.Lx)])
-            if all(np.linalg.norm(candidate - s) > self.exclusion_radius for s in scatterers):
+            candidate = np.array(
+                [np.random.uniform(0, self.Lz), np.random.uniform(0, self.Lx)]
+            )
+            if all(
+                np.linalg.norm(candidate - s) > self.exclusion_radius
+                for s in scatterers
+            ):
                 scatterers.append(candidate)
         return np.array(scatterers).T  # Shape: (2, Ns)
 
@@ -139,7 +149,9 @@ class CoupledDipoleSimulator:
         k_x = self.k * np.sin(self.theta_inc)
 
         # Incident field at scatterers
-        E0_vec = np.exp(1j * (k_z * self.scatterers[0, :] + k_x * self.scatterers[1, :]))
+        E0_vec = np.exp(
+            1j * (k_z * self.scatterers[0, :] + k_x * self.scatterers[1, :])
+        )
 
         # Interaction matrix
         A = np.eye(self.Ns, dtype=complex)
@@ -176,7 +188,9 @@ class CoupledDipoleSimulator:
         # Compute scattered fields from each scatterer
         for n in range(self.Ns):
             r_prime = self.scatterers[:, n].reshape(2, 1, 1)  # Shape: (2, 1, 1)
-            delta_r = np.sqrt((self.Z_grid - r_prime[0])**2 + (self.X_grid - r_prime[1])**2)
+            delta_r = np.sqrt(
+                (self.Z_grid - r_prime[0]) ** 2 + (self.X_grid - r_prime[1]) ** 2
+            )
             G = (1j / 4) * hankel1(0, self.k * delta_r)
             G[delta_r == 0] = 0.0  # Avoid singularity
             E_total += self.k**2 * self.alpha * self.fields[n] * G
@@ -208,7 +222,9 @@ class CoupledDipoleSimulator:
         k_x = self.k * np.sin(self.theta_inc)
 
         # Compute incident field at z = Lz for all x
-        E_incident = np.exp(1j * (k_z * z_L + k_x * x_points))  # Shape: (grid_points_x,)
+        E_incident = np.exp(
+            1j * (k_z * z_L + k_x * x_points)
+        )  # Shape: (grid_points_x,)
 
         # Initialize total field at z = Lz with incident field
         E_output = np.copy(E_incident)
@@ -229,7 +245,9 @@ class CoupledDipoleSimulator:
             G[distances == 0] = 0.0  # Avoid singularity
 
             # Scattered field contribution from scatterer n
-            E_scatt = self.k**2 * self.alpha * self.fields[n] * G  # Shape: (grid_points_x,)
+            E_scatt = (
+                self.k**2 * self.alpha * self.fields[n] * G
+            )  # Shape: (grid_points_x,)
 
             # Add to total field
             E_output += E_scatt
@@ -240,14 +258,18 @@ class CoupledDipoleSimulator:
     def visualize_scatterers(self):
         """Visualizes the positions of scatterers within the slab."""
         plt.figure(figsize=(12, 12 * self.Lx / self.Lz))
-        plt.scatter(self.scatterers[0, :] / self.lambda_0,
-                    self.scatterers[1, :] / self.lambda_0,
-                    c='red', s=100, label='Scatterers')
-        plt.title('Scatterer Positions')
-        plt.xlabel(r'$z/\lambda$')
-        plt.ylabel(r'$x/\lambda$')
+        plt.scatter(
+            self.scatterers[0, :] / self.lambda_0,
+            self.scatterers[1, :] / self.lambda_0,
+            c="red",
+            s=100,
+            label="Scatterers",
+        )
+        plt.title("Scatterer Positions")
+        plt.xlabel(r"$z/\lambda$")
+        plt.ylabel(r"$x/\lambda$")
         plt.legend()
-        plt.gca().set_aspect('equal')
+        plt.gca().set_aspect("equal")
         plt.xlim(0, self.Lz / self.lambda_0)
         plt.ylim(0, self.Lx / self.lambda_0)
         plt.tight_layout()
@@ -260,22 +282,32 @@ class CoupledDipoleSimulator:
             self.compute_total_field()
 
         plt.figure(figsize=(10, 8 * self.Lx / self.Lz))
-        plt.pcolormesh(self.Z_grid / self.lambda_0, self.X_grid / self.lambda_0,
-                       np.abs(self.E_total)**2, shading='auto', cmap='viridis')
-        plt.colorbar(label=r'$|E|^2$')
-        plt.scatter(self.scatterers[0, :] / self.lambda_0,
-                    self.scatterers[1, :] / self.lambda_0,
-                    c='red', s=100, label='Scatterers')
-        plt.title(f'Electric Field Intensity Over Slab (θ = {self.theta_inc_deg}°)')
-        plt.xlabel(r'$z/\lambda$')
-        plt.ylabel(r'$x/\lambda$')
+        plt.pcolormesh(
+            self.Z_grid / self.lambda_0,
+            self.X_grid / self.lambda_0,
+            np.abs(self.E_total) ** 2,
+            shading="auto",
+            cmap="viridis",
+        )
+        plt.colorbar(label=r"$|E|^2$")
+        plt.scatter(
+            self.scatterers[0, :] / self.lambda_0,
+            self.scatterers[1, :] / self.lambda_0,
+            c="red",
+            s=100,
+            label="Scatterers",
+        )
+        plt.title(f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg}°)")
+        plt.xlabel(r"$z/\lambda$")
+        plt.ylabel(r"$x/\lambda$")
         plt.legend()
-        plt.gca().set_aspect('equal')
+        plt.gca().set_aspect("equal")
         plt.tight_layout()
         plt.show()
 
-    def visualize_output_field(self, plot_intensity_only=False,
-                            direct_computation=True):
+    def visualize_output_field(
+        self, plot_intensity_only=False, direct_computation=True
+    ):
         """Visualizes the electric field at z = Lz plane.
 
         Args:
@@ -300,19 +332,19 @@ class CoupledDipoleSimulator:
 
             # Intensity plot
             plt.subplot(1, 2, 1)
-            plt.plot(x_values, np.abs(E_output)**2, 'b-', label=r'$|E(z=L_z)|^2$')
-            plt.title('Electric Field Intensity at $z = L_z$')
-            plt.xlabel(r'$x/\lambda$')
-            plt.ylabel(r'$|E|^2$')
+            plt.plot(x_values, np.abs(E_output) ** 2, "b-", label=r"$|E(z=L_z)|^2$")
+            plt.title("Electric Field Intensity at $z = L_z$")
+            plt.xlabel(r"$x/\lambda$")
+            plt.ylabel(r"$|E|^2$")
             plt.grid(True)
             plt.legend()
 
             # Phase plot
             plt.subplot(1, 2, 2)
-            plt.plot(x_values, np.angle(E_output), 'r-', label=r'$\arg(E(z=L_z))$')
-            plt.title('Electric Field Phase at $z = L_z$')
-            plt.xlabel(r'$x/\lambda$')
-            plt.ylabel('Phase (radians)')
+            plt.plot(x_values, np.angle(E_output), "r-", label=r"$\arg(E(z=L_z))$")
+            plt.title("Electric Field Phase at $z = L_z$")
+            plt.xlabel(r"$x/\lambda$")
+            plt.ylabel("Phase (radians)")
             plt.grid(True)
             plt.legend()
 
@@ -322,10 +354,10 @@ class CoupledDipoleSimulator:
             # Plot only intensity
             x_values = self.x / self.lambda_0
             plt.figure(figsize=(12, 6))
-            plt.plot(x_values, np.abs(E_output)**2, 'g-', label=r'$|E(z=L_z)|^2$')
-            plt.title('Electric Field Intensity at $z = L_z$')
-            plt.xlabel(r'$x/\lambda$')
-            plt.ylabel(r'$|E|^2$')
+            plt.plot(x_values, np.abs(E_output) ** 2, "g-", label=r"$|E(z=L_z)|^2$")
+            plt.title("Electric Field Intensity at $z = L_z$")
+            plt.xlabel(r"$x/\lambda$")
+            plt.ylabel(r"$|E|^2$")
             plt.grid(True)
             plt.legend()
             plt.tight_layout()
@@ -347,7 +379,8 @@ class CoupledDipoleSimulator:
         self.E_output = self.E_total[:, -1]
         return self.E_output
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import time  # Import the time module for performance measurement
 
     # Start timer
