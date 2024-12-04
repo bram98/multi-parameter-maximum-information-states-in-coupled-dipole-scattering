@@ -5,4 +5,4 @@ black==24.10.0
 isort==5.12.0
 
 -e ./libraries/fourierfun
--e ./libraries/scripts
+-e ./libraries/libraries
