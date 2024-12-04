@@ -28,6 +28,9 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 ```bash
     git submodule update --init
     git submodule update --recursive
+
+    # After changes in the submodule
+    git submodule update --remote --merge
 ```
 2. Install dependencies with `pip`:
    ```bash
