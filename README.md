@@ -25,7 +25,7 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
    cd multi-parameter-max-info-states
    ```
 2. Update the submodules:
-```
+```bash
     git submodule update --init
     git submodule update --recursive
 ```
@@ -53,14 +53,14 @@ mylibrary/
 ├─ setup.py
 ```
 The content of the `__init__.py` file looks like this:
-```
+```python
 from . import mymodule
 from . import anothermodule
 ```
 The content of `setup.py` could look like the following:
 from setuptools import setup, find_packages
 
-```
+```python
 from setuptools import setup, find_packages
 
 setup(
@@ -73,7 +73,7 @@ setup(
 ```
 
 To install it manually, you can go the root folder (that contains setup.py) and install using pip
-```
+```bash
 cd path-to-project-folder/mylibrary
 pip install .
 ```
@@ -90,7 +90,7 @@ simplelibrary/
 ```
 
 Now the `setup.py` looks like this:
-```
+```python
 from setuptools import setup
 
 setup(
@@ -102,7 +102,9 @@ setup(
 )
 ```
 and to import you can use
-`import mymodule2, anothermodule2`
+```python
+import mymodule2, anothermodule2
+```
 
 
 ## Contributors
