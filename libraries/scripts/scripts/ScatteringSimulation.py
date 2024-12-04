@@ -9,10 +9,11 @@ It handles multiple scatterers, computes induced electric fields, and visualizes
 Authors: Jacob Seifert - j.seifert@uu.nl, Bram Verreussel
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import hankel1
+import numpy as np
 from scipy.spatial.distance import cdist
+from scipy.special import hankel1
+
 
 class CoupledDipoleSimulator:
     """Simulates wave scattering in a 2D slab using the Coupled Dipole Method (CDM).
@@ -40,16 +41,18 @@ class CoupledDipoleSimulator:
         seed (int): Random seed for scatterer placement.
     """
 
-    def __init__(self,
-                 lambda_0=1.0,
-                 Lz=16.0,
-                 Lx=8.0,
-                 Ns=10,
-                 alpha=4j / (2 * np.pi / 1.0)**2,
-                 exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-                 grid_points_x=400,
-                 theta_inc_deg=0.0,
-                 seed=0):
+    def __init__(
+        self,
+        lambda_0=1.0,
+        Lz=16.0,
+        Lx=8.0,
+        Ns=10,
+        alpha=4j / (2 * np.pi / 1.0) ** 2,
+        exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
+        grid_points_x=400,
+        theta_inc_deg=0.0,
+        seed=0,
+    ):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters.
 
         Args:
@@ -63,6 +66,7 @@ class CoupledDipoleSimulator:
             theta_inc_deg (float, optional): Incident angle in degrees. Defaults to 0.0.
             seed (int, optional): Random seed for scatterer placement. Defaults to 0.
         """
+
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / self.lambda_0
         self.Lz = Lz * self.lambda_0
@@ -72,7 +76,6 @@ class CoupledDipoleSimulator:
         self.exclusion_radius = exclusion_radius * self.lambda_0
         self.grid_points_x = grid_points_x
         self.theta_inc_deg = theta_inc_deg
-        # self.theta_inc = np.deg2rad(self.theta_inc_deg)
         self.seed = seed
 
         # Derive grid points along z based on x sampling
