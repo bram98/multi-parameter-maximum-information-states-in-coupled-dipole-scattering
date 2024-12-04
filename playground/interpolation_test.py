@@ -7,13 +7,13 @@ Created on Tue Dec  3 15:28:51 2024
 
 import fourierfun as ff
 import matplotlib.pyplot as plt
-#%%
+# %%
 import numpy as np
 import scipy
 from scipy.interpolate import (CubicHermiteSpline, barycentric_interpolate,
                                krogh_interpolate, pchip_interpolate)
 
-#%%
+# %%
 """'
 We want to sample at a specific frequency, which may lie halfway between two 
 bins. If we take the fft of a sinewave that is 'incommensurate', we get spectral
@@ -71,7 +71,7 @@ for dk in np.linspace(0, np.pi, num=50):
     plt.show()
 
 
-#%%
+# %%
 """
 In this section I play with window function. The amplitude is way off and I do
 not pursue this for very long.
@@ -138,7 +138,7 @@ for dk in np.linspace(0, np.pi, num=50):
     plt.legend()
     plt.show()
 
-#%%
+# %%
 """
 Finally I considered some 'exact' frequency approaches. We can always integrate
  with an exponential with some exact frequency. This is potentially

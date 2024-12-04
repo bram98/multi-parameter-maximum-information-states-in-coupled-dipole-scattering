@@ -17,7 +17,7 @@ k = 2 * np.pi / lambda_0  # Wave number
 Lz = 10 * lambda_0
 Lx = 8 * lambda_0  # Dimensions of the slab (z is horizontal)
 Ns = 5  # Number of scatterers
-alpha = 4j / k ** 2  # Polarizability of scatterers (resonant)
+alpha = 4j / k**2  # Polarizability of scatterers (resonant)
 exclusion_radius = lambda_0 / 10  # Minimum spacing between particles
 
 # %% Scatterer positions
@@ -79,7 +79,7 @@ for n in range(Ns):
         if n == m:
             A[n, m] = 1
         else:
-            A[n, m] = -(k ** 2) * alpha * G0(scatterers[n], scatterers[m])
+            A[n, m] = -(k**2) * alpha * G0(scatterers[n], scatterers[m])
 
 # Solve the linear system
 fields = np.linalg.solve(A, E0_vec)
@@ -115,7 +115,7 @@ points = np.vstack(
 for n in range(Ns):
     # Compute the Green's function from scatterer n to all grid points
     G = (
-        k ** 2 * alpha * G0(points, scatterers[n])
+        k**2 * alpha * G0(points, scatterers[n])
     )  # Shape: (grid_points_x * grid_points_z,)
 
     # Reshape G back to 2D grid and multiply by the induced field at scatterer n
