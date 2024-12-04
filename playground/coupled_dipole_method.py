@@ -6,18 +6,18 @@ Created on Wed Nov 27 11:39:44 2024
 @author: Jacob Seifert  - j.seifert@uu.nl
 """
 
+import matplotlib.pyplot as plt
 # %% Import libraries
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.special import hankel1
 
 # %% Constants
 lambda_0 = 1.0  # Wavelength (normalized)
 k = 2 * np.pi / lambda_0  # Wave number
 Lz = 10 * lambda_0
-Lx =  8 * lambda_0  # Dimensions of the slab (z is horizontal)
+Lx = 8 * lambda_0  # Dimensions of the slab (z is horizontal)
 Ns = 5  # Number of scatterers
-alpha = 4j / k**2  # Polarizability of scatterers (resonant)
+alpha = 4j / k ** 2  # Polarizability of scatterers (resonant)
 exclusion_radius = lambda_0 / 10  # Minimum spacing between particles
 
 # %% Scatterer positions
@@ -33,7 +33,9 @@ scatterers = np.array(scatterers)
 fig_width = 12  # inches
 fig_height = fig_width * (Lx / Lz)
 fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-plt.scatter(scatterers[:, 0] / lambda_0, scatterers[:, 1] / lambda_0, c="r", label="Scatterers")
+plt.scatter(
+    scatterers[:, 0] / lambda_0, scatterers[:, 1] / lambda_0, c="r", label="Scatterers"
+)
 plt.xlim(0, Lz / lambda_0)
 plt.ylim(0, Lx / lambda_0)
 plt.title("Scatterer Positions")
@@ -43,6 +45,7 @@ plt.ylabel("x (λ)")
 plt.gca().set_aspect(1)
 plt.tight_layout()
 plt.show()
+
 
 # %% Green's function
 def G0(r, r_prime):
@@ -76,7 +79,7 @@ for n in range(Ns):
         if n == m:
             A[n, m] = 1
         else:
-            A[n, m] = -k**2 * alpha * G0(scatterers[n], scatterers[m])
+            A[n, m] = -(k ** 2) * alpha * G0(scatterers[n], scatterers[m])
 
 # Solve the linear system
 fields = np.linalg.solve(A, E0_vec)
@@ -104,12 +107,16 @@ E_incident = E0_amplitude * np.exp(1j * k * Z)  # Incident field at grid points
 E_total = np.copy(E_incident)  # Start with the incident field
 
 # Flatten grid for vectorized computation
-points = np.vstack((Z.ravel(), X.ravel())).T  # Shape: (grid_points_x * grid_points_z, 2)
+points = np.vstack(
+    (Z.ravel(), X.ravel())
+).T  # Shape: (grid_points_x * grid_points_z, 2)
 
 # Add scattered fields from each scatterer
 for n in range(Ns):
     # Compute the Green's function from scatterer n to all grid points
-    G = k**2 * alpha * G0(points, scatterers[n])  # Shape: (grid_points_x * grid_points_z,)
+    G = (
+        k ** 2 * alpha * G0(points, scatterers[n])
+    )  # Shape: (grid_points_x * grid_points_z,)
 
     # Reshape G back to 2D grid and multiply by the induced field at scatterer n
     E_total += G.reshape(grid_points_x, grid_points_z) * fields[n]
@@ -119,7 +126,13 @@ for n in range(Ns):
 fig_width = 10  # inches
 fig_height = fig_width * (Lx / Lz)
 fig, ax = plt.subplots(figsize=(12, fig_height))
-p = ax.pcolormesh(Z / lambda_0, X / lambda_0, np.angle(E_total), shading="auto", cmap='twilight_shifted')
+p = ax.pcolormesh(
+    Z / lambda_0,
+    X / lambda_0,
+    np.angle(E_total),
+    shading="auto",
+    cmap="twilight_shifted",
+)
 fig.colorbar(p, ax=ax, label="Phase (radians)")
 ax.set_title("Field Phase")
 ax.set_xlabel("z (λ)")
@@ -132,7 +145,9 @@ plt.show()
 fig_width = 10  # inches
 fig_height = fig_width * (Lx / Lz)
 fig, ax = plt.subplots(figsize=(12, fig_height))
-c = ax.pcolormesh(Z / lambda_0, X / lambda_0, np.abs(E_total)**2, shading="auto", cmap='viridis')
+c = ax.pcolormesh(
+    Z / lambda_0, X / lambda_0, np.abs(E_total) ** 2, shading="auto", cmap="viridis"
+)
 fig.colorbar(c, ax=ax, label="|E|**2")
 ax.set_title("Field Intensity")
 ax.set_xlabel("z (λ)")
@@ -140,7 +155,3 @@ ax.set_ylabel("x (λ)")
 ax.set_aspect(1)
 plt.tight_layout()
 plt.show()
-
-
-
-
