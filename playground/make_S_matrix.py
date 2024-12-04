@@ -8,107 +8,113 @@ import numpy as np
 sys.path.append("../libraries")
 
 from fourierfun import cplot
+
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
 #%%
 
+
 class SMatrixCalculator:
     left: 1
     right: 2
-    
+
     def __init__(self, N, input_states_l=None, input_states_r=None):
         self.N = N
-        self.input_states_l = None      # input states left (can be angles or vectors etc.)
-        self.input_states_r = None      # input states right
-        self.Tlr = None                 # transmission left to right
-        self.Trl = None                 # transmission right to left   
-        self.Rll = None                 # reflection left to left
-        self.Rrr = None                 # transmission right to right
-    
+        self.input_states_l = None  # input states left (can be angles or vectors etc.)
+        self.input_states_r = None  # input states right
+        self.Tlr = None  # transmission left to right
+        self.Trl = None  # transmission right to left
+        self.Rll = None  # reflection left to left
+        self.Rrr = None  # transmission right to right
+
     def calc_input_left(self):
         pass
-    
+
     def calc_input_right(self):
         pass
-    
+
     def calc_input_both(self):
         pass
-    
+
     def calc_from_left(self):
         pass
-    
+
     def calc_from_right(self):
         pass
-    
+
     def calc_both(self):
         pass
-      
-        
+
+
 def CoupledDipoleSMatrix(SMatrixCalculator):
-    
-    def __init__(self, 
-                 N_input=11,
-                 theta_max_deg=None,
-                 theta_max=None,
-                 lambda_0=1.0,
-                 Lz=16.0,
-                 Lx=8.0,
-                 Ns=0,
-                 alpha=4j / (2 * np.pi / 1.0)**2,
-                 exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-                 grid_points_x=400,
-                 seed=0):
-        
+    def __init__(
+        self,
+        N_input=11,
+        theta_max_deg=None,
+        theta_max=None,
+        lambda_0=1.0,
+        Lz=16.0,
+        Lx=8.0,
+        Ns=0,
+        alpha=4j / (2 * np.pi / 1.0) ** 2,
+        exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
+        grid_points_x=400,
+        seed=0,
+    ):
+
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / lambda_0
-        
+
         if not theta_max is None:
-            
+
             self.theta_max = theta_max
-            
+
         elif not theta_max_deg is None:
-            
+
             self.theta_max_deg = self.theta_max_deg
-        
+
         assert -90 <= self.theta_max_deg <= 90
-            
-        self.cds = CoupledDipoleSimulator(lambda_0=lambda_0,
-                                          Lz=Lz,
-                                          Lx=Lx,
-                                          Ns=Ns,
-                                          alpha=alpha,
-                                          exclusion_radius=exclusion_radius,  # Derived from sigma_s ≈ 0.637λ₀
-                                          grid_points_x=400,
-                                          theta_inc=0,
-                                          seed=0)
-        
+
+        self.cds = CoupledDipoleSimulator(
+            lambda_0=lambda_0,
+            Lz=Lz,
+            Lx=Lx,
+            Ns=Ns,
+            alpha=alpha,
+            exclusion_radius=exclusion_radius,  # Derived from sigma_s ≈ 0.637λ₀
+            grid_points_x=400,
+            theta_inc=0,
+            seed=0,
+        )
+
         def calc_input_both(self):
             kxmax = self.k * np.sin(self.theta_max)
-            self.k_range = np.linspace( - kxmax, kxmax,     # [ - kxmax, kxmax]
-                                       num=self.N, 
-                                       endpoint=True)
-            
+            self.k_range = np.linspace(
+                -kxmax, kxmax, num=self.N, endpoint=True  # [ - kxmax, kxmax]
+            )
+
             # [0, ..., kxmax, - kxmax, ..., - dk] (odd) or
             # [dk, ..., kxmax, -kxmax, ..., dk]   (even)
             self.k_range = np.fft.ifftshift(self.k_range)
-            
+
             self.input_states_l = self.k_x2theta(self.k_range)
-            
+
         def theta2k_x(self, theta):
             k_x = self.k * np.sin(theta)
             return k_x
-        
+
         def k_x2theta(self, k_x):
             theta = np.arcsin(k_x / self.k)
             return theta
-            
+
         @property
         def theta_max_deg(self):
             return np.rad2deg(self.theta_max)
-        
+
         @theta_max_deg.setter
         def theta_max_deg(self, deg):
             self.theta_max = np.deg2rad(deg)
+
 
 Ntheta = 20
 
