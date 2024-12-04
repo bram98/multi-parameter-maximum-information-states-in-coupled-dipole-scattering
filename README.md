@@ -31,6 +31,7 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 ```
 2. Install dependencies with `pip`:
    ```bash
+   cd path-to-this-folder/../multi-parameter-maximum-information-states-in-coupled-dipole-scattering
    pip install -r requirements.txt
    ```
    
@@ -39,6 +40,70 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 The `data/` folder is ignored by Git to prevent large files from being tracked in the repository. This folder is intended for files that:
 - Are generated during simulations or analyses.
 - Are used locally for testing and development purposes.
+
+## How to create a Python library
+An example folder structure for your project (using pip) looks like this:
+```
+mylibrary/
+├─ mylibrary/
+│  ├─ __init__.py
+│  ├─ mymodule.py
+│  ├─ anothermodule.py
+├─ README.md
+├─ setup.py
+```
+The content of the `__init__.py` file looks like this:
+```
+from . import mymodule
+from . import anothermodule
+```
+The content of `setup.py` could look like the following:
+from setuptools import setup, find_packages
+
+```
+from setuptools import setup, find_packages
+
+setup(
+    name='mylibrary',
+    version='0.1.0',
+    packages=find_packages(),  # List all your modules here
+    install_requires=['numpy', 'matplotlib', 'scipy'],  # Add dependencies if needed
+    description='Collection of modules',
+)
+```
+
+To install it manually, you can go the root folder (that contains setup.py) and install using pip
+```
+cd path-to-project-folder/mylibrary
+pip install .
+```
+If you want the install to be "editable", you can add the `-e` flag in the command `pip install -e .`. This way, the package is linked instead of installed and any changes in the folder should be reflected immediately.
+
+You can also use a more simple folder structure, but I could not get this to work satisfactorily, so use at your own risk.
+
+```
+simplelibrary/
+├─ mymodule2.py
+├─ anothermodule2.py
+├─ README.md
+├─ setup.py
+```
+
+Now the `setup.py` looks like this:
+```
+from setuptools import setup
+
+setup(
+    name='simplelibrary',
+    version='0.1.0',
+    py_modules=['mymodule2', 'anothermodule2'],  # List all your modules here
+    install_requires=['numpy'],  # Add dependencies if needed
+    description='Collection of modules',
+)
+```
+and to import you can use
+`import mymodule2, anothermodule2`
+
 
 ## Contributors
 - Bram Verreussel
