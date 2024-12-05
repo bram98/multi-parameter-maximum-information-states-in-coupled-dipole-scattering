@@ -39,6 +39,8 @@ class CoupledDipoleSimulator:
         theta_inc_deg (float): Incident angle in degrees.
         theta_inc (float): Incident angle in radians.
         seed (int): Random seed for scatterer placement.
+        k_x_array (numpy.ndarray): Array of k_x components for arbitrary input field.
+        E_kx_array (numpy.ndarray): Corresponding amplitudes for k_x components.
     """
 
     def __init__(
@@ -53,6 +55,8 @@ class CoupledDipoleSimulator:
         theta_inc_deg=None,
         theta_inc=None,
         seed=0,
+        k_x_array=None,
+        E_kx_array=None,
     ):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters.
 
@@ -62,11 +66,13 @@ class CoupledDipoleSimulator:
             Lx (float, optional): Length of the slab along the x-axis (in wavelengths). Defaults to 8.0.
             Ns (int, optional): Number of scatterers. Defaults to 10.
             alpha (complex, optional): Polarizability of scatterers. Defaults to 4j / k**2.
-            exclusion_radius (float, optional): Minimum spacing between scatterers (in wavelengths). Defaults to 0.5.
+            exclusion_radius (float, optional): Minimum spacing between scatterers (in wavelengths). Defaults to 0.637.
             grid_points_x (int, optional): Number of grid points along the x-axis. Defaults to 400.
             theta_inc_deg (float, optional): Incident angle in degrees. Defaults to 0.0.
             theta_inc (float, optional): Incident angle in radians. Defaults to 0.0.
             seed (int, optional): Random seed for scatterer placement. Defaults to 0.
+            k_x_array (numpy.ndarray, optional): Array of k_x components for arbitrary input field. Defaults to None.
+            E_kx_array (numpy.ndarray, optional): Corresponding amplitudes for k_x components. Defaults to None.
         """
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / self.lambda_0
@@ -76,13 +82,12 @@ class CoupledDipoleSimulator:
         self.alpha = alpha
         self.exclusion_radius = exclusion_radius * self.lambda_0
         self.grid_points_x = grid_points_x
-        if not theta_inc_deg is None:
+        if theta_inc_deg is not None:
             self.theta_inc_deg = theta_inc_deg
-        elif not theta_inc is None:
+        elif theta_inc is not None:
             self.theta_inc = theta_inc
         else:
-            self.theta_inc = 0
-        # self.theta_inc = np.deg2rad(self.theta_inc_deg)
+            self.theta_inc = 0.0
         self.seed = seed
 
         # Derive grid points along z based on x sampling
@@ -102,6 +107,10 @@ class CoupledDipoleSimulator:
         self.fields = None
         self.E_total = None
         self.E_output = None
+
+        # For arbitrary input fields
+        self.k_x_array = k_x_array
+        self.E_kx_array = E_kx_array
 
     def _generate_scatterers(self):
         """Generates scatterer positions with the first at the center and others random.
@@ -153,6 +162,44 @@ class CoupledDipoleSimulator:
         theta = np.arcsin(k_x / self.k)
         return theta
 
+    def compute_kz(self, k_x_array):
+        k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
+        return k_z_array
+
+    def set_input_field_kx(self, k_x_array, E_kx_array):
+        k_x_array = np.array(k_x_array)
+        E_kx_array = np.array(E_kx_array)
+
+        if k_x_array.shape != E_kx_array.shape:
+            raise ValueError("k_x_array and E_kx_array must have the same shape.")
+
+        self.k_x_array = k_x_array
+        self.E_kx_array = E_kx_array
+        self.reset()  # Reset computed fields
+
+    def compute_incident_field(self, x, z):
+        """Computes the incident field at given positions.
+
+        Args:
+            x (numpy.ndarray): x-coordinates.
+            z (numpy.ndarray): z-coordinates.
+
+        Returns:
+            numpy.ndarray: Incident field at the given positions.
+        """
+        if self.k_x_array is not None and self.E_kx_array is not None:
+            # Arbitrary input field specified in k_x components
+            E_incident = np.zeros_like(x, dtype=complex)
+            k_z_array = self.compute_kz(self.k_x_array)
+            for k_x, k_z, E_kx in zip(self.k_x_array, k_z_array, self.E_kx_array):
+                E_incident += E_kx * np.exp(1j * (k_z * z + k_x * x))
+            return E_incident
+        else:
+            # Default to plane wave
+            k_z = self.k * np.cos(self.theta_inc)
+            k_x = self.k * np.sin(self.theta_inc)
+            return np.exp(1j * (k_z * z + k_x * x))
+
     def solve_fields(self):
         """Solves the coupled dipole equations to find induced electric fields.
 
@@ -162,13 +209,13 @@ class CoupledDipoleSimulator:
         if self.fields is not None:
             return self.fields
 
-        # Compute wavevector components
-        k_z = self.k * np.cos(self.theta_inc)
-        k_x = self.k * np.sin(self.theta_inc)
+        if self.Ns == 0:
+            self.fields = np.array([])
+            return self.fields
 
         # Incident field at scatterers
-        E0_vec = np.exp(
-            1j * (k_z * self.scatterers[0, :] + k_x * self.scatterers[1, :])
+        E0_vec = self.compute_incident_field(
+            self.scatterers[1, :], self.scatterers[0, :]
         )
 
         # Interaction matrix
@@ -190,15 +237,11 @@ class CoupledDipoleSimulator:
             return self.E_total
 
         # Ensure that induced fields are computed
-        if self.fields is None and self.Ns > 0:
+        if self.fields is None:
             self.solve_fields()
 
-        # Compute wavevector components
-        k_z = self.k * np.cos(self.theta_inc)
-        k_x = self.k * np.sin(self.theta_inc)
-
         # Compute incident field
-        E_incident = np.exp(1j * (k_z * self.Z_grid + k_x * self.X_grid))
+        E_incident = self.compute_incident_field(self.X_grid, self.Z_grid)
 
         # Initialize total field with incident field
         E_total = np.copy(E_incident)
@@ -235,14 +278,8 @@ class CoupledDipoleSimulator:
         # Define x coordinates along z = Lz
         x_points = self.x  # Shape: (grid_points_x,)
 
-        # Compute wavevector components
-        k_z = self.k * np.cos(self.theta_inc)
-        k_x = self.k * np.sin(self.theta_inc)
-
         # Compute incident field at z = Lz for all x
-        E_incident = np.exp(
-            1j * (k_z * z_L + k_x * x_points)
-        )  # Shape: (grid_points_x,)
+        E_incident = self.compute_incident_field(x_points, z_L)
 
         # Initialize total field at z = Lz with incident field
         E_output = np.copy(E_incident)
@@ -274,6 +311,7 @@ class CoupledDipoleSimulator:
         return self.E_output
 
     def reset(self):
+        """Resets computed fields."""
         self.fields = None
         self.E_output = None
         self.E_total = None
@@ -334,25 +372,40 @@ class CoupledDipoleSimulator:
     def visualize_intensity(self):
         """Visualizes the intensity distribution over the entire slab."""
 
+        if self.k_x_array is not None and self.E_kx_array is not None:
+            title = "Custom Input State"
+        else:
+            title = f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+
         self._visualize(
             display_function=lambda field: np.abs(field) ** 2,
-            title=f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)",
+            title=title,
         )
 
     def visualize_abs(self):
         """Visualizes the absolute value of the field over the entire slab."""
 
+        if self.k_x_array is not None and self.E_kx_array is not None:
+            title = "Custom Input State: Absolute Electric Field"
+        else:
+            title = f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+
         self._visualize(
             display_function=np.abs,
-            title=f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)",
+            title=title,
         )
 
     def visualize_real(self):
         """Visualizes the real value of the field over the entire slab."""
 
+        if self.k_x_array is not None and self.E_kx_array is not None:
+            title = "Custom Input State: Real Part of Electric Field"
+        else:
+            title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+
         self._visualize(
             display_function=np.real,
-            title=f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)",
+            title=title,
         )
 
     def visualize_output_field(
@@ -366,12 +419,8 @@ class CoupledDipoleSimulator:
             direct_computation (bool, optional): If True, computes E_zL directly without full field. Defaults to True.
         """
 
-        if (self.E_output is not None) and (self.E_total is not None):
-            if direct_computation:
-                E_output = self.compute_zL_fields_direct()
-            else:
-                # Extract fields at z = Lz
-                E_output = self.get_zL_fields()
+        if direct_computation:
+            E_output = self.compute_zL_fields_direct()
         else:
             E_output = self.get_zL_fields()
 
@@ -405,7 +454,10 @@ class CoupledDipoleSimulator:
             x_values = self.x / self.lambda_0
             plt.figure(figsize=(12, 6))
             plt.plot(x_values, np.abs(E_output) ** 2, "g-", label=r"$|E(z=L_z)|^2$")
-            plt.title("Electric Field Intensity at $z = L_z$")
+            if self.k_x_array is not None and self.E_kx_array is not None:
+                plt.title("Custom Input State: Electric Field Intensity at $z = L_z$")
+            else:
+                plt.title("Electric Field Intensity at $z = L_z$")
             plt.xlabel(r"$x/\lambda$")
             plt.ylabel(r"$|E|^2$")
             plt.grid(True)
@@ -445,7 +497,7 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # Initialize the simulator with a specific incident angle
-    simulator = CoupledDipoleSimulator(theta_inc_deg=45)
+    simulator = CoupledDipoleSimulator(theta_inc_deg=45, Ns=5)
 
     # Display scatterer positions using the new method
     simulator.visualize_scatterers()
@@ -459,6 +511,49 @@ if __name__ == "__main__":
     # Optionally, retrieve and print the electric field at z = Lz
     E_zL = simulator.compute_zL_fields_direct()
 
+    #%% ------------------------ Arbitrary Input Field Demo
+
+    # Define arbitrary input field in terms of k_x components
+    angles_deg = np.array([-30, 0, 30])  # Incident angles in degrees
+    angles_rad = np.deg2rad(angles_deg)  # Convert to radians
+    k_x_array = simulator.k * np.sin(angles_rad)  # k_x values
+    E_kx_array = np.array([1.0, 2, 1.0])  # Corresponding amplitudes
+
+    # Initialize a new simulator instance for arbitrary input field with scatterers
+    simulator_arbitrary = CoupledDipoleSimulator(Ns=5)
+
+    # Set the arbitrary input field
+    simulator_arbitrary.set_input_field_kx(k_x_array, E_kx_array)
+
+    # Visualize scatterer positions
+    simulator_arbitrary.visualize_scatterers()
+
+    # Visualize the intensity over the full slab with arbitrary input field
+    simulator_arbitrary.visualize_intensity()
+
+    # Visualize the fields at z = Lz with cross-section plots
+    simulator_arbitrary.visualize_output_field(direct_computation=True)
+
+    # Optionally, retrieve and print the electric field at z = Lz
+    E_zL_arbitrary = simulator_arbitrary.compute_zL_fields_direct()
+
+    # ------------------------ Arbitrary Input Field Without Scatterers Demo
+    # Initialize a new simulator instance for arbitrary input field with no scatterers
+    simulator_arbitrary_no_scatterers = CoupledDipoleSimulator(Ns=0)
+
+    # Set the same arbitrary input field
+    simulator_arbitrary_no_scatterers.set_input_field_kx(k_x_array, E_kx_array)
+
+    # Visualize the intensity over the full slab with arbitrary input field and no scatterers
+    simulator_arbitrary_no_scatterers.visualize_intensity()
+
+    # Visualize the fields at z = Lz with cross-section plots
+    simulator_arbitrary_no_scatterers.visualize_output_field(direct_computation=True)
+
+    # Optionally, retrieve and print the electric field at z = Lz
+    E_zL_arbitrary_no_scatterers = simulator_arbitrary_no_scatterers.compute_zL_fields_direct()
+    print(f"Electric field at z = Lz with arbitrary input and no scatterers (first 10 points): {E_zL_arbitrary_no_scatterers[:10]}")
+
     # Stop timer and print elapsed time
     elapsed_time = time.time() - start_time
-    print(f"\nExecution time: {elapsed_time:.3f} seconds")
+    print(f"\nTotal Execution time: {elapsed_time:.3f} seconds")
