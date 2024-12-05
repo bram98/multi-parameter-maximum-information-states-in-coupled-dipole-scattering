@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="libraries",
@@ -8,4 +8,3 @@ setup(
     description="Collection of libraries for the project",
     include_package_data=True,  # Include non-code files specified in MANIFEST.in
 )
-
