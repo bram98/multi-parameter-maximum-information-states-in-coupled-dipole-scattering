@@ -108,7 +108,7 @@ class CoupledDipoleSimulator:
         """
         if self.Ns == 0:
             return np.array([[], []])
-        
+
         scatterers = [np.array([self.Lz / 2, self.Lx / 2])]  # First scatterer always centered
         np.random.seed(self.seed)  # For reproducibility
         while len(scatterers) < self.Ns:
@@ -139,7 +139,7 @@ class CoupledDipoleSimulator:
     def theta2k_x(self, theta):
         k_x = self.k * np.sin(theta)
         return k_x
-    
+
     def k_x2theta(self, k_x):
         theta = np.arcsin(k_x / self.k)
         return theta
@@ -255,12 +255,12 @@ class CoupledDipoleSimulator:
 
         self.E_output = E_output
         return self.E_output
-    
+
     def reset(self):
         self.fields = None
         self.E_output = None
         self.E_total = None
-    
+
     def visualize_scatterers(self):
         """Visualizes the positions of scatterers within the slab."""
         plt.figure(figsize=(12, 12 * self.Lx / self.Lz))
@@ -288,14 +288,14 @@ class CoupledDipoleSimulator:
 
         plt.figure(figsize=(10, 8 * self.Lx / self.Lz))
         plt.pcolormesh(self.Z_grid / self.lambda_0, self.X_grid / self.lambda_0,
-                       display_function(self.E_total), 
-                       shading='auto', 
+                       display_function(self.E_total),
+                       shading='auto',
                        cmap='viridis')
         plt.colorbar(label=r'$|E|^2$')
         plt.scatter(self.scatterers[0, :] / self.lambda_0,
                     self.scatterers[1, :] / self.lambda_0,
                     c='red',
-                    s=100, 
+                    s=100,
                     label='Scatterers')
         plt.title(title)
         plt.xlabel(r'$z/\lambda$')
@@ -308,20 +308,20 @@ class CoupledDipoleSimulator:
 
     def visualize_intensity(self):
         """Visualizes the intensity distribution over the entire slab."""
-        
-        self._visualize(display_function=lambda field: np.abs(field)**2, 
+
+        self._visualize(display_function=lambda field: np.abs(field)**2,
                         title=f'Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)')
-    
+
     def visualize_abs(self):
         """Visualizes the absolute value of the field over the entire slab."""
-        
-        self._visualize(display_function=np.abs, 
+
+        self._visualize(display_function=np.abs,
                         title=f'Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)')
-        
+
     def visualize_real(self):
         """Visualizes the real value of the field over the entire slab."""
-        
-        self._visualize(display_function=np.real, 
+
+        self._visualize(display_function=np.real,
                         title=f'Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)')
 
     def visualize_output_field(self, plot_intensity_only=False,
@@ -396,12 +396,12 @@ class CoupledDipoleSimulator:
 
         self.E_output = self.E_total[:, -1]
         return self.E_output
-    
+
     @property
     def theta_inc_deg(self):
         return np.rad2deg(self.theta_inc)
-    
-    
+
+
     @theta_inc_deg.setter
     def theta_inc_deg(self, deg):
         self.theta_inc = np.deg2rad(deg)
