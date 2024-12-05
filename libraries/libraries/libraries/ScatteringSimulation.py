@@ -375,7 +375,9 @@ class CoupledDipoleSimulator:
         if self.k_x_array is not None and self.E_kx_array is not None:
             title = "Custom Input State"
         else:
-            title = f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+            title = (
+                f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+            )
 
         self._visualize(
             display_function=lambda field: np.abs(field) ** 2,
@@ -511,7 +513,7 @@ if __name__ == "__main__":
     # Optionally, retrieve and print the electric field at z = Lz
     E_zL = simulator.compute_zL_fields_direct()
 
-    #%% ------------------------ Arbitrary Input Field Demo
+    # %% ------------------------ Arbitrary Input Field Demo
 
     # Define arbitrary input field in terms of k_x components
     angles_deg = np.array([-30, 0, 30])  # Incident angles in degrees
@@ -551,8 +553,12 @@ if __name__ == "__main__":
     simulator_arbitrary_no_scatterers.visualize_output_field(direct_computation=True)
 
     # Optionally, retrieve and print the electric field at z = Lz
-    E_zL_arbitrary_no_scatterers = simulator_arbitrary_no_scatterers.compute_zL_fields_direct()
-    print(f"Electric field at z = Lz with arbitrary input and no scatterers (first 10 points): {E_zL_arbitrary_no_scatterers[:10]}")
+    E_zL_arbitrary_no_scatterers = (
+        simulator_arbitrary_no_scatterers.compute_zL_fields_direct()
+    )
+    print(
+        f"Electric field at z = Lz with arbitrary input and no scatterers (first 10 points): {E_zL_arbitrary_no_scatterers[:10]}"
+    )
 
     # Stop timer and print elapsed time
     elapsed_time = time.time() - start_time
