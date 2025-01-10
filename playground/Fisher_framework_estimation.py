@@ -28,7 +28,7 @@ def t_(X, Y, theta):
 def measure(S, E_in, scale=1.0, nsamples=1):
     E_out = scale * S @ E_in
     I_out = np.abs(E_out) ** 2
-    return stats.poisson.rvs(I_out, size=(nsamples, len(I_out))) / scale**2
+    return stats.poisson.rvs(I_out, size=(nsamples, len(I_out))) / scale ** 2
 
 
 def measure_once(S, E_in, scale=1.0):

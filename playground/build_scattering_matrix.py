@@ -15,10 +15,11 @@ incident plane wave has roughly unit flux in 2D. On the output we do no further
 projection or normalization—just store the field samples at z=Lz.
 """
 
+import matplotlib.pyplot as plt
 # %% Imports
 import numpy as np
-import matplotlib.pyplot as plt
 from ScatteringSimulation import CoupledDipoleSimulator
+
 
 # %% Define a helper function for flux-normalizing plane-wave channels in 2D
 def flux_amplitude_2d(k0, kx):
@@ -29,13 +30,13 @@ def flux_amplitude_2d(k0, kx):
     factor if we want an orthonormal set, but for a small discrete set we usually
     just do sqrt(kz / k0).
     """
-    kz = np.sqrt(k0**2 - kx**2 + 0j)  # +0j to keep it in complex domain
+    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)  # +0j to keep it in complex domain
     return np.sqrt(kz / k0)  # kind of equivalent to normalize with sqrt(cos)
+
 
 # %% Build scattering matrix in the "direct" output basis
 def build_scattering_matrix_direct(
-    simulator: CoupledDipoleSimulator,
-    angles_deg: np.ndarray
+    simulator: CoupledDipoleSimulator, angles_deg: np.ndarray
 ):
     """
     Build a scattering matrix T of shape (N_out, N_in) by sending in each angle
@@ -88,15 +89,16 @@ def build_scattering_matrix_direct(
 
     return T, x_out
 
+
 # %% Main usage example
 if __name__ == "__main__":
     # 1) Create a CoupledDipoleSimulator with some scatterers
     sim = CoupledDipoleSimulator(
         lambda_0=1.0,
-        Lz=80.0,   # a shorter slab for quick testing
+        Lz=80.0,  # a shorter slab for quick testing
         Lx=80.0,
-        Ns=1,     # a few random scatterers
-        seed=42   # for reproducibility
+        Ns=1,  # a few random scatterers
+        seed=42,  # for reproducibility
     )
 
     # 2) Choose some input angles
@@ -112,8 +114,13 @@ if __name__ == "__main__":
 
     # -- Check scatterers
     plt.figure()
-    plt.scatter(sim.scatterers[0]/sim.lambda_0, sim.scatterers[1]/sim.lambda_0,
-                c='r', s=40, label='Scatterers')
+    plt.scatter(
+        sim.scatterers[0] / sim.lambda_0,
+        sim.scatterers[1] / sim.lambda_0,
+        c="r",
+        s=40,
+        label="Scatterers",
+    )
     plt.xlabel("z / λ")
     plt.ylabel("x / λ")
     plt.title("Scatterers (z-x plane in 2D)")
@@ -124,11 +131,13 @@ if __name__ == "__main__":
 
     # -- Plot magnitude of each output column in T_matrix
     if len(angles) < 21:
-        fig, axes = plt.subplots(nrows=len(angles), ncols=1, figsize=(7, 2*len(angles)))
+        fig, axes = plt.subplots(
+            nrows=len(angles), ncols=1, figsize=(7, 2 * len(angles))
+        )
         if len(angles) == 1:
             axes = [axes]  # to unify indexing
         for i, ax in enumerate(axes):
-            ax.plot(x_cam/sim.lambda_0, np.abs(T_matrix[:, i])**2, 'b-')
+            ax.plot(x_cam / sim.lambda_0, np.abs(T_matrix[:, i]) ** 2, "b-")
             ax.set_title(f"Output intensity for θ_in = {angles[i]:.1f}°")
             ax.set_xlabel("x / λ  (at z = Lz)")
             ax.set_ylabel(r"$|E|^2$")
@@ -154,7 +163,7 @@ if __name__ == "__main__":
 
     # %% 2) Plot the singular values
     plt.figure()
-    plt.plot(svals, 'o-', label='Singular Values')
+    plt.plot(svals, "o-", label="Singular Values")
     plt.title("Singular Values of the Scattering Matrix T")
     plt.xlabel("Index")
     plt.ylabel("σ")
@@ -171,15 +180,15 @@ if __name__ == "__main__":
     # a) Let's pick the strongest mode = the 1st singular vector
     mode_index = 0  # 0 => first (largest) singular value
     input_vector = Vh.conjugate().T[:, mode_index]  # shape (N_in,)
-    output_vector = U[:, mode_index]                 # shape (N_out,)
+    output_vector = U[:, mode_index]  # shape (N_out,)
 
     print(f"\n--- Dominant singular mode (index=0) ---")
     print("Input-vector (angle-space) = ", input_vector)
     print("Output-vector (camera-space) = ", output_vector)
 
     # b) Plot the input coefficients vs. angle
-    plt.figure(figsize=(6,4))
-    plt.plot(angles, np.abs(input_vector)**2, 'bo-', label="|input|^2")
+    plt.figure(figsize=(6, 4))
+    plt.plot(angles, np.abs(input_vector) ** 2, "bo-", label="|input|^2")
     plt.title("Dominant Input Sing. Vector (Angle Space)")
     plt.xlabel("Angle (deg)")
     plt.ylabel("|Coefficient|^2")
@@ -188,8 +197,8 @@ if __name__ == "__main__":
     plt.show()
 
     # c) Plot the corresponding output field pattern vs. x at z=Lz
-    plt.figure(figsize=(8,4))
-    plt.plot(x_cam/sim.lambda_0, np.abs(output_vector)**2, 'r-')
+    plt.figure(figsize=(8, 4))
+    plt.plot(x_cam / sim.lambda_0, np.abs(output_vector) ** 2, "r-")
     plt.title("Dominant Output Sing. Vector (Camera Space)")
     plt.xlabel("x / λ  (at z=Lz)")
     plt.ylabel("|Field|^2")
@@ -198,8 +207,8 @@ if __name__ == "__main__":
     plt.show()
 
     # b) Plot the input coefficients vs. angle
-    plt.figure(figsize=(6,4))
-    plt.plot(angles, np.angle(input_vector), 'bo-', label="|input|^2")
+    plt.figure(figsize=(6, 4))
+    plt.plot(angles, np.angle(input_vector), "bo-", label="|input|^2")
     plt.title("Dominant Input Sing. Vector (Angle Space)")
     plt.xlabel("Angle (deg)")
     plt.ylabel("angle(Coefficient)")
@@ -208,8 +217,8 @@ if __name__ == "__main__":
     plt.show()
 
     # c) Plot the corresponding output field pattern vs. x at z=Lz
-    plt.figure(figsize=(8,4))
-    plt.plot(x_cam/sim.lambda_0, np.angle(output_vector), 'r-')
+    plt.figure(figsize=(8, 4))
+    plt.plot(x_cam / sim.lambda_0, np.angle(output_vector), "r-")
     plt.title("Dominant Output Sing. Vector (Camera Space)")
     plt.xlabel("x / λ  (at z=Lz)")
     plt.ylabel("angle(Coefficient)")
@@ -221,14 +230,13 @@ if __name__ == "__main__":
     # If you want to see if feeding that linear combination of angles physically
     # reproduces the output_vector, you can do:
 
-
     # We re-init or reuse a simulator with same geometry + scatterers
     test_sim = CoupledDipoleSimulator(
         lambda_0=sim.lambda_0,
-        Lz=sim.Lz/sim.lambda_0,  # pass in wavelengths
-        Lx=sim.Lx/sim.lambda_0,
+        Lz=sim.Lz / sim.lambda_0,  # pass in wavelengths
+        Lx=sim.Lx / sim.lambda_0,
         Ns=sim.Ns,
-        seed=sim.seed
+        seed=sim.seed,
     )
 
     # "input_vector" are the amplitude coefficients for each angle in 'angles'
@@ -243,9 +251,11 @@ if __name__ == "__main__":
     predicted = svals[mode_index] * output_vector
 
     # Quick plot to see if they match in magnitude
-    plt.figure(figsize=(8,4))
-    plt.plot(x_cam/sim.lambda_0, np.abs(E_test), 'b-', label="|E_test| from sim")
-    plt.plot(x_cam/sim.lambda_0, np.abs(predicted), 'r--', label="|predicted| from SVD")
+    plt.figure(figsize=(8, 4))
+    plt.plot(x_cam / sim.lambda_0, np.abs(E_test), "b-", label="|E_test| from sim")
+    plt.plot(
+        x_cam / sim.lambda_0, np.abs(predicted), "r--", label="|predicted| from SVD"
+    )
     plt.title("Check: Summed Input Coeff => output (compare to SVD prediction)")
     plt.xlabel("x / λ  (at z=Lz)")
     plt.ylabel("|E|")
@@ -259,7 +269,9 @@ if __name__ == "__main__":
 
     # %% 5) Test with a random input field
     # Generate a random input field
-    random_input = np.random.rand(len(angles)) + 1j * 2* np.pi * np.random.rand(len(angles))
+    random_input = np.random.rand(len(angles)) + 1j * 2 * np.pi * np.random.rand(
+        len(angles)
+    )
 
     # Predict output using the scattering matrix
     predicted_output_random = T_matrix @ random_input  # matrix-vector multiplication
@@ -270,7 +282,7 @@ if __name__ == "__main__":
         Lz=sim.Lz / sim.lambda_0,
         Lx=sim.Lx / sim.lambda_0,
         Ns=sim.Ns,
-        seed=sim.seed
+        seed=sim.seed,
     )
 
     kx_array = test_sim.k * np.sin(np.deg2rad(angles))
@@ -280,8 +292,18 @@ if __name__ == "__main__":
 
     # Compare predicted and simulated outputs
     plt.figure(figsize=(8, 4))
-    plt.plot(x_cam / sim.lambda_0, np.abs(simulated_output_random), 'b-', label="|E_simulated|")
-    plt.plot(x_cam / sim.lambda_0, np.abs(predicted_output_random), 'r--', label="|E_predicted|")
+    plt.plot(
+        x_cam / sim.lambda_0,
+        np.abs(simulated_output_random),
+        "b-",
+        label="|E_simulated|",
+    )
+    plt.plot(
+        x_cam / sim.lambda_0,
+        np.abs(predicted_output_random),
+        "r--",
+        label="|E_predicted|",
+    )
     plt.title("Random Input: Simulated vs Predicted Output")
     plt.xlabel("x / λ  (at z = Lz)")
     plt.ylabel("|E|")

@@ -15,16 +15,15 @@ We thus see how one can do "optimal wavefront shaping" for the metrology task: m
 of a chosen scatterer. The logic readily extends to other parameters, e.g. polarizabilities, other coordinates, etc.
 """
 
+import matplotlib.pyplot as plt
 # %% Imports
 import numpy as np
-import matplotlib.pyplot as plt
-
+# Likewise, we import the build_scattering_matrix_direct utility we wrote.
+from build_scattering_matrix import (build_scattering_matrix_direct,
+                                     flux_amplitude_2d)
 # We reuse the CoupledDipoleSimulator from our local ScatteringSimulation script
 # (or wherever you store it). Adjust import to your local paths as needed.
 from ScatteringSimulation import CoupledDipoleSimulator
-
-# Likewise, we import the build_scattering_matrix_direct utility we wrote.
-from build_scattering_matrix import build_scattering_matrix_direct, flux_amplitude_2d
 
 
 # %% 1) Helper: build T-matrix given a CoupledDipoleSimulator and a set of angles
@@ -64,7 +63,9 @@ def partial_derivative_T_xscatter(
 
     # 2) We'll do Tminus: set x of that scatterer to x0 - x_shift
     scatterers_minus = scatterers0.copy()
-    scatterers_minus[1, scatterer_index] = scatterers_minus[1, scatterer_index] - x_shift
+    scatterers_minus[1, scatterer_index] = (
+        scatterers_minus[1, scatterer_index] - x_shift
+    )
 
     sim_minus = CoupledDipoleSimulator(**base_sim_kwargs)
     sim_minus.scatterers = scatterers_minus
@@ -87,10 +88,10 @@ def partial_derivative_T_xscatter(
 # We choose a small system for speed
 base_kwargs = dict(
     lambda_0=1.0,
-    Lz=8.0,   # slab thickness in wavelengths
-    Lx=8.0,   # slab width in wavelengths
-    Ns=4,     # minimal number of scatterers for demonstration
-    seed=42, # reproducible scatterer placement
+    Lz=8.0,  # slab thickness in wavelengths
+    Lx=8.0,  # slab width in wavelengths
+    Ns=4,  # minimal number of scatterers for demonstration
+    seed=42,  # reproducible scatterer placement
 )
 
 # By default, the first scatterer is near the center. We'll treat x-shifts of that scatterer.
@@ -100,10 +101,7 @@ dx = 1e-6  # finite difference shift in *x* coordinate
 
 # %% Step A) Build Tplus, Tminus
 T_plus, T_minus, x_cam = partial_derivative_T_xscatter(
-    angles_deg=angles,
-    x_shift=dx,
-    base_sim_kwargs=base_kwargs,
-    scatterer_index=0
+    angles_deg=angles, x_shift=dx, base_sim_kwargs=base_kwargs, scatterer_index=0
 )
 
 # %% Step B) Estimate ∂T/∂x ~ [Tplus - Tminus] / (2*dx)
