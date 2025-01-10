@@ -97,7 +97,8 @@ class CoupledDipoleSimulator:
 
         # Generate grid
         self.z = np.linspace(0, self.Lz, self.grid_points_z, endpoint=True)
-        self.x = np.linspace(0, self.Lx, self.grid_points_x, endpoint=True)
+        self.x = np.linspace(-self.Lx / 2, self.Lx / 2, self.grid_points_x,
+                             endpoint=True)
         self.Z_grid, self.X_grid = np.meshgrid(self.z, self.x)
 
         # Initialize scatterer positions
@@ -122,18 +123,20 @@ class CoupledDipoleSimulator:
             return np.array([[], []])
 
         scatterers = [
-            np.array([self.Lz / 2, self.Lx / 2])
+            np.array([self.Lz / 2, 0])
         ]  # First scatterer always centered
         np.random.seed(self.seed)  # For reproducibility
         while len(scatterers) < self.Ns:
             candidate = np.array(
-                [np.random.uniform(0, self.Lz), np.random.uniform(0, self.Lx)]
+                [np.random.uniform(0, self.Lz), np.random.uniform(-self.Lx/2,
+                                                                  self.Lx/2)]
             )
             if all(
                 np.linalg.norm(candidate - s) > self.exclusion_radius
                 for s in scatterers
             ):
                 scatterers.append(candidate)
+
         return np.array(scatterers).T  # Shape: (2, Ns)
 
     @staticmethod
@@ -332,7 +335,7 @@ class CoupledDipoleSimulator:
         plt.legend()
         plt.gca().set_aspect("equal")
         plt.xlim(0, self.Lz / self.lambda_0)
-        plt.ylim(0, self.Lx / self.lambda_0)
+        plt.ylim(-self.Lx / self.lambda_0 / 2, self.Lx / self.lambda_0 / 2)
         plt.tight_layout()
         plt.show()
 
@@ -499,7 +502,7 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # Initialize the simulator with a specific incident angle
-    simulator = CoupledDipoleSimulator(theta_inc_deg=45, Ns=5)
+    simulator = CoupledDipoleSimulator(theta_inc_deg=45, Ns=7)
 
     # Display scatterer positions using the new method
     simulator.visualize_scatterers()
