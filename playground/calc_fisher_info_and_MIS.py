@@ -205,7 +205,9 @@ plt.show()
 
 # %% Extra sanity check: how large is the Fisher info if we feed in that MIS?
 J_x = 4.0 * (v_max.conjugate().T @ F_x @ v_max).real
-std_dev_x = (1.0 / J_x)**0.5 if J_x > 0 else np.inf  # Avoid sqrt of negative or division by zero
+std_dev_x = (
+    (1.0 / J_x) ** 0.5 if J_x > 0 else np.inf
+)  # Avoid sqrt of negative or division by zero
 print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 print(f"Fisher info (approx) for x-scat param with this MIS = {J_x:.1f}")
 print(f"Standard deviation for x-scat param with this MIS = {std_dev_x:.2e}")
@@ -215,12 +217,14 @@ pw_index = np.argmin(np.abs(angles))  # pick the angle closest to 0
 E_in_plane = np.zeros_like(v_max)
 E_in_plane[pw_index] = 1.0  # amplitude 1.0 at that angle
 J_pw = 4.0 * (E_in_plane.conjugate().T @ F_x @ E_in_plane).real
-std_dev_pw = (1.0 / J_pw)**0.5 if J_pw > 0 else np.inf
+std_dev_pw = (1.0 / J_pw) ** 0.5 if J_pw > 0 else np.inf
 print(f"Fisher info for plane-wave near 0 deg = {J_pw:.1f}")
 print(f"Standard deviation for plane-wave near 0 deg = {std_dev_pw:.2e}")
 
 # After Fisher Information Calculation for LIS
 J_min = 4.0 * (v_min.conjugate().T @ F_x @ v_min).real
-std_dev_min = (1.0 / J_min)**0.5 if J_min > 0 else np.inf  # Avoid sqrt of negative or division by zero
+std_dev_min = (
+    (1.0 / J_min) ** 0.5 if J_min > 0 else np.inf
+)  # Avoid sqrt of negative or division by zero
 print(f"Fisher info (approx) for x-scat param with this LIS = {J_min:.1f}")
 print(f"Standard deviation for x-scat param with this LIS = {std_dev_min:.2e}")

@@ -8,7 +8,6 @@ import numpy as np
 sys.path.append("../libraries")
 
 from fourierfun import cplot
-
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
 # %%

@@ -95,15 +95,15 @@ if __name__ == "__main__":
     # 1) Create a CoupledDipoleSimulator with some scatterers
     sim = CoupledDipoleSimulator(
         lambda_0=1.0,
-        Lz=80.0,  # a shorter slab for quick testing
-        Lx=80.0,
+        Lz=8.0,  # a shorter slab for quick testing
+        Lx=8.0,
         Ns=1,  # a few random scatterers
         seed=42,  # for reproducibility
     )
 
     # 2) Choose some input angles
     max_angle = 15
-    angles = np.linspace(-max_angle, max_angle, 100)
+    angles = np.linspace(-max_angle, max_angle, 400)
 
     # 3) Build the scattering matrix in the direct output basis
     T_matrix, x_cam = build_scattering_matrix_direct(sim, angles)
