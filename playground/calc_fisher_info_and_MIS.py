@@ -90,13 +90,13 @@ base_kwargs = dict(
     lambda_0=1.0,
     Lz=8.0,  # slab thickness in wavelengths
     Lx=8.0,  # slab width in wavelengths
-    Ns=4,  # minimal number of scatterers for demonstration
+    Ns=1,  # minimal number of scatterers for demonstration
     seed=42,  # reproducible scatterer placement
-    grid_points_x=400
+    grid_points_x=1000,
 )
 
 # By default, the first scatterer is near the center. We'll treat x-shifts of that scatterer.
-max_angle = 45
+max_angle = 60
 angles = np.linspace(-max_angle, max_angle, 100)  # a few angles
 dx = 1e-6  # finite difference shift in *x* coordinate
 
@@ -233,9 +233,10 @@ print(f"Standard deviation for x-scat param with this LIS = {std_dev_min:.2e}")
 
 # %% Study the cross-section and immediate environment of the scatterer
 
-def get_1D_cross_section(sim: CoupledDipoleSimulator,
-                         field_2d: np.ndarray,
-                         zslice_idx: int = None):
+
+def get_1D_cross_section(
+    sim: CoupledDipoleSimulator, field_2d: np.ndarray, zslice_idx: int = None
+):
     """
     From a 2D field array (shape: (grid_points_x, grid_points_z)),
     extract the 1D cross-section at the specified z-slice index.
@@ -246,8 +247,9 @@ def get_1D_cross_section(sim: CoupledDipoleSimulator,
     if zslice_idx is None:
         zslice_idx = sim.grid_points_z // 2  # e.g. mid-plane
     E_slice = field_2d[:, zslice_idx]  # shape (grid_points_x,)
-    x_vals = sim.x                     # shape (grid_points_x,)
+    x_vals = sim.x  # shape (grid_points_x,)
     return x_vals, E_slice
+
 
 def discrete_derivatives(yvals, spacing):
     """
@@ -263,6 +265,7 @@ def discrete_derivatives(yvals, spacing):
     d2y_dx2 = np.gradient(dy_dx, spacing)
     return dy_dx, d2y_dx2
 
+
 # Suppose you have a single dipole in the center, plus your MIS (v_max) and LIS (v_min)
 # along with kx_array. We'll do the cross-sections for amplitude.
 
@@ -270,7 +273,7 @@ def discrete_derivatives(yvals, spacing):
 sim_base.reset()
 sim_base.set_input_field_kx(kx_array, v_max)
 sim_base.solve_fields()
-E_2d_MIS = sim_base.compute_total_field()   # shape: (grid_points_x, grid_points_z)
+E_2d_MIS = sim_base.compute_total_field()  # shape: (grid_points_x, grid_points_z)
 x_vals_raw, slice_MIS = get_1D_cross_section(sim_base, E_2d_MIS, zslice_idx=None)
 
 # Convert from simulator x-coords to x/lambda
@@ -299,35 +302,35 @@ d1_LIS, d2_LIS = discrete_derivatives(amplitude_LIS, dx_val)
 #   row1: 1st derivative
 #   row2: 2nd derivative
 ########################################
-fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(10,8), sharex=True)
+fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(10, 8), sharex=True)
 
 # Row 0: amplitude
-axes[0,0].plot(x_vals, amplitude_MIS, 'b-')
-axes[0,0].set_title("MIS: |E| at z=mid")
-axes[0,0].set_ylabel("Amplitude")
-axes[0,0].set_xlim([-1,1])  # zoom in on -1..+1 λ
+axes[0, 0].plot(x_vals, amplitude_MIS, "b-")
+axes[0, 0].set_title("MIS: |E| at z=mid")
+axes[0, 0].set_ylabel("Amplitude")
+axes[0, 0].set_xlim([-1, 1])  # zoom in on -1..+1 λ
 
-axes[0,1].plot(x_vals, amplitude_LIS, 'r-')
-axes[0,1].set_title("LIS: |E| at z=mid")
-axes[0,1].set_xlim([-1,1])  # same zoom
+axes[0, 1].plot(x_vals, amplitude_LIS, "r-")
+axes[0, 1].set_title("LIS: |E| at z=mid")
+axes[0, 1].set_xlim([-1, 1])  # same zoom
 
 # Row 1: 1st derivative
-axes[1,0].plot(x_vals, d1_MIS, 'b-')
-axes[1,0].set_title("MIS: d|E|/dx")
-axes[1,0].set_ylabel("1st deriv")
+axes[1, 0].plot(x_vals, d1_MIS, "b-")
+axes[1, 0].set_title("MIS: d|E|/dx")
+axes[1, 0].set_ylabel("1st deriv")
 
-axes[1,1].plot(x_vals, d1_LIS, 'r-')
-axes[1,1].set_title("LIS: d|E|/dx")
+axes[1, 1].plot(x_vals, d1_LIS, "r-")
+axes[1, 1].set_title("LIS: d|E|/dx")
 
 # Row 2: 2nd derivative
-axes[2,0].plot(x_vals, d2_MIS, 'b-')
-axes[2,0].set_title("MIS: d²|E|/dx²")
-axes[2,0].set_xlabel("x / λ")
-axes[2,0].set_ylabel("2nd deriv")
+axes[2, 0].plot(x_vals, d2_MIS, "b-")
+axes[2, 0].set_title("MIS: d²|E|/dx²")
+axes[2, 0].set_xlabel("x / λ")
+axes[2, 0].set_ylabel("2nd deriv")
 
-axes[2,1].plot(x_vals, d2_LIS, 'r-')
-axes[2,1].set_title("LIS: d²|E|/dx²")
-axes[2,1].set_xlabel("x / λ")
+axes[2, 1].plot(x_vals, d2_LIS, "r-")
+axes[2, 1].set_title("LIS: d²|E|/dx²")
+axes[2, 1].set_xlabel("x / λ")
 
 # Turn on the grid for all subplots in one go
 for ax_row in axes:
@@ -340,9 +343,10 @@ plt.show()
 
 # %% generate time evolution
 
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 def compute_complex_field(sim, kx_array, wavefront):
     """
@@ -352,6 +356,7 @@ def compute_complex_field(sim, kx_array, wavefront):
     sim.set_input_field_kx(kx_array, wavefront)
     sim.solve_fields()
     return sim.compute_total_field()  # shape: (grid_points_x, grid_points_z)
+
 
 def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
     """
@@ -363,7 +368,7 @@ def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
           (like scatterers) that must remain visible, you often want blit=False,
           or else return the scatter in the update function's artist list.
     """
-    fig, ax = plt.subplots(figsize=(6,5))
+    fig, ax = plt.subplots(figsize=(6, 5))
 
     Nx, Nz = E_2d.shape
     x_vals = sim.x / sim.lambda_0
@@ -373,28 +378,27 @@ def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
     realE_0 = E_2d.real
 
     # pcolormesh to show Re(E)
-    im = ax.pcolormesh(z_vals, x_vals, realE_0,
-                       shading='auto', cmap='RdBu_r')
+    im = ax.pcolormesh(z_vals, x_vals, realE_0, shading="auto", cmap="RdBu_r")
     ax.set_xlabel("z / λ")
     ax.set_ylabel("x / λ")
     ax.set_title("Real part of E (Time Evolution)")
     cbar = fig.colorbar(im, ax=ax, label="Re(E)")
 
     # Plot the scatterers in red
-    scatx = sim.scatterers[1,:] / sim.lambda_0
-    scatz = sim.scatterers[0,:] / sim.lambda_0
-    sc = ax.scatter(scatz, scatx, c='red', s=40, label="Scatterers")
+    scatx = sim.scatterers[1, :] / sim.lambda_0
+    scatz = sim.scatterers[0, :] / sim.lambda_0
+    sc = ax.scatter(scatz, scatx, c="red", s=40, label="Scatterers")
     ax.legend()
 
     # We define the angular frequency for a vacuum wave at lambda_0:
     c = 1.0  # normalized speed of light
-    omega = 2*np.pi*c / sim.lambda_0  # if sim.lambda_0 is in the same length units
+    omega = 2 * np.pi * c / sim.lambda_0  # if sim.lambda_0 is in the same length units
 
     # Prepare the update function
     def update(frame):
         # frame goes from 0..(frames-1)
         # We let one full cycle = frames steps => t from 0..(2π/ω)
-        t = frame / frames * (2*np.pi / omega)
+        t = frame / frames * (2 * np.pi / omega)
         phase_factor = np.exp(-1j * omega * t)
         E_t = (E_2d * phase_factor).real
         im.set_array(E_t.ravel())  # update the pcolormesh data
@@ -404,8 +408,7 @@ def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
         return (im,)
 
     ani = animation.FuncAnimation(
-        fig, update, frames=frames, interval=200,
-        blit=blit, repeat=True
+        fig, update, frames=frames, interval=200, blit=blit, repeat=True
     )
     return ani
 
@@ -424,7 +427,7 @@ anim = animate_field_time_evolution(E_2d_MIS, sim_base, frames=60, blit=False)
 anim.save("MIS_time_evolution.mp4", writer="ffmpeg", fps=60)
 
 # b) Save a GIF using ImageMagick:
-anim.save("MIS_time_evolution.gif", writer="imagemagick", fps=60)
+anim.save("MIS_time_evolution.gif", writer="imagemagick", fps=30)
 
 # If you're in a Jupyter environment and just want inline display:
 # from IPython.display import HTML
