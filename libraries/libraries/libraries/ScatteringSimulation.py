@@ -558,7 +558,7 @@ class CoupledDipoleSimulator:
         if save_gif:
             ani.save(gif_filename, writer="imagemagick", fps=fps)
 
-        plt.close(fig)
+        plt.show()
 
 
 if __name__ == "__main__":
