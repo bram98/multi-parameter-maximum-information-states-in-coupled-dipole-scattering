@@ -9,12 +9,13 @@ It handles multiple scatterers, computes induced electric fields, and visualizes
 Authors: Jacob Seifert - j.seifert@uu.nl, Bram Verreussel
 """
 
-import matplotlib.pyplot as plt
+import os
+
 import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
-import os
 
 
 class CoupledDipoleSimulator:
@@ -494,27 +495,43 @@ class CoupledDipoleSimulator:
     def theta_inc_deg(self, deg):
         self.theta_inc = np.deg2rad(deg)
 
-    def animate_time_evolution(self, frames=60, fps=30, figsize=(8, 6),
-                           save_mp4=True, save_gif=True,
-                           mp4_filename="figures/time_evolution.mp4",
-                           gif_filename="figures/time_evolution.gif",
-                           blit=False):
+    def animate_time_evolution(
+        self,
+        frames=60,
+        fps=30,
+        figsize=(8, 6),
+        save_mp4=True,
+        save_gif=True,
+        mp4_filename="figures/time_evolution.mp4",
+        gif_filename="figures/time_evolution.gif",
+        blit=False,
+    ):
 
         if self.E_total is None:
             self.compute_total_field()
 
         fig, ax = plt.subplots(figsize=figsize)
         # Use the full 2D field over the slab
-        pcm = ax.pcolormesh(self.Z_grid / self.lambda_0, self.X_grid / self.lambda_0,
-                              self.E_total.real, shading="auto", cmap="RdBu_r")
+        pcm = ax.pcolormesh(
+            self.Z_grid / self.lambda_0,
+            self.X_grid / self.lambda_0,
+            self.E_total.real,
+            shading="auto",
+            cmap="RdBu_r",
+        )
         ax.set_xlabel("z / λ")
         ax.set_ylabel("x / λ")
         ax.set_title("Real Part of E over Full Slab")
         cbar = fig.colorbar(pcm, ax=ax)
         cbar.set_label("Re(E)")
         # Plot scatterer positions (scatterers array: [z, x])
-        ax.scatter(self.scatterers[0] / self.lambda_0,
-                   self.scatterers[1] / self.lambda_0, c="red", s=40, label="Scatterers")
+        ax.scatter(
+            self.scatterers[0] / self.lambda_0,
+            self.scatterers[1] / self.lambda_0,
+            c="red",
+            s=40,
+            label="Scatterers",
+        )
         ax.legend()
 
         # Define the angular frequency for one optical period (normalized units)
@@ -528,8 +545,9 @@ class CoupledDipoleSimulator:
             pcm.set_array(new_field.ravel())
             return (pcm,)
 
-        ani = animation.FuncAnimation(fig, update, frames=frames,
-                                      interval=1000/fps, blit=blit, repeat=True)
+        ani = animation.FuncAnimation(
+            fig, update, frames=frames, interval=1000 / fps, blit=blit, repeat=True
+        )
 
         # Ensure output directories exist before saving
         os.makedirs(os.path.dirname(mp4_filename), exist_ok=True)
@@ -541,7 +559,6 @@ class CoupledDipoleSimulator:
             ani.save(gif_filename, writer="imagemagick", fps=fps)
 
         plt.close(fig)
-
 
 
 if __name__ == "__main__":
@@ -621,12 +638,12 @@ if __name__ == "__main__":
     # Create a new simulator with a custom scatterer configuration
     sim = CoupledDipoleSimulator(
         lambda_0=1.0,
-        Lz=8.0,         # slab thickness in wavelengths
-        Lx=8.0,         # slab width in wavelengths
-        Ns=20,           # number of scatterers
-        seed=123,       # random seed for reproducibility
+        Lz=8.0,  # slab thickness in wavelengths
+        Lx=8.0,  # slab width in wavelengths
+        Ns=20,  # number of scatterers
+        seed=123,  # random seed for reproducibility
         grid_points_x=400,
-        theta_inc_deg=0.0  # incident plane wave at 20 degrees
+        theta_inc_deg=0.0,  # incident plane wave at 20 degrees
     )
 
     # Solve for the induced fields
@@ -642,7 +659,7 @@ if __name__ == "__main__":
         save_gif=True,
         mp4_filename="figures/my_time_evolution.mp4",
         gif_filename="figures/my_time_evolution.gif",
-        blit=False
+        blit=False,
     )
 
     print("Time evolution animations have been saved to the figures/ folder.")
