@@ -92,7 +92,8 @@ base_kwargs = dict(
     Lx=8.0,  # slab width in wavelengths
     Ns=1,  # minimal number of scatterers for demonstration
     seed=42,  # reproducible scatterer placement
-    grid_points_x=1000,
+    grid_points_x=400,
+    # alpha=0,
 )
 
 # By default, the first scatterer is near the center. We'll treat x-shifts of that scatterer.
@@ -343,94 +344,94 @@ plt.show()
 
 # %% generate time evolution
 
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
-import numpy as np
+if True:  # careful: relatively slow
+    import matplotlib.animation as animation
+    import matplotlib.pyplot as plt
+    import numpy as np
 
+    def compute_complex_field(sim, kx_array, wavefront):
+        """
+        Return the 2D complex field (Nx x Nz) after solving with 'wavefront' input.
+        """
+        sim.reset()
+        sim.set_input_field_kx(kx_array, wavefront)
+        sim.solve_fields()
+        return sim.compute_total_field()  # shape: (grid_points_x, grid_points_z)
 
-def compute_complex_field(sim, kx_array, wavefront):
-    """
-    Return the 2D complex field (Nx x Nz) after solving with 'wavefront' input.
-    """
-    sim.reset()
-    sim.set_input_field_kx(kx_array, wavefront)
-    sim.solve_fields()
-    return sim.compute_total_field()  # shape: (grid_points_x, grid_points_z)
+    def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
+        """
+        Create an animation of the real part of the field vs. time for 'frames' steps per period.
+        E_2d: complex 2D field array (Nx x Nz)
+        sim:  CoupledDipoleSimulator instance (contains .x, .z, .scatterers, etc.)
+        frames: number of time steps in one optical period
+        blit: if True, only changes in the main image are redrawn. If you have static objects
+              (like scatterers) that must remain visible, you often want blit=False,
+              or else return the scatter in the update function's artist list.
+        """
+        fig, ax = plt.subplots(figsize=(6, 5))
 
+        Nx, Nz = E_2d.shape
+        x_vals = sim.x / sim.lambda_0
+        z_vals = sim.z / sim.lambda_0
 
-def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
-    """
-    Create an animation of the real part of the field vs. time for 'frames' steps per period.
-    E_2d: complex 2D field array (Nx x Nz)
-    sim:  CoupledDipoleSimulator instance (contains .x, .z, .scatterers, etc.)
-    frames: number of time steps in one optical period
-    blit: if True, only changes in the main image are redrawn. If you have static objects
-          (like scatterers) that must remain visible, you often want blit=False,
-          or else return the scatter in the update function's artist list.
-    """
-    fig, ax = plt.subplots(figsize=(6, 5))
+        # Initial real part (time=0)
+        realE_0 = E_2d.real
 
-    Nx, Nz = E_2d.shape
-    x_vals = sim.x / sim.lambda_0
-    z_vals = sim.z / sim.lambda_0
+        # pcolormesh to show Re(E)
+        im = ax.pcolormesh(z_vals, x_vals, realE_0, shading="auto", cmap="RdBu_r")
+        ax.set_xlabel("z / λ")
+        ax.set_ylabel("x / λ")
+        ax.set_title("Real part of E (Time Evolution)")
+        cbar = fig.colorbar(im, ax=ax, label="Re(E)")
 
-    # Initial real part (time=0)
-    realE_0 = E_2d.real
+        # Plot the scatterers in red
+        scatx = sim.scatterers[1, :] / sim.lambda_0
+        scatz = sim.scatterers[0, :] / sim.lambda_0
+        sc = ax.scatter(scatz, scatx, c="red", s=40, label="Scatterers")
+        ax.legend()
 
-    # pcolormesh to show Re(E)
-    im = ax.pcolormesh(z_vals, x_vals, realE_0, shading="auto", cmap="RdBu_r")
-    ax.set_xlabel("z / λ")
-    ax.set_ylabel("x / λ")
-    ax.set_title("Real part of E (Time Evolution)")
-    cbar = fig.colorbar(im, ax=ax, label="Re(E)")
+        # We define the angular frequency for a vacuum wave at lambda_0:
+        c = 1.0  # normalized speed of light
+        omega = (
+            2 * np.pi * c / sim.lambda_0
+        )  # if sim.lambda_0 is in the same length units
 
-    # Plot the scatterers in red
-    scatx = sim.scatterers[1, :] / sim.lambda_0
-    scatz = sim.scatterers[0, :] / sim.lambda_0
-    sc = ax.scatter(scatz, scatx, c="red", s=40, label="Scatterers")
-    ax.legend()
+        # Prepare the update function
+        def update(frame):
+            # frame goes from 0..(frames-1)
+            # We let one full cycle = frames steps => t from 0..(2π/ω)
+            t = frame / frames * (2 * np.pi / omega)
+            phase_factor = np.exp(-1j * omega * t)
+            E_t = (E_2d * phase_factor).real
+            im.set_array(E_t.ravel())  # update the pcolormesh data
 
-    # We define the angular frequency for a vacuum wave at lambda_0:
-    c = 1.0  # normalized speed of light
-    omega = 2 * np.pi * c / sim.lambda_0  # if sim.lambda_0 is in the same length units
+            # If blit=True, you should return *all* artists that need redrawing:
+            # return (im, sc)
+            return (im,)
 
-    # Prepare the update function
-    def update(frame):
-        # frame goes from 0..(frames-1)
-        # We let one full cycle = frames steps => t from 0..(2π/ω)
-        t = frame / frames * (2 * np.pi / omega)
-        phase_factor = np.exp(-1j * omega * t)
-        E_t = (E_2d * phase_factor).real
-        im.set_array(E_t.ravel())  # update the pcolormesh data
+        ani = animation.FuncAnimation(
+            fig, update, frames=frames, interval=200, blit=blit, repeat=True
+        )
+        return ani
 
-        # If blit=True, you should return *all* artists that need redrawing:
-        # return (im, sc)
-        return (im,)
+    # ---------------------
+    # Example usage:
+    # ---------------------
+    # 1) Assume 'sim' is your CoupledDipoleSimulator with scatterers
+    # 2) 'kx_array' is your input angle basis
+    # 3) 'v_max' is the MIS wavefront in angle space
+    E_2d_MIS = compute_complex_field(sim_base, kx_array, v_max)
+    anim = animate_field_time_evolution(E_2d_MIS, sim_base, frames=60, blit=False)
 
-    ani = animation.FuncAnimation(
-        fig, update, frames=frames, interval=200, blit=blit, repeat=True
-    )
-    return ani
+    # Now, we can save both MP4 and GIF at 60 FPS
+    # a) Save an MP4 using ffmpeg:
+    anim.save("MIS_time_evolution.mp4", writer="ffmpeg", fps=60)
 
+    # b) Save a GIF using ImageMagick:
+    anim.save("MIS_time_evolution.gif", writer="imagemagick", fps=30)
 
-# ---------------------
-# Example usage:
-# ---------------------
-# 1) Assume 'sim' is your CoupledDipoleSimulator with scatterers
-# 2) 'kx_array' is your input angle basis
-# 3) 'v_max' is the MIS wavefront in angle space
-E_2d_MIS = compute_complex_field(sim_base, kx_array, v_max)
-anim = animate_field_time_evolution(E_2d_MIS, sim_base, frames=60, blit=False)
+    # If you're in a Jupyter environment and just want inline display:
+    # from IPython.display import HTML
+    # HTML(anim.to_jshtml())
 
-# Now, we can save both MP4 and GIF at 60 FPS
-# a) Save an MP4 using ffmpeg:
-anim.save("MIS_time_evolution.mp4", writer="ffmpeg", fps=60)
-
-# b) Save a GIF using ImageMagick:
-anim.save("MIS_time_evolution.gif", writer="imagemagick", fps=30)
-
-# If you're in a Jupyter environment and just want inline display:
-# from IPython.display import HTML
-# HTML(anim.to_jshtml())
-
-plt.show()
+    plt.show()
