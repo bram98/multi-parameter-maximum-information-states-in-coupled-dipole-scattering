@@ -17,6 +17,14 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
+def _flux_amplitude_2d(k0, kx):
+    """
+    Optional helper that returns amplitude so that e^{i(kx*x + kz*z)} in 2D
+    has ~ unit flux. k0 = 2π/λ, kx in [-k0, k0], and
+    kz = sqrt(k0^2 - kx^2).
+    """
+    kz = np.sqrt(k0**2 - kx**2 + 0j)
+    return np.sqrt((kz / k0).real)
 
 class CoupledDipoleSimulator:
     """Simulates wave scattering in a 2D slab using the Coupled Dipole Method (CDM).
@@ -559,6 +567,38 @@ class CoupledDipoleSimulator:
             ani.save(gif_filename, writer="imagemagick", fps=fps)
 
         plt.show()
+
+    def build_scattering_matrix(self, angles_deg, flux_normalize=True):
+        """
+        Build a scattering matrix S of shape (N_out, N_in) where:
+        - N_in = len(angles_deg)
+        - N_out = self.grid_points_x (the direct samples at z=Lz)
+        For each angle in angles_deg, we set a single plane wave input,
+        solve, read off E_zL. Then store in S.
+        Returns:
+            S: shape (N_out, N_in)
+            x_cam: array of x-values at z=Lz
+        """
+        N_in = len(angles_deg)
+        N_out = self.grid_points_x
+        S = np.zeros((N_out, N_in), dtype=complex)
+
+        # We'll do a loop over angles
+        for n, th_deg in enumerate(angles_deg):
+            th_rad = np.deg2rad(th_deg)
+            kx = self.k * np.sin(th_rad)
+            if flux_normalize:
+                amp = _flux_amplitude_2d(self.k, kx)
+            else:
+                amp = 1.0
+
+            # set input
+            self.set_input_field_kx([kx], [amp])
+            self.solve_fields()
+            E_zL = self.compute_zL_fields_direct()
+            S[:, n] = E_zL
+        # re-initialize if needed
+        return S, self.x
 
 
 if __name__ == "__main__":
