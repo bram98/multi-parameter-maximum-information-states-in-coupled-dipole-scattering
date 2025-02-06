@@ -19,8 +19,9 @@ Demo:
 
 import matplotlib.pyplot as plt
 import numpy as np
-from ScatteringSimulation import CoupledDipoleSimulator
 import torch
+from ScatteringSimulation import CoupledDipoleSimulator
+
 
 def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
     """
@@ -213,6 +214,7 @@ print("Done.")
 
 losses = []
 
+
 def fisher_3x3(E_vec, F_tensor):
     """
     E_vec: shape (N_in,2) => real, imag parts
@@ -220,24 +222,20 @@ def fisher_3x3(E_vec, F_tensor):
     Returns 3x3 real Fisher matrix J_{mu,nu} = E^dagger F_{mu,nu} E
     """
     N_in = E_vec.shape[0]
-    E_c = E_vec[:,0] + 1j * E_vec[:,1]  # shape (N_in,)
+    E_c = E_vec[:, 0] + 1j * E_vec[:, 1]  # shape (N_in,)
 
-    J_mat = torch.zeros((3,3), dtype=torch.float64, device=E_vec.device)
+    J_mat = torch.zeros((3, 3), dtype=torch.float64, device=E_vec.device)
     for mu in range(3):
         for nu in range(3):
-            Fmn = F_tensor[mu,nu,:,:]  # shape(N_in,N_in)
+            Fmn = F_tensor[mu, nu, :, :]  # shape(N_in,N_in)
             # x^\dagger Fmn x
-            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0,0]
-            J_mat[mu,nu] = val.real # discard tiny imaginary part (numerical artifact)
+            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
+            J_mat[mu, nu] = val.real  # discard tiny imaginary part (numerical artifact)
     return J_mat
 
 
 def example_optimize_det(
-    F_tensor,
-    N_in,
-    steps=500,
-    lr=0.02,
-    photon_budget=1e6,
+    F_tensor, N_in, steps=500, lr=0.02, photon_budget=1e6,
 ):
     """
     Gradient-based optimization of det( J(E) ),
@@ -250,12 +248,12 @@ def example_optimize_det(
     photon_budget: total power (or # of photons). We'll interpret as sum of intensities = photon_budget.
     """
     # Create random initial E in real+imag
-    E_param = torch.randn((N_in,2), dtype=torch.float64, requires_grad=True)
+    E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     # We'll interpret sum of squares of E_param as the total amplitude^2
     # which we want to be 'photon_budget'. So we do an initial normalization:
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget**0.5 / norm_init)
+        E_param *= photon_budget ** 0.5 / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
 
@@ -265,7 +263,7 @@ def example_optimize_det(
     for step in range(steps):
         opt.zero_grad()
         # compute J
-        J = fisher_3x3(E_param, F_tensor)   # shape(3,3)
+        J = fisher_3x3(E_param, F_tensor)  # shape(3,3)
         det_val = torch.linalg.det(J)
         loss = -det_val  # maximize determinant => minimize negative
         loss.backward()
@@ -274,7 +272,7 @@ def example_optimize_det(
         # -- Renormalize to fix total power:
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_param)
-            E_param *= (photon_budget**0.5 / cur_norm)
+            E_param *= photon_budget ** 0.5 / cur_norm
 
         # track best solution so far
         if best_det_val is None or det_val.item() > best_det_val:
@@ -288,14 +286,16 @@ def example_optimize_det(
     # final best solution
     return best_vec.cpu().numpy(), best_det_val
 
+
 # Convert F into torch
 F_tensor_torch = torch.from_numpy(F).to(torch.complex128)  # shape(3,3,N_in,N_in)
-E_optim, best_det = example_optimize_det(F_tensor_torch, N_in=N_in,
-                                         photon_budget=10, steps=100, lr=1e-3)
+E_optim, best_det = example_optimize_det(
+    F_tensor_torch, N_in=N_in, photon_budget=10, steps=100, lr=1e-3
+)
 print(f"\nOptimization done. Best determinant found = {best_det:.5f}")
 
 # parse E_optim -> complex wavefront
-E_opt_complex = E_optim[:,0] + 1j*E_optim[:,1]
+E_opt_complex = E_optim[:, 0] + 1j * E_optim[:, 1]
 
 # If you want to visualize it, feed it to a simulator
 final_sim = CoupledDipoleSimulator(**sim_kwargs)
@@ -303,7 +303,7 @@ final_sim.scatterers = base_dipoles
 
 # We'll define angles -> k_x array
 k0 = final_sim.k
-kx_array = k0*np.sin(np.deg2rad(angles_deg))
+kx_array = k0 * np.sin(np.deg2rad(angles_deg))
 
 # plot loss history
 plt.plot(losses)
@@ -320,13 +320,14 @@ final_sim.visualize_intensity()
 
 # %% 8) Compare and visualize final results for each wavefront
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 ########################################
 # 1) Functions to compute J-matrix and to produce bar-chart comparisons
 ########################################
+
 
 def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
     """
@@ -343,17 +344,19 @@ def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
 
     # 2) "fisher_3x3" logic, adapted inline
     N_in = E_torch.shape[0]
-    E_c = E_torch[:,0] + 1j * E_torch[:,1]  # shape(N_in,)
-    J_mat_torch = torch.zeros((3,3), dtype=torch.float64)
+    E_c = E_torch[:, 0] + 1j * E_torch[:, 1]  # shape(N_in,)
+    J_mat_torch = torch.zeros((3, 3), dtype=torch.float64)
     for mu in range(3):
         for nu in range(3):
-            Fmn = F_tensor[mu,nu,:,:]  # shape(N_in,N_in) complex
-            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0,0]
-            J_mat_torch[mu,nu] = val.real  # discard small imaginary part
+            Fmn = F_tensor[mu, nu, :, :]  # shape(N_in,N_in) complex
+            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
+            J_mat_torch[mu, nu] = val.real  # discard small imaginary part
     return J_mat_torch.detach().cpu().numpy()
 
 
-def visualize_multi_param_fisher_comparison(wavefronts_dict, F_tensor_torch, figure_title="Comparison of Wavefronts"):
+def visualize_multi_param_fisher_comparison(
+    wavefronts_dict, F_tensor_torch, figure_title="Comparison of Wavefronts"
+):
     """
     wavefronts_dict: { "Label": wavefront_complex_array, ... }
     F_tensor_torch:  shape(3,3,N_in,N_in) complex (Torch)
@@ -369,31 +372,36 @@ def visualize_multi_param_fisher_comparison(wavefronts_dict, F_tensor_torch, fig
     for wname in wave_names:
         wf_cplx = wavefronts_dict[wname]  # shape (N_in,) complex
         J_mat = compute_fisher_matrix_for_wavefront(wf_cplx, F_tensor_torch)
-        diag_vals = [J_mat[0,0], J_mat[1,1], J_mat[2,2]]
+        diag_vals = [J_mat[0, 0], J_mat[1, 1], J_mat[2, 2]]
         trace_val = np.trace(J_mat)
-        det_val   = np.linalg.det(J_mat)
+        det_val = np.linalg.det(J_mat)
         results[wname] = {
             "diag": diag_vals,
             "trace": trace_val,
             "det": det_val,
-            "J_mat": J_mat
+            "J_mat": J_mat,
         }
 
     # Build arrays for bar plots
     n_wf = len(wave_names)
     diag_data = np.array([results[w]["diag"] for w in wave_names])  # shape(n_wf,3)
     trace_data = [results[w]["trace"] for w in wave_names]
-    det_data   = [results[w]["det"]   for w in wave_names]
+    det_data = [results[w]["det"] for w in wave_names]
 
     # 1) Bar chart for diagonal
-    fig, axes = plt.subplots(1,2, figsize=(12,5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
     # Left: diagonal elements
     x_idx = np.arange(n_wf)
     width = 0.25
     for i in range(3):
-        offset = (i - 1)*width
-        axes[0].bar(x_idx + offset, diag_data[:,i], width=width, label=f"J_{{{param_labels[i]}{param_labels[i]}}}")
+        offset = (i - 1) * width
+        axes[0].bar(
+            x_idx + offset,
+            diag_data[:, i],
+            width=width,
+            label=f"J_{{{param_labels[i]}{param_labels[i]}}}",
+        )
     axes[0].set_title("Diagonal elements of J")
     axes[0].set_xticks(x_idx)
     axes[0].set_xticklabels(wave_names, rotation=25)
@@ -403,8 +411,20 @@ def visualize_multi_param_fisher_comparison(wavefronts_dict, F_tensor_torch, fig
 
     # Right: trace & determinant
     offset_2 = 0.35
-    axes[1].bar(x_idx - offset_2/2, trace_data, width=offset_2, color="skyblue", label="Trace(J)")
-    axes[1].bar(x_idx + offset_2/2, det_data,   width=offset_2, color="lightcoral", label="Det(J)")
+    axes[1].bar(
+        x_idx - offset_2 / 2,
+        trace_data,
+        width=offset_2,
+        color="skyblue",
+        label="Trace(J)",
+    )
+    axes[1].bar(
+        x_idx + offset_2 / 2,
+        det_data,
+        width=offset_2,
+        color="lightcoral",
+        label="Det(J)",
+    )
     axes[1].set_title("Trace and Determinant")
     axes[1].set_xticks(x_idx)
     axes[1].set_xticklabels(wave_names, rotation=25)
@@ -420,19 +440,25 @@ def visualize_multi_param_fisher_comparison(wavefronts_dict, F_tensor_torch, fig
 ########################################
 # 2) Usage Example
 ########################################
-def compare_final_wavefronts_example(F_tensor_torch, v_max_x, v_max_z, v_max_rot, v_sum_max, E_opt_complex):
+def compare_final_wavefronts_example(
+    F_tensor_torch, v_max_x, v_max_z, v_max_rot, v_sum_max, E_opt_complex
+):
     """
     We'll place these wavefronts into a dictionary, then call the comparison function.
     """
     wavefronts_dict = {
-        "MIS_x":    v_max_x,
-        "MIS_z":    v_max_z,
-        "MIS_rot":  v_max_rot,
-        "SumDiag":  v_sum_max,
-        "DetMax":   E_opt_complex
+        "MIS_x": v_max_x,
+        "MIS_z": v_max_z,
+        "MIS_rot": v_max_rot,
+        "SumDiag": v_sum_max,
+        "DetMax": E_opt_complex,
     }
-    visualize_multi_param_fisher_comparison(wavefronts_dict, F_tensor_torch,
-        figure_title="Comparison: single-param, sum-of-diag, det-optimized")
+    visualize_multi_param_fisher_comparison(
+        wavefronts_dict,
+        F_tensor_torch,
+        figure_title="Comparison: single-param, sum-of-diag, det-optimized",
+    )
+
 
 # End of block.
 # In your script, you'd do:
