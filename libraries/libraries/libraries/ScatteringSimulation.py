@@ -17,14 +17,16 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
+
 def _flux_amplitude_2d(k0, kx):
     """
     Optional helper that returns amplitude so that e^{i(kx*x + kz*z)} in 2D
     has ~ unit flux. k0 = 2π/λ, kx in [-k0, k0], and
     kz = sqrt(k0^2 - kx^2).
     """
-    kz = np.sqrt(k0**2 - kx**2 + 0j)
+    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)
     return np.sqrt((kz / k0).real)
+
 
 class CoupledDipoleSimulator:
     """Simulates wave scattering in a 2D slab using the Coupled Dipole Method (CDM).

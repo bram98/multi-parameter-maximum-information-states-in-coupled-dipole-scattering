@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ScatteringSimulation import CoupledDipoleSimulator
 
+
 def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
     """
     Return an array shape(2,4) with the x,z coords of 4 dipoles forming a square,
@@ -28,12 +29,11 @@ def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
     We'll interpret: scatterers[i] = (z_i, x_i).
     """
     half = side / 2
-    corners = np.array(
-        [(-half, -half), (-half, +half), (+half, -half), (+half, +half)]
-    )
+    corners = np.array([(-half, -half), (-half, +half), (+half, -half), (+half, +half)])
     corners[:, 0] += center[0]
     corners[:, 1] += center[1]
     return corners.T  # shape(2,4)
+
 
 def place_line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
     """
@@ -45,6 +45,7 @@ def place_line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
         pos[1, i] = i * dist - (number // 2 * dist) + center[1]
         pos[0, i] = center[0]
     return pos
+
 
 def shift_and_rotate_square(original_positions, dx, dz, dtheta):
     """
@@ -66,6 +67,7 @@ def shift_and_rotate_square(original_positions, dx, dz, dtheta):
     z_rot += dz
     x_rot += dx
     return np.vstack((z_rot, x_rot))
+
 
 def partial_derivative_3params(
     sim_kwargs, angles_deg, base_positions, param_index=0, delta=1e-3
