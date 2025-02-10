@@ -45,12 +45,19 @@ def rayleigh(G, v, engine=torch):
     return engine.einsum('ij, ...i, ...j -> ...', G, v, v)
 
 def forward(F, v):
-    v = torch.nn.functional.normalize(v, dim=0)
-    return det_F(F, v)
+    # with torch.no_grad():
+    #     v /= torch.norm(v)
+    vnorm = v / torch.norm(v)
+    return det_F(F, vnorm)
+
+def forward_curry(F):
+    def _forward(v):
+        return forward(F, v)
+    return _forward
 
 def forward_rayleigh(G, v):
-    v = torch.nn.functional.normalize(v, dim=0)
-    return rayleigh(G, v)
+    vnorm = v / torch.norm(v)
+    return rayleigh(G, vnorm)
 
 def snapshot(v):
     return v.detach().cpu().numpy().copy()
@@ -71,6 +78,42 @@ for i in range(2):
 
 #%%
 
+v = torch.empty(nhilbert, requires_grad=True, device='cuda')
+torch.nn.init.normal_(v)
+with torch.no_grad():
+    v /= torch.norm(v)
+
+Ft = torch.from_numpy(F.astype(np.float32)).cuda()
+Ft.requires_grad = False
+
+optimizer = torch.optim.Adam([v], lr=.1)
+
+loss_history = []
+best_loss_adam = np.inf
+best_loss_history_adam = []
+for i in range(1000):
+    with torch.no_grad():
+        v /= torch.norm(v)
+    optimizer.zero_grad()
+    # loss = forward_rayleigh(Gt, v)
+    loss = forward(Ft, v)
+    loss.backward()
+    optimizer.step()
+
+    loss_history.append(loss.item())
+    best_loss_adam = min(loss.item(), best_loss_adam)
+    best_loss_history_adam.append(best_loss_adam)
+
+
+loss_history_ADAM = np.array(loss_history)
+best_loss_history_adam = np.array(best_loss_history_adam)
+
+skip = 200
+plt.plot(loss_history_ADAM[-skip:])
+plt.plot(np.ones(skip)*best_loss_adam, 'r--')
+plt.show()
+
+#%%
 from torchswarm.swarmoptimizer import SwarmOptimizer
 
 v = torch.empty(nhilbert, requires_grad=True).cuda()
@@ -244,4 +287,59 @@ plt.title("Swarm Optimization Performance vs. nswarm")
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.show()
 
+
+#%%
+from evotorch import Problem
+from evotorch.algorithms import SNES, CMAES
+from evotorch.logging import StdOutLogger, PandasLogger
+import torch
+
+
+# Define a Problem instance wrapping the function
+class NormalizedProblem(Problem):
+    def _transform_solution(self, solution: torch.Tensor) -> torch.Tensor:
+        """Normalize solutions before evaluation."""
+        return solution / torch.norm(solution, dim=-1, keepdim=True)
+
+# Solutions have length 10
+problem = NormalizedProblem(
+    "min",
+    forward_curry(Ft.cpu()),
+    solution_length=nhilbert,
+    initial_bounds=(-1, 1),
+)
+
+# Instantiate a searcher
+searcher_SNES = SNES(problem, stdev_init=5)
+searcher_CMAES = CMAES(problem.clone(), stdev_init=5)
+
+# Create a logger
+logger_SNES = PandasLogger(searcher_SNES, interval=1, after_first_step=False)
+logger_CMAES = PandasLogger(searcher_CMAES, interval=1, after_first_step=False)
+
+# Evolve!
+print('Running SNES')
+searcher_SNES.run(1000)
+print('Running CMA-ES')
+searcher_CMAES.run(1000)
+loss_history_SNES = logger_SNES.to_dataframe()['best_eval'].to_numpy()
+loss_history_CMA = logger_CMAES.to_dataframe()['best_eval'].to_numpy()
+
+#%%
+skip = -100
+plt.plot(loss_history_ADAM[skip:], label='Adam')
+plt.plot(best_loss_history_adam[skip:], label='Adam (best)', c='tab:blue', linestyle='--')
+plt.plot(loss_history_SNES[skip:], label='SNES')
+plt.plot(loss_history_CMA[skip:], label='CMA-ES')
+# plt.yscale('log')
+plt.legend()
+plt.show()
+
+
+#%%
+bar_labels = ['Adam', 'SNES', 'CMA-ES']
+bar_values = [-loss_history_ADAM[-1], -loss_history_SNES[-1], -best_loss_history_adam[-1]]
+plt.bar(bar_labels, bar_values)
+plt.ylim(np.min(bar_values) - .5, np.max(bar_values))
+plt.show()
 
