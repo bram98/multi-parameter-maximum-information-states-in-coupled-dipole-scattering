@@ -107,6 +107,42 @@ visualize_over_angles(det_F, F, ntheta=200, nphi=200)
 plt.show()
 
 #%%
+v = torch.empty(3, requires_grad=True).cpu()
+torch.nn.init.normal_(v)
+Ft = torch.from_numpy(F.astype(np.float32)).cpu()
+Ft.requires_grad = False
+
+optimizer = torch.optim.Adam([v], lr=.1)
+
+v_history = []
+phi_history = []
+theta_history = []
+loss_history = []
+
+for i in range(100):
+    optimizer.zero_grad()
+    # loss = forward_rayleigh(Gt, v)
+    loss = forward(Ft, v)
+    loss.backward()
+    optimizer.step()
+    if i%100 == 0 or True:
+        v_npy = v.detach().cpu().numpy().copy()
+        v_history.append(v_npy)
+        phi, theta = spherical_from_cartesian(*v_npy)
+        phi %= 2*np.pi
+        phi_history.append(phi)
+        theta_history.append(theta)
+        loss_history.append(loss.item())
+
+fig, ax = visualize_over_angles(det_F, F, ntheta=200, nphi=200)
+ax.plot(phi_history, theta_history, '-r', label='Path')
+ax.plot(phi_history[-1], theta_history[-1], '*', c='tab:pink', label='Final solution')
+
+ax.set_title('Det(J) using Adam')
+
+plt.show()
+
+#%%
 
 from torchswarm.swarmoptimizer import SwarmOptimizer
 

@@ -4,6 +4,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+from timeit import default_timer as timer
 
 #%%
 nparams = 3             # number of parameters
@@ -35,6 +36,7 @@ G = np.random.normal(loc=0,
 
 
 #%%
+from evotorch.decorators import vectorized
 def J_from_F(F, v, engine=torch):
     return engine.einsum('mnij, ...i, ...j -> ...mn', F, v, v)
 
@@ -44,12 +46,14 @@ def det_F(F, v, engine=torch):
 def rayleigh(G, v, engine=torch):
     return engine.einsum('ij, ...i, ...j -> ...', G, v, v)
 
+@vectorized
 def forward(F, v):
     # with torch.no_grad():
     #     v /= torch.norm(v)
     vnorm = v / torch.norm(v)
     return det_F(F, vnorm)
 
+@vectorized
 def forward_curry(F):
     def _forward(v):
         return forward(F, v)
@@ -78,40 +82,7 @@ for i in range(2):
 
 #%%
 
-v = torch.empty(nhilbert, requires_grad=True, device='cuda')
-torch.nn.init.normal_(v)
-with torch.no_grad():
-    v /= torch.norm(v)
 
-Ft = torch.from_numpy(F.astype(np.float32)).cuda()
-Ft.requires_grad = False
-
-optimizer = torch.optim.Adam([v], lr=.1)
-
-loss_history = []
-best_loss_adam = np.inf
-best_loss_history_adam = []
-for i in range(1000):
-    with torch.no_grad():
-        v /= torch.norm(v)
-    optimizer.zero_grad()
-    # loss = forward_rayleigh(Gt, v)
-    loss = forward(Ft, v)
-    loss.backward()
-    optimizer.step()
-
-    loss_history.append(loss.item())
-    best_loss_adam = min(loss.item(), best_loss_adam)
-    best_loss_history_adam.append(best_loss_adam)
-
-
-loss_history_ADAM = np.array(loss_history)
-best_loss_history_adam = np.array(best_loss_history_adam)
-
-skip = 200
-plt.plot(loss_history_ADAM[-skip:])
-plt.plot(np.ones(skip)*best_loss_adam, 'r--')
-plt.show()
 
 #%%
 from torchswarm.swarmoptimizer import SwarmOptimizer
@@ -287,8 +258,65 @@ plt.title("Swarm Optimization Performance vs. nswarm")
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.show()
 
+#%%
+v = torch.empty(nhilbert, requires_grad=True, device='cuda')
+torch.nn.init.normal_(v)
+with torch.no_grad():
+    v /= torch.norm(v)
+
+Ft = torch.from_numpy(F.astype(np.float32)).cuda()
+Ft.requires_grad = False
+
+optimizer = torch.optim.Adam([v], lr=.1)
+lr_decay_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.91)
+
+loss_history = []
+best_loss_adam = np.inf
+best_loss_history_adam = []
+
+steps = 2000
+t1 = timer()
+for i in range(steps):
+    with torch.no_grad():
+        v /= torch.norm(v)
+    optimizer.zero_grad()
+    # loss = forward_rayleigh(Gt, v)
+    loss = forward(Ft, v)
+    loss.backward()
+    optimizer.step()
+    loss_history.append(loss.item())
+    best_loss_adam = min(loss.item(), best_loss_adam)
+    best_loss_history_adam.append(best_loss_adam)
+    if (i + 1) % 100 == 0:
+        lr_decay_scheduler.step()
+
+
+
+t2 = timer()
+print('Adam time:', t2 - t1)
+
+loss_history_ADAM = np.array(loss_history)
+best_loss_history_adam = np.array(best_loss_history_adam)
 
 #%%
+
+skip = 50
+plt.figure()
+plt.plot(loss_history_ADAM[skip:])
+plt.plot(best_loss_history_adam[skip:], c='tab:blue', linestyle='--')
+plt.ticklabel_format(style='plain')
+plt.show()
+
+
+skip = -100
+plt.figure()
+plt.plot(loss_history_ADAM[skip:])
+plt.plot(best_loss_history_adam[skip:], c='tab:blue', linestyle='--')
+plt.ticklabel_format(style='plain', useOffset=False)
+plt.show()
+
+#%%
+import evotorch
 from evotorch import Problem
 from evotorch.algorithms import SNES, CMAES
 from evotorch.logging import StdOutLogger, PandasLogger
@@ -301,45 +329,75 @@ class NormalizedProblem(Problem):
         """Normalize solutions before evaluation."""
         return solution / torch.norm(solution, dim=-1, keepdim=True)
 
+sigma_list = []
+
 # Solutions have length 10
 problem = NormalizedProblem(
     "min",
     forward_curry(Ft.cpu()),
     solution_length=nhilbert,
     initial_bounds=(-1, 1),
+    device='cpu'
 )
 
 # Instantiate a searcher
-searcher_SNES = SNES(problem, stdev_init=5)
-searcher_CMAES = CMAES(problem.clone(), stdev_init=5)
+searcher_SNES = SNES(problem.clone(), stdev_init=1)
+searcher_CMAES = CMAES(problem.clone(), stdev_init=1, separable=False)
+searcher_CMAES_sep = CMAES(problem.clone(), stdev_init=1, separable=True)
 
 # Create a logger
 logger_SNES = PandasLogger(searcher_SNES, interval=1, after_first_step=False)
 logger_CMAES = PandasLogger(searcher_CMAES, interval=1, after_first_step=False)
+logger_CMAES_sep = PandasLogger(searcher_CMAES_sep, interval=1, after_first_step=False)
+
+# steps = 2000
 
 # Evolve!
+
+t1 = timer()
 print('Running SNES')
-searcher_SNES.run(1000)
+searcher_SNES.run(steps)
+t2 = timer()
 print('Running CMA-ES')
-searcher_CMAES.run(1000)
+searcher_CMAES.run(steps)
+t3 = timer()
+print('Running CMA-ES sep.')
+searcher_CMAES_sep.run(steps)
+t4 = timer()
+print('SNES time: ', t2 - t1)
+print('CMA-ES time: ', t3 - t2)
+print('CMA-ES sep. time: ', t4 - t3)
+
 loss_history_SNES = logger_SNES.to_dataframe()['best_eval'].to_numpy()
 loss_history_CMA = logger_CMAES.to_dataframe()['best_eval'].to_numpy()
+loss_history_CMA_sep = logger_CMAES_sep.to_dataframe()['best_eval'].to_numpy()
+
 
 #%%
 skip = -100
-plt.plot(loss_history_ADAM[skip:], label='Adam')
-plt.plot(best_loss_history_adam[skip:], label='Adam (best)', c='tab:blue', linestyle='--')
-plt.plot(loss_history_SNES[skip:], label='SNES')
-plt.plot(loss_history_CMA[skip:], label='CMA-ES')
-# plt.yscale('log')
+if skip >= 0:
+    step_range = np.arange(len(loss_history_SNES))
+else:
+    step_range = np.arange(skip, 0)
+plt.plot(step_range, loss_history_ADAM[skip:], label='Adam', c='tab:red')
+plt.plot(step_range, best_loss_history_adam[skip:], label='Adam (best)', c='tab:red', linestyle='--')
+# plt.plot(step_range, loss_history_SNES[skip:], label='SNES')
+plt.plot(step_range, loss_history_CMA[skip:], label='CMA-ES')
+plt.plot(step_range, loss_history_CMA_sep[skip:], label='CMA-ES sep')
+plt.xlabel('Iterations')
+plt.ticklabel_format(style='plain', useOffset=False)
 plt.legend()
 plt.show()
 
 
-#%%
-bar_labels = ['Adam', 'SNES', 'CMA-ES']
-bar_values = [-loss_history_ADAM[-1], -loss_history_SNES[-1], -best_loss_history_adam[-1]]
+ #%%
+bar_labels = ['Adam', 'SNES', 'CMA-ES', 'CMAS-ES sep.']
+bar_values = [-best_loss_history_adam[-1],
+              -loss_history_SNES[-1],
+              -loss_history_CMA[-1],
+              -loss_history_CMA_sep[-1],
+              ]
 plt.bar(bar_labels, bar_values)
-plt.ylim(np.min(bar_values) - .5, np.max(bar_values))
+plt.ylim(np.min(bar_values) - .1, np.max(bar_values))
 plt.show()
 
