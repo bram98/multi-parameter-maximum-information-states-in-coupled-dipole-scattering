@@ -1,21 +1,23 @@
-# %%
+#%%
 import sys
 
 import fourierfun as ff
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.append("../libraries")
+from matplotlib.colors import LogNorm
+from matplotlib.ticker import MultipleLocator, MaxNLocator
 
-from fourierfun import cplot
+
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
-# %%
+#%%
 
 
 class SMatrixCalculator:
-    left: 1
-    right: 2
+    left = 1
+    right = 2
+    both = 3
 
     def __init__(self, N, input_states_l=None, input_states_r=None):
         self.N = N
@@ -27,28 +29,77 @@ class SMatrixCalculator:
         self.Rrr = None  # transmission right to right
 
     def calc_input_left(self):
-        pass
+        raise NotImplementedError
 
     def calc_input_right(self):
-        pass
+        raise NotImplementedError
 
     def calc_input_both(self):
-        pass
+        raise NotImplementedError
 
     def calc_from_left(self):
-        pass
+        raise NotImplementedError
 
     def calc_from_right(self):
-        pass
+        raise NotImplementedError
 
     def calc_both(self):
-        pass
+        raise NotImplementedError
+
+    def get_matrix(self, inc, out):
+        if inc == self.left and out == self.left:
+            return self.Rll
+        elif inc == self.left and out == self.right:
+            return self.Tlr
+        elif inc == self.right and out == self.left:
+            return self.Trl
+        elif inc == self.right and out == self.right:
+            return self.Rrr
+
+        raise ValueError('Values inc={inc} and out={out} are not valid.')
+
+    def get_matrices(self, inc=left, out=left):
+        matrices = []
+        if inc & self.left and out & self.left and not self.Rll is None:
+            matrices.append(self.Rll)
+        elif inc & self.left and out & self.right and not self.Tlr is None:
+            matrices.append(self.Tlr)
+        elif inc == self.right and out & self.left and not self.Trl is None:
+            matrices.append(self.Trl)
+        elif inc & self.right and out & self.right and not self.Rrr is None:
+            matrices.append(self.Rrr)
+
+        return matrices
 
 
-def CoupledDipoleSMatrix(SMatrixCalculator):
+    def set_zero(self, inc=both, out=both):
+        if inc & self.left and out & self.left:
+            self.Rll = np.zeros((self.N, self.N), dtype=complex)
+        elif inc & self.left and out & self.right:
+            self.Tlr = np.zeros((self.N, self.N), dtype=complex)
+        elif inc == self.right and out & self.left:
+            self.Trl = np.zeros((self.N, self.N), dtype=complex)
+        elif inc & self.right and out & self.right:
+            self.Rrr = np.zeros((self.N, self.N), dtype=complex)
+
+    def show(self, inc=both, out=both, log=False):
+        for matrix in self.get_matrices(inc, out):
+            # fig, ax = plt.subplots()
+            if log:
+                plt.imshow(np.abs(matrix), norm=LogNorm(vmin=0.001, vmax=1.))
+            else:
+                plt.imshow(np.abs(matrix))
+            plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+            plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
+            plt.colorbar()
+            plt.show()
+
+
+
+class CoupledDipoleSMatrix(SMatrixCalculator):
     def __init__(
         self,
-        N_input=11,
+        N_states=11,
         theta_max_deg=None,
         theta_max=None,
         lambda_0=1.0,
@@ -60,9 +111,12 @@ def CoupledDipoleSMatrix(SMatrixCalculator):
         grid_points_x=400,
         seed=0,
     ):
-
+        super().__init__(N_states)
+        self.N_states = N_states
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / lambda_0
+
+        self.set_zero(SMatrixCalculator.left, SMatrixCalculator.right)
 
         if not theta_max is None:
 
@@ -70,235 +124,164 @@ def CoupledDipoleSMatrix(SMatrixCalculator):
 
         elif not theta_max_deg is None:
 
-            self.theta_max_deg = self.theta_max_deg
+            self.theta_max_deg = theta_max_deg
 
         assert -90 <= self.theta_max_deg <= 90
+
+        self._kxmax = self.k * np.sin(self.theta_max)
+
+        dk_sample = 2 * self._kxmax / (self.N_states - 0)
+
+        xmax = 1*2*np.pi/dk_sample
+        dx = self.lambda_0 / 8.
+        n = np.ceil(xmax/dx).astype(int)
+        # dx = xmax / n
+        # print('_kxmax', self._kxmax)
+        # print('dk_sample', dk_sample)
+        # print('xmax', xmax)
+        # print('dx', dx)
+        # print('n', n)
+        # print('dk`:\t\t', 2*np.pi/xmax)
 
         self.cds = CoupledDipoleSimulator(
             lambda_0=lambda_0,
             Lz=Lz,
-            Lx=Lx,
+            Lx=xmax,
             Ns=Ns,
             alpha=alpha,
             exclusion_radius=exclusion_radius,  # Derived from sigma_s ≈ 0.637λ₀
-            grid_points_x=400,
+            grid_points_x=n + 1,
             theta_inc=0,
             seed=0,
         )
 
-        def calc_input_both(self):
-            kxmax = self.k * np.sin(self.theta_max)
-            self.k_range = np.linspace(
-                -kxmax, kxmax, num=self.N, endpoint=True  # [ - kxmax, kxmax]
-            )
+    def calc_input_both(self):
+        self._kxmax = self.k * np.sin(self.theta_max)
+        self.k_range = np.linspace(
+            -self._kxmax, self._kxmax, num=self.N_states, endpoint=False  # [ -kxmax, kxmax )
+        )
 
-            # [0, ..., kxmax, - kxmax, ..., - dk] (odd) or
-            # [dk, ..., kxmax, -kxmax, ..., dk]   (even)
-            self.k_range = np.fft.ifftshift(self.k_range)
+        # dk_sample = 2*self._kxmax / (self.N_states - 0)
+        # xmax = 1*2*np.pi/dk_sample
+        # dx = self.lambda_0 / 4.
+        # n = np.ceil(xmax/dx).astype(int)
+        # dx = xmax / n
+        # dx = self.cds.Lx / (self.cds.grid_points_x - 1)
+        self.k_range = np.fft.fftfreq(self.N_states, d=1/(2*self._kxmax))
+        # dk = 2*np.pi/xmax
+        # print(dk, 1/(2*self._kxmax))
 
-            self.input_states_l = self.k_x2theta(self.k_range)
+        # The k-values range from:
+        # [0, ..., kxmax, -kxmax, ..., - dk] (odd) or
+        # [dk, ..., kxmax, -kxmax, ..., dk]   (even)
+        # self.k_range = np.fft.ifftshift(self.k_range)
 
-        def theta2k_x(self, theta):
-            k_x = self.k * np.sin(theta)
-            return k_x
+        self.input_states_l = self.k_range
+        self.input_states_r = self.k_range.copy()
 
-        def k_x2theta(self, k_x):
-            theta = np.arcsin(k_x / self.k)
-            return theta
+    def for_each_input_left(self, func):
+        for i, kx in enumerate(self.input_states_l):
+            self.cds.theta_inc = self.k_x2theta(kx)
 
-        @property
-        def theta_max_deg(self):
-            return np.rad2deg(self.theta_max)
+            self.cds.reset()
+            func(self.cds, kx)
 
-        @theta_max_deg.setter
-        def theta_max_deg(self, deg):
-            self.theta_max = np.deg2rad(deg)
+    def calc_from_left(self):
 
-
-Ntheta = 20
-
-cds = CoupledDipoleSimulator(
-    lambda_0=1.0,
-    Lz=10,
-    Lx=100,
-    Ns=0,
-    alpha=4j / (2 * np.pi / 1.0) ** 2,
-    exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-    grid_points_x=400,
-    theta_inc_deg=0.0,
-    seed=0,
-)
-
-fr = ff.FourierRange2d(
-    nx=cds.grid_points_z,
-    ny=cds.grid_points_x,
-    xmax=cds.Lz,
-    ymax=cds.Lx,
-    k_in_radians=True,
-)
-
-theta_degs = np.linspace(0, 60, num=Ntheta)
-theta_rads = theta_degs / 180 * np.pi
-S = np.zeros((Ntheta, Ntheta), dtype=complex)
-S_hr = np.zeros((Ntheta, Ntheta), dtype=complex)
-
-k_x_range = fr.kyrange()
-k_x_samples = cds.theta2k_x(theta_rads)
-k_x_samples_index = np.round(k_x_samples / fr.dky).astype(int)
-
-# pad with zeros in real space to perform Lanczos upsampling in Fourier space
-n_highres = 800
-fr_highres = ff.FourierRange.from_kw(n=n_highres, kmax=fr.kymax)
-k_x_highres = fr_highres.krange()
-k_x_samples_index_highres = np.round(k_x_samples / fr_highres.dk).astype(int)
-
-for i, theta_deg in enumerate(theta_degs):
-    cds.theta_inc_deg = theta_deg
-    cds.reset()
-    # cds.compute_total_field()
-    # cds.visualize_real()
-    # cds.visualize_abs()
-    # cds.visualize_output_field()
-    E_output = cds.compute_zL_fields_direct()
-
-    k_x = cds.k * np.sin(cds.theta_inc)
-    # print(k_x)
-    x_points = fr.yrange()
-
-    E_incident = np.exp(1j * (0 + k_x * x_points))
-    # plt.plot(E_incident)
-    # plt.show()
-    E_inc_k = np.fft.fft(E_incident, norm="forward")
-    plt.plot(k_x_range, np.abs(E_inc_k) + 10, label="fft input")
-    plt.xlabel("$k_x$")
-    plt.ylabel(r"$|fft(E)|$")
-    # print(np.argmax(np.abs(E_inc_k)))
-    plt.axvline(k_x_range[np.argmax(np.abs(E_inc_k))], c="r", label="maximum")
-    # print(k_x_range[np.argmax(np.abs(E_inc_k))])
-    # plt.show()
-
-    # upsampling
-    n_high_res = 800
-    # fr2 = ff.FourierRange2d.from_kw(**fr.to_dict())
-
-    E_output_highres = np.pad(
-        E_output,
-        pad_width=(n_high_res - cds.grid_points_x) // 2,
-        mode="constant",
-        constant_values=0.0,
-    )
-    E_output_highres = np.fft.ifftshift(E_output_highres)
-    E_k = np.fft.fft(E_output, norm="forward")
-    E_k_highres = np.fft.fft(E_output_highres, norm="forward")
-
-    E_k_samples = E_k[k_x_samples_index]
-    E_k_samples_highres = E_k_highres[k_x_samples_index_highres]
-    # k_output = np.fft.fftfreq(Ntheta)
-    # k_z = fr.kyrange()
-    plt.plot(k_x_highres, np.abs(E_k_highres), label="fft output")
-    plt.axvline(k_x_samples[i], c="g", label="predicted maximum")
-    plt.legend()
-    # print(k_x_samples[i])
-    plt.show()
-    S[i] = E_k_samples
-    S_hr[i] = E_k_samples_highres
-
-plt.imshow(np.abs(S))
-plt.colorbar()
-plt.show()
-plt.imshow(np.abs(S_hr))
-plt.colorbar()
-plt.show()
-
-# %%
-
-plt.title("high res")
-plt.plot(k_x_highres[:100], np.abs(E_k_highres)[:100])
-plt.xlabel("$k_x$")
-plt.ylabel("$abs(E)$")
-plt.show()
-
-plt.title("Low res")
-plt.plot(k_x_range[:25], np.abs(E_k)[:25])
-plt.xlabel("$k_x$")
-plt.ylabel("$abs(E)$")
-plt.show()
+        k_x_range = self.input_states_l
 
 
-# %%
-def sample_frequency(E, x, k, L):
-    return np.trapezoid(np.exp(-1j * x * k) * E, x=x) / L
+        # debugging purposes; leave here for now.
+        dkk = k_x_range[1] - k_x_range[0]
+        # print(f'dk input:\t {dkk} ')
+        # dx1 = self.cds.Lx / (self.cds.grid_points_x - 1)
+        # k__ = np.fft.fftfreq(self.cds.grid_points_x - 1, dx1)*2*np.pi
+        # dkk = k__[1] - k__[0]
+        # print('dk np:\t\t', dkk)
+        # dk2 = 2 * self._kxmax / (self.N_states - 0)
+        # print('dk formula:\t', dk2)
+        # print('dx calc:\t', dx1)
+        # print('dx actual:\t', self.cds.x[1] - self.cds.x[0])
+        # print('n1:\t\t\t', self.cds.x.__len__())
+
+        k_x_samples = k_x_range
+        k_x_samples_index = np.round(k_x_samples / dkk).astype(int)
 
 
-Ntheta = 20
 
-cds = CoupledDipoleSimulator(
-    lambda_0=1.0,
-    Lz=4 * np.pi,
-    Lx=100,
-    Ns=0,
-    alpha=4j / (2 * np.pi / 1.0) ** 2,
-    exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-    grid_points_x=400,
-    theta_inc_deg=0.0,
-    seed=0,
-)
+        for i, kx in enumerate(self.input_states_l):
+            # if i > self.N_states - 5:
+            #     break
 
-fr = ff.FourierRange2d(
-    nx=cds.grid_points_z,
-    ny=cds.grid_points_x,
-    xmax=cds.Lz,
-    ymax=cds.Lx,
-    k_in_radians=True,
-)
+            self.cds.theta_inc = self.k_x2theta(kx)
 
-theta_degs = np.linspace(0, 60, num=Ntheta)
-theta_rads = theta_degs / 180 * np.pi
-S = np.zeros((Ntheta, Ntheta), dtype=complex)
-S_hr = np.zeros((Ntheta, Ntheta), dtype=complex)
+            self.cds.reset()
+            E_output = self.cds.compute_zL_fields_direct()
 
-x = fr.yrange()
-k_x_range = fr.kyrange()
-k_x_samples = cds.theta2k_x(theta_rads)
-k_x_samples_index = np.round(k_x_samples / fr.dky).astype(int)
 
-# pad with zeros in real space to perform Lanczos upsampling in Fourier space
-n_highres = 800
-fr_highres = ff.FourierRange.from_kw(n=n_highres, kmax=fr.kymax)
-k_x_highres = fr_highres.krange()
-k_x_samples_index_highres = np.round(k_x_samples / fr_highres.dk).astype(int)
+            # I need to exclude the endpoint in order for the 'k' to correspond with
+            # the correct physical dimensions.
+            E_output = E_output[:-1]
 
-for i, theta_deg in enumerate(theta_degs):
-    cds.theta_inc_deg = theta_deg
-    cds.reset()
-    # cds.compute_total_field()
-    # cds.visualize_real()
-    # cds.visualize_abs()
-    # cds.visualize_output_field()
-    E_output = cds.compute_zL_fields_direct()
 
-    E_samples = [sample_frequency(E_output, x, k, fr.ymax) for k in k_x_samples]
+            E_k = np.fft.fft(E_output, norm='forward')
+            # E_k = np.fft.fftshift(E_k)
 
-    # k_x = cds.k * np.sin(cds.theta_inc)
-    # # print(k_x)
-    # x_points = fr.yrange()
 
-    # E_incident = np.exp(1j * (0 + k_x * x_points))
-    # # plt.plot(E_incident)
-    # # plt.show()
-    # E_inc_k = np.fft.fft(E_incident)
-    # plt.plot(k_x_range, np.abs(E_inc_k) + 10, label='fft input')
-    # plt.xlabel('$k_x$')
-    # plt.ylabel(r'$|fft(E)|$')
-    # print(np.argmax(np.abs(E_inc_k)))
-    # plt.axvline(k_x_range[np.argmax(np.abs(E_inc_k))], c='r', label='maximum')
-    # print(k_x_range[np.argmax(np.abs(E_inc_k))])
-    # # plt.show()
+            plt.plot(np.real(E_k), label='Re(E_k)')
+            plt.plot(np.abs(E_k), label='abs(E_k)')
 
-    # S[i] = E_k_samples
-    S_hr[i] = E_samples
+            # plt.plot(np.real(E_output), label='Re(E_k)')
+            # plt.plot(np.abs(E_output), label='abs(E_k)')
 
-plt.imshow(np.abs(S))
-plt.show()
-plt.imshow(np.abs(S_hr))
-plt.show()
+            plt.legend()
+            plt.show()
+
+
+            self.Tlr[i] = E_k[k_x_samples_index]
+
+
+    def theta2k_x(self, theta):
+        k_x = self.k * np.sin(theta)
+        return k_x
+
+    def k_x2theta(self, k_x):
+        theta = np.arcsin(k_x / self.k)
+        return theta
+
+    @property
+    def theta_max_deg(self):
+        return np.rad2deg(self.theta_max)
+
+    @theta_max_deg.setter
+    def theta_max_deg(self, deg):
+        self.theta_max = np.deg2rad(deg)
+
+if __name__ == '__main__':
+    cdsm = CoupledDipoleSMatrix(theta_max_deg=80, N_states=51, Ns=1)
+    cdsm.calc_input_both()
+
+
+
+    def show_total_field(cds, kx):
+        # cds.compute_total_field()
+        cds.visualize_abs()
+
+    def show_output_field(cds, kx):
+        cds.compute_zL_fields_direct()
+        E_output = cds.E_output
+
+        plt.plot(np.abs(E_output))
+        plt.show()
+
+        E_k = np.fft.fft(E_output)
+
+        # plt.plot(np.abs(E_k))
+        # plt.show()
+
+    # cdsm.for_each_input_left(show_total_field)
+
+    cdsm.calc_from_left()
+
+
+    cdsm.show(log=True)

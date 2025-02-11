@@ -435,8 +435,12 @@ class CoupledDipoleSimulator:
             direct_computation (bool, optional): If True, computes E_zL directly without full field. Defaults to True.
         """
 
-        if direct_computation:
-            E_output = self.compute_zL_fields_direct()
+        if (self.E_output is not None) and (self.E_total is not None):
+            if direct_computation:
+                E_output = self.compute_zL_fields_direct()
+            else:
+                # Extract fields at z = Lz
+                E_output = self.get_zL_fields()
         else:
             E_output = self.get_zL_fields()
 
