@@ -1,4 +1,4 @@
-#%%
+# %%
 import sys
 
 import fourierfun as ff
@@ -8,10 +8,9 @@ import numpy as np
 sys.path.append("../libraries")
 
 from fourierfun import cplot
-
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
-#%%
+# %%
 
 
 class SMatrixCalculator:
@@ -211,7 +210,7 @@ plt.imshow(np.abs(S_hr))
 plt.colorbar()
 plt.show()
 
-#%%
+# %%
 
 plt.title("high res")
 plt.plot(k_x_highres[:100], np.abs(E_k_highres)[:100])
@@ -226,7 +225,7 @@ plt.ylabel("$abs(E)$")
 plt.show()
 
 
-#%%
+# %%
 def sample_frequency(E, x, k, L):
     return np.trapezoid(np.exp(-1j * x * k) * E, x=x) / L
 
