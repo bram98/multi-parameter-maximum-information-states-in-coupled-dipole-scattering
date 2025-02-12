@@ -7,38 +7,15 @@ from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from timeit import default_timer as timer
 
 #%%
-nparams = 3             # number of parameters
-nhilbert = 100         # number of dimensions for states
-r = 2.                  # 'radius' of eigenvalues: eigenvalues of dS will tend towards semicircular distribution with radius r
-
-seed = 3               # seed for np random number generator
-
-np.random.seed(seed)
-
-filename = f'dS_np-{nparams}_nh-{nhilbert}_r-{r:.4f}_seed-{seed}.npy'
-filepath = r'../data/numeric_scatter_deriv/' + filename
-if os.path.isfile(filepath):
-    print('Found existing data for current parameters. Loading...')
-    dS = np.load(filepath)
-else:
-    sigma = r / np.sqrt(2 * nhilbert)
-    dS = np.random.normal(loc=0.,
-                              scale=sigma,
-                              size=(nparams, nhilbert, nhilbert))
-    np.save(filepath, dS)
-
-F = [[dS_dmu.conj().T@dS_dnu + dS_dnu.conj().T@dS_dmu for dS_dmu in dS] for dS_dnu in dS]
-F = np.array(F)
-
-G = np.random.normal(loc=0,
-                     scale=r / np.sqrt(2 * nhilbert),
-                     size=(nhilbert, nhilbert))
-
-
-#%%
 from evotorch.decorators import vectorized
+
+def make_F(dS):
+    F = [[dS_dmu.conj().T@dS_dnu + dS_dnu.conj().T@dS_dmu for dS_dmu in dS] for dS_dnu in dS]
+    F = np.array(F)
+    return F
+
 def J_from_F(F, v, engine=torch):
-    return engine.einsum('mnij, ...i, ...j -> ...mn', F, v, v)
+    return engine.einsum('mnij, ...i, ...j -> ...mn', F, v.conj(), v).real
 
 def det_F(F, v, engine=torch):
     return - engine.linalg.det(J_from_F(F, v, engine=engine))
@@ -46,12 +23,14 @@ def det_F(F, v, engine=torch):
 def rayleigh(G, v, engine=torch):
     return engine.einsum('ij, ...i, ...j -> ...', G, v, v)
 
-@vectorized
 def forward(F, v):
     # with torch.no_grad():
     #     v /= torch.norm(v)
     vnorm = v / torch.norm(v)
     return det_F(F, vnorm)
+
+def forward_unnorm(F, v):
+    return det_F(F, v)
 
 @vectorized
 def forward_curry(F):
@@ -65,6 +44,45 @@ def forward_rayleigh(G, v):
 
 def snapshot(v):
     return v.detach().cpu().numpy().copy()
+
+#%%
+nparams = 3             # number of parameters
+nhilbert = 100         # number of dimensions for states
+r = 2.                  # 'radius' of eigenvalues: eigenvalues of dS will tend towards semicircular distribution with radius r
+
+seed = 3               # seed for np random number generator
+complex_F = True
+
+np.random.seed(seed)
+
+filename = f'dS_np-{nparams}_nh-{nhilbert}_r-{r:.4f}_seed-{seed}_{"c" if complex_F else "r"}.npy'
+filepath = r'../data/numeric_scatter_deriv/' + filename
+if os.path.isfile(filepath):
+    print('Found existing data for current parameters. Loading...')
+    dS = np.load(filepath)
+else:
+    sigma = r / np.sqrt(2 * nhilbert)
+    if complex_F:
+        dS = ( np.random.normal(scale=sigma, size=(nparams, nhilbert, nhilbert)) +
+            1j*np.random.normal(scale=sigma, size=(nparams, nhilbert, nhilbert)) )
+    else:
+        dS = np.random.normal(loc=0.,
+                              scale=sigma,
+                              size=(nparams, nhilbert, nhilbert))
+    np.save(filepath, dS)
+
+
+G = np.random.normal(loc=0,
+                     scale=r / np.sqrt(2 * nhilbert),
+                     size=(nhilbert, nhilbert))
+
+F = make_F(dS)
+
+#%%
+dS = np.load("../data/simulation_scatter_deriv/Quad_shiftX_shiftZ_rotation.npy")
+
+F = make_F(dS)
+nparams, _, nhilbert, _ = F.shape
 
 #%%
 
@@ -259,60 +277,98 @@ plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.show()
 
 #%%
-v = torch.empty(nhilbert, requires_grad=True, device='cuda')
-torch.nn.init.normal_(v)
+v = torch.normal(0, 1, (nhilbert,),
+                 dtype=torch.complex128,
+                 requires_grad=True,
+                 device='cuda')
+# torch.nn.init.normal_(v)
 with torch.no_grad():
     v /= torch.norm(v)
 
-Ft = torch.from_numpy(F.astype(np.float32)).cuda()
+Ft = torch.from_numpy(F.astype(np.complex128)).cuda()
 Ft.requires_grad = False
 
-optimizer = torch.optim.Adam([v], lr=.1)
-lr_decay_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.91)
+optimizer = torch.optim.Adam([v], lr=.001)
 
 loss_history = []
 best_loss_adam = np.inf
 best_loss_history_adam = []
 
-steps = 2000
+steps = 5000
 t1 = timer()
 for i in range(steps):
     with torch.no_grad():
         v /= torch.norm(v)
     optimizer.zero_grad()
-    # loss = forward_rayleigh(Gt, v)
     loss = forward(Ft, v)
     loss.backward()
     optimizer.step()
     loss_history.append(loss.item())
     best_loss_adam = min(loss.item(), best_loss_adam)
     best_loss_history_adam.append(best_loss_adam)
-    if (i + 1) % 100 == 0:
-        lr_decay_scheduler.step()
 
 
 
 t2 = timer()
 print('Adam time:', t2 - t1)
+print('Learning rate:', optimizer.param_groups[0]['lr'])
 
-loss_history_ADAM = np.array(loss_history)
+loss_history_ADAM_norm = np.array(loss_history)
+best_loss_history_adam_norm = np.array(best_loss_history_adam)
+
+#####
+
+v = torch.normal(0, 1, (nhilbert,),
+                 dtype=torch.complex128,
+                 requires_grad=True,
+                 device='cuda')
+# torch.nn.init.normal_(v)
+with torch.no_grad():
+    v /= torch.norm(v)
+
+optimizer = torch.optim.Adam([v], lr=.001)
+
+loss_history = []
+best_loss_adam = np.inf
+best_loss_history_adam = []
+
+t1 = timer()
+for i in range(steps):
+    with torch.no_grad():
+        v /= torch.norm(v)
+    optimizer.zero_grad()
+    loss = forward_unnorm(Ft, v)
+    loss.backward()
+    optimizer.step()
+    loss_history.append(loss.item())
+    best_loss_adam = min(loss.item(), best_loss_adam)
+    best_loss_history_adam.append(best_loss_adam)
+
+
+loss_history_ADAM= np.array(loss_history)
 best_loss_history_adam = np.array(best_loss_history_adam)
 
 #%%
 
-skip = 50
+skip = 20
 plt.figure()
-plt.plot(loss_history_ADAM[skip:])
-plt.plot(best_loss_history_adam[skip:], c='tab:blue', linestyle='--')
-plt.ticklabel_format(style='plain')
+plt.plot(loss_history_ADAM[skip:], c='tab:blue', label='Adam')
+plt.plot(best_loss_history_adam[skip:], c='tab:blue', label='Adam (best)', linestyle='--')
+plt.plot(loss_history_ADAM_norm[skip:], c='tab:orange', label='Adam normalized')
+plt.plot(best_loss_history_adam_norm[skip:], c='tab:orange', label='Adam normalized (best)', linestyle='--')
+plt.ticklabel_format(style='plain', useOffset=False)
+plt.legend()
 plt.show()
 
 
 skip = -100
 plt.figure()
-plt.plot(loss_history_ADAM[skip:])
-plt.plot(best_loss_history_adam[skip:], c='tab:blue', linestyle='--')
+plt.plot(loss_history_ADAM[skip:], c='tab:blue', label='Adam')
+plt.plot(best_loss_history_adam[skip:], c='tab:blue', label='Adam (best)', linestyle='--')
+plt.plot(loss_history_ADAM_norm[skip:], c='tab:orange', label='Adam normalized')
+plt.plot(best_loss_history_adam_norm[skip:], c='tab:orange', label='Adam normalized (best)', linestyle='--')
 plt.ticklabel_format(style='plain', useOffset=False)
+plt.legend()
 plt.show()
 
 #%%
