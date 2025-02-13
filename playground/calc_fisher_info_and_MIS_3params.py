@@ -217,6 +217,7 @@ losses_det = []
 
 torch.manual_seed(0)
 
+
 def fisher_3x3(E_vec, F_tensor):
     E_c = E_vec[:, 0] + 1j * E_vec[:, 1]
     J_mat = torch.zeros((3, 3), dtype=torch.float64, device=E_vec.device)
@@ -239,7 +240,6 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     best_vec = None
 
     for step in range(steps):
-
 
         opt.zero_grad()
         E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
@@ -356,6 +356,7 @@ base_sim.visualize_intensity()
 
 # %% 8) Compare and visualize all final wavefronts
 
+
 def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
 
     real_part = np.real(wavefront)
@@ -415,7 +416,6 @@ def visualize_multi_param_fisher_comparison(
 
     offset_2 = 0.35
 
-
     # Create two y-axes that share x-axis
     ax_tr = axes[1]
     ax_det = ax_tr.twinx()
@@ -438,8 +438,6 @@ def visualize_multi_param_fisher_comparison(
         label="Det(J)",
     )
 
-
-
     axes[1].set_title("Trace and Determinant")
     axes[1].set_xticks(x_idx)
     axes[1].set_xticklabels(wave_names, rotation=25)
@@ -451,9 +449,9 @@ def visualize_multi_param_fisher_comparison(
     axes[1].grid(True, linestyle=":")
     ax_tr.set_ylabel("Trace(J)")
     ax_det.set_ylabel("Det(J)")
-    ax_tr.tick_params(axis='y', labelcolor=tr_color)
-    ax_tr.ticklabel_format(axis='y', style='sci', useOffset=False, scilimits=(0, 1))
-    ax_det.tick_params(axis='y', labelcolor=det_color)
+    ax_tr.tick_params(axis="y", labelcolor=tr_color)
+    ax_tr.ticklabel_format(axis="y", style="sci", useOffset=False, scilimits=(0, 1))
+    ax_det.tick_params(axis="y", labelcolor=det_color)
 
     plt.suptitle(figure_title)
     plt.tight_layout()
@@ -498,28 +496,37 @@ visualize_multi_param_fisher_comparison(
 
 # %% 9) Compare STD/CRLB for each wavefront, with optional plane wave comparison
 
-def compute_std_for_planewaves(sim_kwargs, base_dipoles, angles_deg, F_tensor, photon_budget, kx_array):
+
+def compute_std_for_planewaves(
+    sim_kwargs, base_dipoles, angles_deg, F_tensor, photon_budget, kx_array
+):
     """
     Computes the standard deviations for a range of plane wave inputs.
     """
-    from libraries.ScatteringSimulation import _flux_amplitude_2d  # Import here
+    from libraries.ScatteringSimulation import \
+        _flux_amplitude_2d  # Import here
 
     all_stds = []
-    k0 = 2 * np.pi / sim_kwargs['lambda_0']
+    k0 = 2 * np.pi / sim_kwargs["lambda_0"]
     N_in = len(kx_array)
 
     for angle in angles_deg:
         theta_rad = np.deg2rad(angle)
         kx = k0 * np.sin(theta_rad)
-        amplitude = _flux_amplitude_2d(k0, kx) * np.sqrt(photon_budget)  # Correct scaling
+        amplitude = _flux_amplitude_2d(k0, kx) * np.sqrt(
+            photon_budget
+        )  # Correct scaling
         idx = np.argmin(np.abs(kx_array - kx))
         E_plane_wave = np.zeros(N_in, dtype=complex)
         E_plane_wave[idx] = amplitude
         # No normalization here.  Scaling is done above.
-        std_vals = compute_std_for_wavefront(E_plane_wave, F_tensor) # Pass unnormalized
+        std_vals = compute_std_for_wavefront(
+            E_plane_wave, F_tensor
+        )  # Pass unnormalized
         all_stds.append(std_vals)
 
     return np.array(all_stds)
+
 
 def compute_crlb_for_wavefront(wavefront, F_tensor):
     """
@@ -532,6 +539,7 @@ def compute_crlb_for_wavefront(wavefront, F_tensor):
     M_inv = np.linalg.inv(J_fish)
     return M_inv
 
+
 def compute_std_for_wavefront(wavefront, F_tensor):
     """
     Computes the standard deviations (sqrt of CRLB diagonal) for a given wavefront.
@@ -541,7 +549,17 @@ def compute_std_for_wavefront(wavefront, F_tensor):
     return diag_std
 
 
-def visualize_std_comparison(wavefronts_dict, F_tensor_torch, sim_kwargs, base_dipoles, angles_deg, photon_budget, kx_array, figure_title="CRLB Comparison", show_plane_waves=True):
+def visualize_std_comparison(
+    wavefronts_dict,
+    F_tensor_torch,
+    sim_kwargs,
+    base_dipoles,
+    angles_deg,
+    photon_budget,
+    kx_array,
+    figure_title="CRLB Comparison",
+    show_plane_waves=True,
+):
     """
     Visualizes standard deviations (CRLB), with optional plane wave comparison.
 
@@ -570,7 +588,12 @@ def visualize_std_comparison(wavefronts_dict, F_tensor_torch, sim_kwargs, base_d
     if show_plane_waves:
         # Compute Plane Wave STDs
         plane_wave_stds = compute_std_for_planewaves(
-            sim_kwargs, base_dipoles, angles_deg, F_tensor_torch, photon_budget, kx_array
+            sim_kwargs,
+            base_dipoles,
+            angles_deg,
+            F_tensor_torch,
+            photon_budget,
+            kx_array,
         )
         # Reshape for boxplot:  (n_wavefronts, n_params) -> list of (n_angles,) arrays
         plane_wave_data = [plane_wave_stds[:, i] for i in range(3)]
@@ -584,55 +607,63 @@ def visualize_std_comparison(wavefronts_dict, F_tensor_torch, sim_kwargs, base_d
         fig, ax = plt.subplots(figsize=(12, 6))
     x_idx_custom = np.arange(n_custom_wavefronts)
     width = 0.2
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     # Custom Wavefront Bars
     for i in range(3):
         offset = (i - 1) * width  # Keep original offsets for bar spacing
-        ax.bar(x_idx_custom + offset, data[:, i], width=width, label=param_labels[i], color=colors[i])
+        ax.bar(
+            x_idx_custom + offset,
+            data[:, i],
+            width=width,
+            label=param_labels[i],
+            color=colors[i],
+        )
 
     if show_plane_waves:
         x_idx_plane = n_custom_wavefronts  # Single index for the boxplot *group*
         box_positions = [
             x_idx_plane - width,  # CRLB x boxplot (left)
-            x_idx_plane,          # CRLB z boxplot (center)
-            x_idx_plane + width   # CRLB theta boxplot (right)
+            x_idx_plane,  # CRLB z boxplot (center)
+            x_idx_plane + width,  # CRLB theta boxplot (right)
         ]
 
         # Plane Wave Boxplots
-        bp = ax.boxplot(plane_wave_data, positions=box_positions, widths=width, patch_artist=True,
-                    showfliers=False,  # Hide outliers
-                    medianprops={'color': 'black'},  # Black median line
-                    )
+        bp = ax.boxplot(
+            plane_wave_data,
+            positions=box_positions,
+            widths=width,
+            patch_artist=True,
+            showfliers=False,  # Hide outliers
+            medianprops={"color": "black"},  # Black median line
+        )
 
         # Color the boxplots to match the bars
-        for patch, color in zip(bp['boxes'], colors):
+        for patch, color in zip(bp["boxes"], colors):
             patch.set_facecolor(color)
 
         # Custom x-tick labels including plane waves
         all_labels = wave_names + ["Plane Waves"]
-        all_x_ticks = np.concatenate([x_idx_custom, [x_idx_plane]])  # No offset for custom labels
+        all_x_ticks = np.concatenate(
+            [x_idx_custom, [x_idx_plane]]
+        )  # No offset for custom labels
 
-    else: # No plane waves case
+    else:  # No plane waves case
         all_labels = wave_names
         all_x_ticks = x_idx_custom  # No offset for custom labels
 
-
     # --- Font Size Increase ---
-    ax.tick_params(axis='both', which='major', labelsize=12) # Adjust tick label size
+    ax.tick_params(axis="both", which="major", labelsize=12)  # Adjust tick label size
     ax.xaxis.label.set_size(12)  # Adjust x-axis label size
     ax.yaxis.label.set_size(12)  # Adjust y-axis label size
-    ax.title.set_size(14)      # Adjust title size
+    ax.title.set_size(14)  # Adjust title size
 
-    if show_plane_waves: # only add to legend of planewaves shown
-        ax.legend(fontsize='large')  # Adjust legend font size, only if legend exists
-
+    if show_plane_waves:  # only add to legend of planewaves shown
+        ax.legend(fontsize="large")  # Adjust legend font size, only if legend exists
 
     ax.set_xticks(all_x_ticks)
     ax.set_xticklabels(all_labels, rotation=0, ha="center")  # No rotation
     ax.set_title(figure_title)
-
 
     ax.grid(True, linestyle=":")
     ax.set_ylabel("Estimation Error (units of param)")  # Updated y-axis label
@@ -641,10 +672,25 @@ def visualize_std_comparison(wavefronts_dict, F_tensor_torch, sim_kwargs, base_d
     plt.tight_layout()
     plt.show()
 
+
 visualize_std_comparison(
-    wavefronts_dict, F_tensor_torch, sim_kwargs, base_dipoles, angles_deg, photon_budget, kx_array, show_plane_waves=True
+    wavefronts_dict,
+    F_tensor_torch,
+    sim_kwargs,
+    base_dipoles,
+    angles_deg,
+    photon_budget,
+    kx_array,
+    show_plane_waves=True,
 )
 
 visualize_std_comparison(
-    wavefronts_dict, F_tensor_torch, sim_kwargs, base_dipoles, angles_deg, photon_budget, kx_array, show_plane_waves=False
+    wavefronts_dict,
+    F_tensor_torch,
+    sim_kwargs,
+    base_dipoles,
+    angles_deg,
+    photon_budget,
+    kx_array,
+    show_plane_waves=False,
 )
