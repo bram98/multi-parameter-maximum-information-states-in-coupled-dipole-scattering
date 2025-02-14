@@ -136,13 +136,17 @@ def partial_derivative_3params(
         dx_plus, dz_plus, dth_plus = (0.0, 0.0, +delta)
 
     # T_minus
-    scatterers_minus = shift_and_rotate_dipoles(base_positions, dx_minus, dz_minus, dth_minus)
+    scatterers_minus = shift_and_rotate_dipoles(
+        base_positions, dx_minus, dz_minus, dth_minus
+    )
     sim_minus = CoupledDipoleSimulator(**sim_kwargs)
     sim_minus.scatterers = scatterers_minus
     S_minus, x_cam = sim_minus.build_scattering_matrix(angles_deg, flux_normalize=True)
 
     # T_plus
-    scatterers_plus = shift_and_rotate_dipoles(base_positions, dx_plus, dz_plus, dth_plus)
+    scatterers_plus = shift_and_rotate_dipoles(
+        base_positions, dx_plus, dz_plus, dth_plus
+    )
     sim_plus = CoupledDipoleSimulator(**sim_kwargs)
     sim_plus.scatterers = scatterers_plus
     S_plus, _ = sim_plus.build_scattering_matrix(angles_deg, flux_normalize=True)
@@ -245,6 +249,7 @@ print("Done with single-param and sum-diag solutions.")
 losses_det = []
 torch.manual_seed(0)
 
+
 def fisher_3x3(E_vec, F_tensor):
     E_c = E_vec[:, 0] + 1j * E_vec[:, 1]
     J_mat = torch.zeros((3, 3), dtype=torch.float64, device=E_vec.device)
@@ -254,6 +259,7 @@ def fisher_3x3(E_vec, F_tensor):
             val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
             J_mat[mu, nu] = val.real
     return J_mat
+
 
 def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
@@ -290,7 +296,9 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
 
 F_tensor_torch = torch.from_numpy(F).to(torch.complex128)
-E_optim_det, best_det = torch_optimize_det(F_tensor_torch, N_in=N_in, steps=1000, lr=1e-3, photon_budget=1)
+E_optim_det, best_det = torch_optimize_det(
+    F_tensor_torch, N_in=N_in, steps=1000, lr=1e-3, photon_budget=1
+)
 print(f"\nDet-optimized wavefront, best determinant = {best_det:.3f}")
 
 E_opt_complex = E_optim_det[:, 0] + 1j * E_optim_det[:, 1]
@@ -309,6 +317,7 @@ base_sim.visualize_intensity()
 
 # %% 7b) Spectral Radius Optimization with torch (Minimize maximum eigenvalue of J⁻¹)
 losses_spec = []
+
 
 def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
     """
@@ -345,12 +354,19 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
 
         losses_spec.append(loss.item())
         if step % 10 == 0:
-            print(f"Spectral opt Step {step:4d} => min eigenvalue(J) = {min_eig.item():.3f}")
+            print(
+                f"Spectral opt Step {step:4d} => min eigenvalue(J) = {min_eig.item():.3f}"
+            )
 
     return best_vec.cpu().numpy(), best_min_eig, losses_spec
 
-E_optim_spec, best_min_eig, losses_spec = torch_optimize_spec(F_tensor_torch, N_in=N_in, steps=1000, lr=1e-3, photon_budget=1)
-print(f"\nSpectral-optimized wavefront, best minimum eigenvalue(J) = {best_min_eig:.3f}")
+
+E_optim_spec, best_min_eig, losses_spec = torch_optimize_spec(
+    F_tensor_torch, N_in=N_in, steps=1000, lr=1e-3, photon_budget=1
+)
+print(
+    f"\nSpectral-optimized wavefront, best minimum eigenvalue(J) = {best_min_eig:.3f}"
+)
 
 E_opt_spec_complex = E_optim_spec[:, 0] + 1j * E_optim_spec[:, 1]
 base_sim.reset()
@@ -380,6 +396,7 @@ def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
             val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
             J_mat_torch[mu, nu] = val.real
     return J_mat_torch.detach().cpu().numpy()
+
 
 def visualize_multi_param_fisher_comparison(
     wavefronts_dict, F_tensor_torch, figure_title="Comparison of Wavefronts"
@@ -435,11 +452,7 @@ def visualize_multi_param_fisher_comparison(
         label="Trace(J)",
     )
     ax_det.bar(
-        x_idx + offset_2 / 2,
-        det_data,
-        width=offset_2,
-        color=det_color,
-        label="Det(J)",
+        x_idx + offset_2 / 2, det_data, width=offset_2, color=det_color, label="Det(J)",
     )
 
     axes[1].set_title("Trace and Determinant")
@@ -492,17 +505,23 @@ visualize_multi_param_fisher_comparison(
 
 # %% 9) Compare CRLB, with optional plane wave or random wavefront comparison
 
+
 def compute_crlb_matrix_for_wavefront(wavefront, F_tensor):
     J_fish = compute_fisher_matrix_for_wavefront(wavefront, F_tensor)
     M_inv = np.linalg.inv(J_fish)
     return M_inv
 
+
 def compute_crlb_for_wavefront(wavefront, F_tensor):
     M_inv = compute_crlb_matrix_for_wavefront(wavefront, F_tensor)
     return np.sqrt(np.diag(M_inv))
 
-def compute_crlb_for_planewaves(sim_kwargs, base_dipoles, angles_deg, F_tensor, photon_budget, kx_array):
+
+def compute_crlb_for_planewaves(
+    sim_kwargs, base_dipoles, angles_deg, F_tensor, photon_budget, kx_array
+):
     from libraries.ScatteringSimulation import _flux_amplitude_2d
+
     all_crlbs = []
     k0 = 2 * np.pi / sim_kwargs["lambda_0"]
     N_in = len(kx_array)
@@ -517,6 +536,7 @@ def compute_crlb_for_planewaves(sim_kwargs, base_dipoles, angles_deg, F_tensor, 
         all_crlbs.append(crlb_vals)
     return np.array(all_crlbs)
 
+
 def compute_crlb_for_random_wavefronts(F_tensor, photon_budget, num_samples, N_in):
     all_crlbs = []
     for _ in range(num_samples):
@@ -525,6 +545,7 @@ def compute_crlb_for_random_wavefronts(F_tensor, photon_budget, num_samples, N_i
         crlb_vals = compute_crlb_for_wavefront(E_random_normalized, F_tensor)
         all_crlbs.append(crlb_vals)
     return np.array(all_crlbs)
+
 
 def visualize_crlb_comparison(
     wavefronts_dict,
@@ -560,7 +581,9 @@ def visualize_crlb_comparison(
         plane_wave_data = [plane_wave_crlbs[:, i] for i in range(3)]
 
     if show_random_wavefronts:
-        random_wavefront_crlbs = compute_crlb_for_random_wavefronts(F_tensor_torch, photon_budget, num_random_samples, len(kx_array))
+        random_wavefront_crlbs = compute_crlb_for_random_wavefronts(
+            F_tensor_torch, photon_budget, num_random_samples, len(kx_array)
+        )
         random_wavefront_data = [random_wavefront_crlbs[:, i] for i in range(3)]
 
     data = np.array(data)
