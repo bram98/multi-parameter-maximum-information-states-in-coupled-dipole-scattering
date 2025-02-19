@@ -155,9 +155,9 @@ def partial_derivative_3params(
 
 
 # %% 1) define some dipoles
-# base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
+base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
 # base_dipoles = place_line_of_dipoles(number=7)
-base_dipoles = place_double_line_of_dipoles(number=7)
+# base_dipoles = place_double_line_of_dipoles(number=7)
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
@@ -384,11 +384,7 @@ base_sim.visualize_intensity()
 
 # %% 8) Compare and visualize wavefronts
 def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
-    real_part = np.real(wavefront)
-    imag_part = np.imag(wavefront)
-    E_np = np.column_stack([real_part, imag_part])
-    E_torch = torch.tensor(E_np, dtype=torch.float64)
-    E_c = E_torch[:, 0] + 1j * E_torch[:, 1]
+    E_c = torch.tensor(wavefront, dtype=torch.complex128)
     J_mat_torch = torch.zeros((3, 3), dtype=torch.float64)
     for mu in range(3):
         for nu in range(3):
