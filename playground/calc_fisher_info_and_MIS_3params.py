@@ -289,7 +289,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
             best_vec = E_norm.detach().clone()
         losses_det.append(-det_val.item())
 
-        if step % 10 == 0:
+        if step % 100 == 0:
             print(f"Det opt Step {step:4d} => det={det_val.item():.3f}")
 
     return best_vec.cpu().numpy(), best_det_val
@@ -353,7 +353,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
             best_vec = E_norm.detach().clone()
 
         losses_spec.append(loss.item())
-        if step % 10 == 0:
+        if step % 100 == 0:
             print(
                 f"Spectral opt Step {step:4d} => min eigenvalue(J) = {min_eig.item():.3f}"
             )
@@ -687,4 +687,104 @@ visualize_crlb_comparison(
     kx_array,
     show_plane_waves=True,
     show_random_wavefronts=True,
+)
+
+# %% 10) Fisher and Covariance Matrix Visualization
+
+
+def visualize_J_and_inverse(
+    wavefronts_dict, F_tensor, wavefronts_to_show=None, title="Comparison of J and J^-1"
+):
+    """
+    Plots J and J^-1 for each wavefront, plus a bar chart of condition numbers.
+    This version fixes axis labeling, sets each 3x3 plot to square aspect,
+    and clarifies color scales.
+    """
+    if wavefronts_to_show is None:
+        wavefronts_to_show = list(wavefronts_dict.keys())
+
+    # We'll compute J, J^-1, and condition number for each wavefront
+    Js = {}
+    J_invs = {}
+    cond_nums = {}
+
+    for wf_name in wavefronts_to_show:
+        wf_cplx = wavefronts_dict[wf_name]
+        J_mat = compute_fisher_matrix_for_wavefront(wf_cplx, F_tensor)
+        inv_mat = np.linalg.inv(J_mat)
+        Js[wf_name] = J_mat
+        J_invs[wf_name] = inv_mat
+        cond_nums[wf_name] = np.linalg.cond(J_mat)
+
+    n_wave = len(wavefronts_to_show)
+    fig = plt.figure(figsize=(12, 3 * n_wave))
+    gs = fig.add_gridspec(n_wave, 2, wspace=0.2)
+
+    label_list = ["x", "z", "θ"]  # Axis labels for the J matrix
+
+    for i, wf_name in enumerate(wavefronts_to_show):
+        # We'll subdivide each row into two subplots for J and J^-1
+        row_gs = gs[i].subgridspec(1, 2, wspace=0.4)
+        axJ = fig.add_subplot(row_gs[0, 0])
+        axInv = fig.add_subplot(row_gs[0, 1])
+
+        J_mat = Js[wf_name]
+        inv_mat = J_invs[wf_name]
+
+        # Plot J
+        imJ = axJ.imshow(J_mat, cmap="viridis", aspect="equal")
+        axJ.set_xticks(range(3))
+        axJ.set_xticklabels(label_list, fontsize=10)
+        axJ.set_yticks(range(3))
+        axJ.set_yticklabels(label_list, fontsize=10)
+        axJ.set_title(f"{wf_name}\n J-matrix", fontsize=11)
+        cbJ = plt.colorbar(imJ, ax=axJ, fraction=0.046, pad=0.04)
+        cbJ.formatter.set_powerlimits((-2, 2))
+
+        # Plot J^-1
+        imInv = axInv.imshow(inv_mat, cmap="magma", aspect="equal")
+        axInv.set_xticks(range(3))
+        axInv.set_xticklabels(label_list, fontsize=10)
+        axInv.set_yticks(range(3))
+        axInv.set_yticklabels(label_list, fontsize=10)
+        axInv.set_title(f"{wf_name}\n $J^{{-1}}$-matrix", fontsize=11)
+        cbInv = plt.colorbar(imInv, ax=axInv, fraction=0.046, pad=0.04)
+        cbInv.formatter.set_powerlimits((-2, 2))
+
+    # Condition-number bar chart in a separate figure
+    fig_cond = plt.figure(figsize=(6, 4))
+    ax_cond = fig_cond.add_subplot(111)
+    wf_list = list(wavefronts_to_show)
+    cond_vals = [cond_nums[w] for w in wf_list]
+    x_indices = np.arange(len(wf_list))
+    bars = ax_cond.bar(x_indices, cond_vals, color="skyblue", alpha=0.9)
+    ax_cond.set_xticks(x_indices)
+    ax_cond.set_xticklabels(wf_list, rotation=25, ha="right", fontsize=9)
+    ax_cond.set_ylabel("Condition Number of $\mathcal{J}$")
+    ax_cond.set_title("Condition Number Comparison")
+    for bar, cval in zip(bars, cond_vals):
+        ax_cond.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() * 1.02,
+            f"{cval:.1f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+
+    fig.suptitle(title, y=0.92)
+    # fig.tight_layout()
+    # fig_cond.tight_layout()
+    plt.show()
+
+
+# wavefronts_subset = [
+#      r"Max $\mathcal{J}_x$",
+#      r"Max Det($\mathcal{J}$)",
+#      "Min Spectral Radius ($\mathcal{J}^{-1}$)"
+# ]
+visualize_J_and_inverse(
+    wavefronts_dict,
+    F_tensor_torch,
+    title="Comparison of J and J^-1 for Different Wavefronts",
 )
