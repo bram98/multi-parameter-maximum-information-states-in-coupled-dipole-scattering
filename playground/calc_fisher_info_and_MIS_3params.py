@@ -155,8 +155,8 @@ def partial_derivative_3params(
 
 
 # %% 1) define some dipoles
-base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
-# base_dipoles = place_line_of_dipoles(number=7)
+# base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
+base_dipoles = place_line_of_dipoles(number=7)
 # base_dipoles = place_double_line_of_dipoles(number=7)
 
 # %% 2) simulator geometry and input space
@@ -673,6 +673,7 @@ def visualize_crlb_comparison(
     if show_plane_waves or show_random_wavefronts:
         ax.set_yscale("log")
 
+    ax.legend()
     plt.tight_layout()
     plt.show()
 
@@ -788,3 +789,262 @@ visualize_J_and_inverse(
     F_tensor_torch,
     title="Comparison of J and J^-1 for Different Wavefronts",
 )
+# %% 11) Multi-objective optimization and Pareto Frontier Plot
+
+def nuisance_opt_run(F_tensor, N_in, steps, lr, photon_budget, approach_name,
+                     alpha=0.1, beta=1.0):
+    """
+    Runs the nuisance optimization with a given approach_name: "LogLin", "OffDiag", or "SubDet".
+    Returns:
+      - E_opt_cplx: final wavefront (complex),
+      - best_loss: best scalar loss found,
+      - CRLB_diag: sqrt of diag of J^-1 at the end,
+      - loss_curve: array with the entire loss history.
+    """
+    E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
+    with torch.no_grad():
+        # normalize initial random E_param
+        norm_init = torch.linalg.norm(E_param)
+        E_param *= (photon_budget**0.5) / norm_init
+
+    opt = torch.optim.Adam([E_param], lr=lr)
+    best_loss = None
+    best_vec = None
+    loss_curve = []
+
+    for _ in range(steps):
+        opt.zero_grad()
+
+        # Re-normalize wavefront each iteration
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+
+        # Build the 3x3 Fisher matrix from E_norm
+        J = fisher_3x3(E_norm, F_tensor)
+        J_inv = torch.linalg.inv(J)
+
+        # Choose which approach
+        if approach_name == "LogLin":
+            # log-lin approach for x,z minus log-lin for theta
+            loss = (torch.log(J_inv[0, 0])
+                    + torch.log(J_inv[1, 1])
+                    - alpha * torch.log(J_inv[2, 2]))
+
+        elif approach_name == "OffDiag":
+            # CRLB for x,z plus off-diagonal penalty in J^-1
+            off_diag = (J_inv[0,2]**2 + J_inv[1,2]**2 + J_inv[0,1]**2)
+            off_diag +=(J_inv[2,0]**2 + J_inv[2,1]**2 + J_inv[1,0]**2)
+            loss = (J_inv[0,0] + J_inv[1,1]) + beta * off_diag
+
+        elif approach_name == "SubDet":
+            # maximize the determinant of sub-block for x,z => minimize negative
+            J_sub = J[0:2, 0:2]
+            loss = - torch.log(torch.det(J_sub))
+
+        else:
+            raise ValueError(f"Unknown approach_name {approach_name}")
+
+        loss.backward()
+        opt.step()
+
+        # Print status every 500 steps
+        if _ % 500 == 0:
+            print(f"Iteration {_}: loss = {loss.item():.5f}")
+
+        # Re-normalize E_param after step
+        with torch.no_grad():
+            cur_norm = torch.linalg.norm(E_param)
+            E_param *= (photon_budget**0.5) / cur_norm
+
+        cur_loss = loss.item()
+        loss_curve.append(cur_loss)
+
+        if (best_loss is None) or (cur_loss < best_loss):
+            best_loss = cur_loss
+            best_vec = E_norm.detach().clone()
+
+    # finalize wavefront
+    E_opt_cplx = (best_vec[:,0] + 1j*best_vec[:,1]).cpu().numpy()
+
+    # compute CRLB of the final wavefront
+    J_np = compute_fisher_matrix_for_wavefront(E_opt_cplx, F_tensor)
+    CRLB_diag = np.sqrt(np.diag(np.linalg.inv(J_np)))
+
+    return E_opt_cplx, best_loss, CRLB_diag, loss_curve
+
+# Approaches we want to compare
+approaches = ["LogLin", "OffDiag", "SubDet"]
+results = {}
+loss_histories = {}
+
+print("=== Multi-Approach Nuisance Optimization + Extended Analysis ===")
+
+# 1) Run each approach
+for ap in approaches:
+    print(f"\n--- Approach: {ap} ---")
+    wf_cplx, best_loss, crlb_vec, loss_curve = nuisance_opt_run(
+        F_tensor_torch, N_in=N_in, steps=2000, lr=1e-3, photon_budget=1,
+        approach_name=ap, alpha=0.1, beta=1.0
+    )
+    # Add wavefront to wavefronts_dict
+    name_key = f"{ap}"
+    wavefronts_dict[name_key] = normalize_wavefront(wf_cplx, 1.0)
+
+    # Save results
+    results[ap] = {"wavefront": wf_cplx, "loss": best_loss, "CRLB": crlb_vec}
+    loss_histories[ap] = loss_curve
+
+    print(f"  -> best loss = {best_loss:.5f}")
+    print(f"  -> final CRLB = [x={crlb_vec[0]:.2e}, z={crlb_vec[1]:.2e}, θ={crlb_vec[2]:.2e}]")
+
+
+# 2) Visualize each approach's wavefront with base_sim.visualize_intensity()
+#    We'll do a loop, reusing the same simulator base_sim (must match Nx of wavefront).
+for ap in approaches:
+    wf_name = f"{ap}"
+    print(f"\nVisualizing wavefront: {wf_name}")
+    base_sim.reset()
+    base_sim.set_input_field_kx(kx_array, wavefronts_dict[wf_name])
+    base_sim.solve_fields()
+    base_sim.visualize_intensity()
+
+
+# 3) Condition Number bar plot (include MaxDet if available)
+wf_maxdet = wavefronts_dict.get("Max Det($\\mathcal{J}$)")
+cond_dict = {}
+if wf_maxdet is not None:
+    J_mdet = compute_fisher_matrix_for_wavefront(wf_maxdet, F_tensor_torch)
+    cond_dict["MaxDetJ"] = np.linalg.cond(J_mdet)
+
+for ap in approaches:
+    wf_name = f"{ap}"
+    J_ = compute_fisher_matrix_for_wavefront(wavefronts_dict[wf_name], F_tensor_torch)
+    cond_dict[ap] = np.linalg.cond(J_)
+
+plt.figure(figsize=(6,4))
+names_c = list(cond_dict.keys())
+vals_c  = [cond_dict[k] for k in names_c]
+plt.bar(range(len(names_c)), vals_c, color="skyblue")
+plt.xticks(range(len(names_c)), names_c, rotation=25)
+plt.ylabel("Condition Number of J")
+plt.title("Fisher Matrix Condition Number")
+plt.grid(True, linestyle=":")
+plt.tight_layout()
+plt.show()
+
+
+# 4) CRLB comparisons with *all* wavefronts
+print("\nVisualizing multi-param fisher, crlb, J-and-inverse for all wavefronts.")
+visualize_multi_param_fisher_comparison(
+    wavefronts_dict, F_tensor_torch, figure_title="All Wavefronts: Multi-Param Fisher"
+)
+visualize_crlb_comparison(
+    wavefronts_dict,
+    F_tensor_torch,
+    sim_kwargs,
+    base_dipoles,
+    angles_deg,
+    photon_budget=1,
+    kx_array=kx_array,
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+)
+visualize_J_and_inverse(
+    wavefronts_dict,
+    F_tensor_torch,
+    title="Comparison of J and J^-1 for All Wavefronts",
+)
+
+
+# 5) Bar plot of CRLB just for the new approaches (plus MaxDet if available):
+labels = ["x", "z", "θ"]
+all_keys = list(approaches)
+if wf_maxdet is not None:
+    all_keys.insert(0, "MaxDetJ")
+
+crlb_array = []
+for k in all_keys:
+    if k == "MaxDetJ":
+        # compute from earlier
+        J_mdet = compute_fisher_matrix_for_wavefront(wf_maxdet, F_tensor_torch)
+        crlb_array.append(np.sqrt(np.diag(np.linalg.inv(J_mdet))))
+    else:
+        crlb_array.append(results[k]["CRLB"])
+
+crlb_array = np.array(crlb_array)  # shape (#approaches, 3)
+
+plt.figure(figsize=(6,4))
+x_inds = np.arange(len(all_keys))  # row index
+width = 0.25
+for i in range(3):
+    plt.bar(x_inds + i*width - width, crlb_array[:,i], width, label=f"CRLB_{labels[i]}")
+plt.xticks(x_inds, all_keys, rotation=45)
+plt.ylabel("CRLB (std dev)")
+plt.title("CRLB: Comparison of New Approaches + MaxDet")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# 6) Plot the three loss curves in one figure, normalized to [0..1]
+plt.figure(figsize=(7,5))
+for ap in approaches:
+    raw_curve = loss_histories[ap]
+    mn = min(raw_curve)
+    mx = max(raw_curve)
+    rng = mx - mn if mx>mn else 1e-12
+    norm_curve = [(val - mn)/rng for val in raw_curve]
+    plt.plot(norm_curve, label=f"{ap} (normed)")
+
+plt.xlabel("Iteration")
+plt.ylabel("Normalized Loss")
+plt.title("Optimization Loss Curves (Normalized)")
+plt.legend()
+plt.grid(True, linestyle=":")
+plt.tight_layout()
+plt.show()
+
+
+# 7) Pareto-like plot: CRLB_x+CRLB_z vs CRLB_theta
+pareto_x = []
+pareto_y = []
+pareto_names = []
+offset = 0
+if wf_maxdet is not None:
+    c_mdet = crlb_array[0]
+    offset = 1
+    pareto_x.append(c_mdet[0]+c_mdet[1])
+    pareto_y.append(c_mdet[2])
+    pareto_names.append("MaxDetJ")
+
+for i, ap in enumerate(approaches):
+    c = crlb_array[i+offset]
+    s_xz = c[0]+c[1]
+    s_th = c[2]
+    pareto_x.append(s_xz)
+    pareto_y.append(s_th)
+    pareto_names.append(ap)
+
+pareto_x = np.array(pareto_x)
+pareto_y = np.array(pareto_y)
+
+plt.figure(figsize=(5.5,5))
+plt.scatter(pareto_x, pareto_y, s=60, c="darkblue")
+for i, nm in enumerate(pareto_names):
+    # improved annotation to keep text near the points
+    plt.annotate(
+        nm,
+        (pareto_x[i], pareto_y[i]),
+        xytext=(5, 5),  # offset in display coords
+        textcoords="offset points",
+        fontsize=9,
+        arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6),
+    )
+plt.xlabel("CRLB_x + CRLB_z")
+plt.ylabel("CRLB_theta")
+plt.title("Pareto FrontierComparison: CRLB_(x+z) vs. CRLB_theta")
+plt.grid(True, ls=":")
+plt.tight_layout()
+plt.show()
+
+
+print("\n=== Done with multi-approach nuisance comparison + extended analysis ===")
