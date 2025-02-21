@@ -23,9 +23,14 @@ Demo:
 
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib import animation
+import os
 import numpy as np
 import torch
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
+
+# import sys
+# sys.exit() # Hack to reload modules and filepath without running whole script
 
 
 def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
@@ -116,9 +121,39 @@ def partial_derivative_3params(
     return S_plus, S_minus, x_cam
 
 
+def partial_derivative_field_3params(
+    dz, dx, dtheta, sim_kwargs, kx_array, wavefront, base_positions, delta=1e-3
+):
+    """
+    param_index in {0,1,2} => which param do we shift?
+      0 => x translation
+      1 => z translation
+      2 => rotation
+    Return (T_plus, T_minus, x_cam) for that param.
+
+    We'll do a CoupledDipoleSimulator with Ns=... and custom scatterers for each +/- shift.
+    """
+    # E_minus
+    scatterers_minus = shift_and_rotate_dipoles(base_dipoles, -dx, -dz, -dtheta)
+    sim_minus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_minus.scatterers = scatterers_minus
+    sim_minus.set_input_field_kx(kx_array, wavefront)
+    E_minus = sim_minus.compute_total_field()
+
+    # E_plus
+    scatterers_plus = shift_and_rotate_dipoles(base_dipoles, dx, dz, dtheta)
+    sim_plus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_plus.scatterers = scatterers_plus
+    sim_plus.set_input_field_kx(kx_array, wavefront)
+    E_plus = sim_plus.compute_total_field()
+
+    dE = (E_plus - E_minus) / (2 * delta)
+    return dE
+
+
 # %% 1) define some dipoles in a line
 # base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
-base_dipoles = place_line_of_dipoles(number=7)
+base_dipoles = place_line_of_dipoles(number=1)
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
@@ -138,6 +173,8 @@ base_sim = CoupledDipoleSimulator(**sim_kwargs)
 base_sim.scatterers = base_dipoles
 k0 = base_sim.k
 kx_array = k0 * np.sin(np.deg2rad(angles_deg))
+
+plot_dpi = 100  # 100 for speed, 300 for quality
 
 # %% 3) Build partial derivatives for each param => dS[mu]
 param_names = ["shiftX", "shiftZ", "rotation"]
@@ -188,7 +225,9 @@ for i in range(3):
     base_sim.reset()
     base_sim.set_input_field_kx(kx_array, v_max)
     base_sim.solve_fields()
-    base_sim.visualize_intensity()
+    base_sim.visualize_intensity(
+        title=f"Single-Parameter Optimized Wavefront for {param_names[i]}", dpi=plot_dpi
+    )
 
     # Store them for final comparison
     if i == 0:
@@ -209,7 +248,7 @@ print(f"\nCombined param wavefront => largest eigenvalue = {lam_sum_max:.3g}")
 base_sim.reset()
 base_sim.set_input_field_kx(kx_array, v_sum_max)
 base_sim.solve_fields()
-base_sim.visualize_intensity()
+base_sim.visualize_intensity(title=f"Trace optimized wavefront", dpi=plot_dpi)
 
 print("Done with single-param and sum-diag solutions.")
 
@@ -217,6 +256,7 @@ print("Done with single-param and sum-diag solutions.")
 losses_det = []
 
 torch.manual_seed(0)
+
 
 def fisher_3x3(E_vec, F_tensor):
     E_c = E_vec[:, 0] + 1j * E_vec[:, 1]
@@ -233,17 +273,15 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= photon_budget ** 0.5 / norm_init
+        E_param *= photon_budget**0.5 / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_det_val = None
     best_vec = None
 
     for step in range(steps):
-
-
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         det_val = torch.linalg.det(J)
         loss = -det_val
@@ -252,7 +290,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= photon_budget ** 0.5 / cur_norm
+            E_norm *= photon_budget**0.5 / cur_norm
 
         if best_det_val is None or det_val.item() > best_det_val:
             best_det_val = det_val.item()
@@ -284,13 +322,13 @@ plt.ylabel("-(best determinant) so far")
 plt.title("Determinant Optimization Loss")
 plt.show()
 
-base_sim.visualize_intensity()
+base_sim.visualize_intensity(title=f"Determinant Optimized Wavefront", dpi=plot_dpi)
 
 # %% 7b) Spectral Radius Optimization with torch (Minimize maximum eigenvalue of J⁻¹)
 losses_spec = []
 
 
-def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
+def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
     """
     Optimizes the input wavefront to maximize the smallest eigenvalue of J.
     This is equivalent to minimizing the spectral radius (largest eigenvalue)
@@ -299,16 +337,15 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget ** 0.5) / norm_init
+        E_param *= (photon_budget**0.5) / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_min_eig = None
     best_vec = None
 
     for step in range(steps):
-
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         eigvals = torch.linalg.eigvalsh(J)
         min_eig = eigvals[0]  # smallest eigenvalue of J
@@ -318,7 +355,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= (photon_budget ** 0.5) / cur_norm
+            E_norm *= (photon_budget**0.5) / cur_norm
 
         if best_min_eig is None or min_eig.item() > best_min_eig:
             best_min_eig = min_eig.item()
@@ -354,6 +391,255 @@ plt.title("Spectral Radius Optimization Loss")
 plt.show()
 
 base_sim.visualize_intensity()
+
+# %%
+
+
+def calc_Poynting(E, dz, dx):
+    dE_dx = (np.roll(E, shift=(-1, 0), axis=(0, 1)) - E) / dx
+    dE_dz = (np.roll(E, shift=(0, -1), axis=(0, 1)) - E) / dz
+
+    S = -np.imag(np.array([E * np.conj(dE_dz), E * np.conj(dE_dx)]))
+
+    return S
+
+
+def plot_field_and_poynting(
+    E,
+    Z,
+    X,
+    arrow_stride=8,
+    arrow_scale=1,
+    arrow_rescaling=True,
+    display_function=np.abs,
+    dpi=None,
+    title=None,
+    exclusion_pos=[],
+    exclusion_radius=0.1,
+    keep_fig=False,
+    fig=None,
+):
+    dz = Z[0, 1] - Z[0, 0]
+    dx = X[1, 0] - X[0, 0]
+    zmin = Z[0, 0]
+    zmax = Z[0, -1]
+    xmin = X[0, 0]
+    xmax = X[-1, 0]
+
+    Sz, Sx = calc_Poynting(E, dz, dx)
+
+    skip = (slice(None, None, arrow_stride), slice(None, None, arrow_stride))
+    Zs = Z[skip]
+    Xs = X[skip]
+    Sz = Sz[skip]
+    Sx = Sx[skip]
+
+    mask = (Zs * 0).astype(bool)
+    for pos in exclusion_pos:
+        mask |= (pos[0] - Zs) ** 2 + (pos[1] - Xs) ** 2 <= exclusion_radius**2
+
+    Sz[mask] = 0
+    Sx[mask] = 0
+
+    if arrow_rescaling:
+        Smax = np.max(np.sqrt(Sz**2 + Sx**2))
+        Sz /= Smax
+        Sx /= Smax
+    if not keep_fig:
+        fig = plt.figure(dpi=dpi)
+    E_plot = plt.imshow(
+        display_function(E),
+        extent=[zmin, zmax, xmin, xmax],
+        origin="lower",
+        norm=matplotlib.colors.AsinhNorm(),
+    )
+    plt.xlabel(r"$z / \lambda$")
+    plt.ylabel(r"$x / \lambda$")
+    plt.colorbar()
+
+    arrow_plot = plt.quiver(
+        Z[skip], X[skip], Sz, Sx, angles="xy", scale=1 / arrow_scale, scale_units="xy"
+    )
+
+    plt.title(title)
+
+    if not keep_fig:
+        plt.show()
+
+    return E_plot, arrow_plot
+
+
+def animate_rotating_parameter(
+    base_sim,
+    kx_array,
+    sim_kwargs,
+    base_positions,
+    filename="rotating_parameter",
+    save_mp4=True,
+    save_gif=True,
+):
+    planewave = np.abs(kx_array) < 0.09
+
+    delta = 1e-3
+    nframes = 59
+
+    fig = plt.figure(dpi=150)
+
+    def update(frame):
+        print(frame)
+        fig.clf()
+        alpha = frame / nframes * np.pi
+        dz, dx, dtheta = (delta * np.sin(alpha), delta * np.cos(alpha), 0.0)
+        dE = partial_derivative_field_3params(
+            dz, dx, dtheta, sim_kwargs, kx_array, planewave, base_positions=base_dipoles
+        )
+        Z = base_sim.Z_grid
+        X = base_sim.X_grid
+
+        # plot_field_and_poynting(E, Z, X)
+        E_plot, arrow_plot = plot_field_and_poynting(
+            dE,
+            Z,
+            X,
+            display_function=lambda E: np.abs(E) ** 2,
+            arrow_stride=6,
+            dpi=300,
+            arrow_scale=1.0,
+            exclusion_pos=base_dipoles.T,
+            exclusion_radius=0.1,
+            keep_fig=True,
+            fig=fig,
+            title=r"$|\partial_\theta E|^2$ illuminated by planewave",
+        )
+        plt.arrow(
+            4,
+            0,
+            0.8 * dz / delta,
+            0.8 * dx / delta,
+            color="r",
+            head_width=0.12,
+            width=0.02,
+        )
+        plt.arrow(
+            4,
+            0,
+            -0.8 * dz / delta,
+            -0.8 * dx / delta,
+            color="r",
+            head_width=0.12,
+            width=0.02,
+        )
+        return E_plot, arrow_plot
+
+    fps = 10
+    blit = True
+
+    ani = animation.FuncAnimation(
+        fig, update, frames=nframes, interval=1000 / fps, blit=blit, repeat=False
+    )
+    print(filename + ".mp4")
+    # plt.show()
+    # Ensure output directories exist before saving
+    os.makedirs(os.path.dirname(filename + ".mp4"), exist_ok=True)
+    os.makedirs(os.path.dirname(filename + ".gif"), exist_ok=True)
+
+    if save_mp4:
+        ani.save(filename + ".mp4", writer="ffmpeg", fps=fps)
+    if save_gif:
+        ani.save(filename + ".gif", writer="imagemagick", fps=fps)
+
+    return ani
+
+
+planewave = np.abs(kx_array) < 0.09
+
+opt_wavefronts = [
+    wavefront_x,
+    wavefront_z,
+    wavefront_rot,
+    E_opt_complex,
+    E_opt_spec_complex,
+]
+wavefront_names = ["x", "z", "theta", "Det", "spectral radius"]
+# opt_wavefronts = [wavefront_x]
+# wavefront_names = ['x']
+opt_wavefronts = [planewave]
+wavefront_names = ["planewave"]
+
+
+ani = animate_rotating_parameter(
+    base_sim,
+    kx_array,
+    sim_kwargs,
+    base_dipoles,
+    filename="../figures/rotating_parameter",
+    save_mp4=False,
+)
+
+# for wavefront_name, wavefront in zip(wavefront_names, opt_wavefronts):
+#     # for param_index in ['x', 'z', 'theta']:
+#     # # for param_index in ['x']:
+#     #     print(wavefront_name, param_index)
+#     #     delta = 1e-3
+
+#     #     if param_index == 'x':
+#     #         dx, dz, dtheta = (delta, delta, 0.0)
+#     #     elif param_index == 'z':
+#     #         dx, dz, dtheta = (0.0, delta, 0.0)
+#     #     else:
+#     #         dx, dz, dtheta = (0.0, 0.0, +delta )
+#     for theta in np.linspace(0, np.pi, num=1, endpoint=False):
+#         param_index = f'theta={theta:.2f}'
+
+#         delta = 1e-3
+#         dz, dx, dtheta = (delta*np.sin(theta), delta*np.cos(theta), 0.0)
+
+#         dE = partial_derivative_field_3params(dz, dx, dtheta,
+#                                               sim_kwargs,
+#                                               kx_array,
+#                                               planewave,
+#                                               base_positions=base_dipoles)
+
+#         E = dE.copy()
+#         Z = base_sim.Z_grid
+#         X = base_sim.X_grid
+
+#         # plot_field_and_poynting(E, Z, X)
+#         fig = plot_field_and_poynting(dE, Z, X,
+#                                       display_function=lambda E: np.abs(E)**2,
+#                                         arrow_stride=6,
+#                                         dpi=300,
+#                                         arrow_scale=1.,
+#                                         exclusion_pos=base_dipoles.T,
+#                                         exclusion_radius=.1,
+#                                         title=r'$|\partial_\theta E|^2$ illuminated by planewave')
+#         plt.arrow(4, 0, .8 * dz/delta, 0.8 * dx/delta,
+#                   color='r',
+#                   head_width=.12,
+#                   width=.02)
+#         plt.arrow(4, 0, - .8 * dz/delta, - 0.8 * dx/delta,
+#                   color='r',
+#                   head_width=.12,
+#                   width=.02)
+#         plt.show()
+
+#         # plt.figure()
+#         # plt.imshow(np.abs(dE), norm=matplotlib.colors.AsinhNorm())
+#         # # plt.clim(0, 100)
+#         # # plt.cscale('log')
+#         # plt.colorbar()
+#         # plt.title(rf'$\partial_{{{param_index}}}E$ illuminated by {wavefront_name}-optimized wavefront')
+#         # plt.xlabel(r"$z/\lambda$")
+#         # plt.ylabel(r"$x/\lambda$")
+#         # plt.show()
+
+#         # sim_plus.E_total = dE.copy()
+
+# base_sim.animate_time_evolution(save_gif=True,
+#         #                                 gif_filename=f'../figures/dE_d{param_index}_{wavefront_name}.gif',
+#         #                                 title=rf'$\partial_{{{param_index}}}E$ illuminated by {wavefront_name}-optimized wavefront',
+#         #                                 norm=matplotlib.colors.AsinhNorm())
+
 
 # %% 8) Compare and visualize all final wavefronts
 
@@ -418,7 +704,6 @@ def visualize_multi_param_fisher_comparison(
 
     offset_2 = 0.35
 
-
     # Create two y-axes that share x-axis
     ax_tr = axes[1]
     ax_det = ax_tr.twinx()
@@ -441,8 +726,6 @@ def visualize_multi_param_fisher_comparison(
         label="Det(J)",
     )
 
-
-
     axes[1].set_title("Trace and Determinant")
     axes[1].set_xticks(x_idx)
     axes[1].set_xticklabels(wave_names, rotation=25)
@@ -454,9 +737,9 @@ def visualize_multi_param_fisher_comparison(
     axes[1].grid(True, linestyle=":")
     ax_tr.set_ylabel("Trace(J)")
     ax_det.set_ylabel("Det(J)")
-    ax_tr.tick_params(axis='y', labelcolor=tr_color)
-    ax_tr.ticklabel_format(axis='y', style='sci', useOffset=False, scilimits=(0, 1))
-    ax_det.tick_params(axis='y', labelcolor=det_color)
+    ax_tr.tick_params(axis="y", labelcolor=tr_color)
+    ax_tr.ticklabel_format(axis="y", style="sci", useOffset=False, scilimits=(0, 1))
+    ax_det.tick_params(axis="y", labelcolor=det_color)
 
     plt.suptitle(figure_title)
     plt.tight_layout()
@@ -477,7 +760,7 @@ def normalize_wavefront(wavefront_cplx, photon_budget):
     return wavefront_cplx * scale_factor
 
 
-photon_budget = 10.  # e.g. 10 total "photons"
+photon_budget = 1.0  # e.g. 10 total "photons"
 
 wavefront_x_norm = normalize_wavefront(wavefront_x, photon_budget)
 wavefront_z_norm = normalize_wavefront(wavefront_z, photon_budget)
@@ -485,7 +768,6 @@ wavefront_rot_norm = normalize_wavefront(wavefront_rot, photon_budget)
 v_sum_max_norm = normalize_wavefront(v_sum_max, photon_budget)
 E_opt_complex_norm = normalize_wavefront(E_opt_complex, photon_budget)
 E_opt_spec_complex_norm = normalize_wavefront(E_opt_spec_complex, photon_budget)
-
 
 
 wavefronts_dict = {
