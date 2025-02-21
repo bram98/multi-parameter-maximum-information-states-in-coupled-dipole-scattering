@@ -925,7 +925,7 @@ def nuisance_opt_run(
             loss = (
                 torch.log(J_inv[0, 0])
                 + torch.log(J_inv[1, 1])
-                # - alpha * torch.log(J_inv[2, 2])
+                - alpha * torch.log(J_inv[2, 2])
             )
         elif approach_name == "OffDiag":
             off_diag = J_inv[0, 2] ** 2 + J_inv[1, 2] ** 2 + J_inv[0, 1] ** 2
