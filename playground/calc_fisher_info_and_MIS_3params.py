@@ -15,6 +15,7 @@ Demo:
    or, equivalently, summing F[0,0] + F[1,1] + F[2,2]. Diagonalize => pick top eigenvector => visualize.
 7a) Optimize the input state by maximizing the determinant of J (via torch determinant optimization).
 7b) Optimize the input state by minimizing the spectral radius of J⁻¹ (i.e. maximizing the smallest eigenvalue of J).
+7c) Optimize the input state by minimizing trace(J⁻¹) (multi-run).
 8) Compare and visualize all optimal wavefronts.
 9) Compute and compare CRLB and STD for each optimal wavefront.
 """
@@ -68,7 +69,7 @@ def shift_and_rotate_dipoles(original_positions, dx, dz, dtheta):
     original_positions: shape(2,N) with each column a dipole coordinate (z, x).
     dx, dz: translations in x,z
     dtheta: rotation in radians about the second line's centroid if we have 2*N dipoles.
-            Otherwise, apply shift/rotation to ALL dipoles (single line, square, etc.).
+            Otherwise, apply shift/rotate to ALL dipoles (single line, square, etc.).
 
     Return the new positions shape(2,N).
     """
@@ -155,9 +156,9 @@ def partial_derivative_3params(
 
 
 # %% 1) define some dipoles
-base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
+# base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
 # base_dipoles = place_line_of_dipoles(number=7)
-# base_dipoles = place_double_line_of_dipoles(number=7)
+base_dipoles = place_double_line_of_dipoles(number=7)
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
@@ -323,7 +324,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
     """
     Optimizes the input wavefront to maximize the smallest eigenvalue of J.
     This is equivalent to minimizing the spectral radius (largest eigenvalue)
-    of the covariance matrix J⁻¹.
+    of the covariance matrix J^-1.
     """
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
@@ -380,6 +381,100 @@ plt.ylabel("Loss: -(min eigenvalue of J)")
 plt.title("Spectral Radius Optimization Loss")
 plt.show()
 
+base_sim.visualize_intensity()
+
+# %% 7c) Minimizing Trace(J^-1) with multi-run
+def torch_optimize_traceinv(
+    F_tensor, N_in, steps=3000, lr=1e-3, photon_budget=1, runs=10
+):
+    """
+    Minimizes trace(J^-1). We'll do multiple restarts, pick the best.
+    Returns the best wavefront, best trace, etc.
+    """
+    best_loss_overall = None
+    best_vec = None
+    best_loss_curve = None
+
+    all_loss_curves = []
+
+    for run_i in range(runs):
+        E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
+        with torch.no_grad():
+            norm_init = torch.linalg.norm(E_param)
+            E_param *= photon_budget ** 0.5 / norm_init
+
+        opt = torch.optim.Adam([E_param], lr=lr)
+        run_loss_curve = []
+        best_run_loss = None
+        best_run_vec = None
+
+        for step in range(steps):
+            opt.zero_grad()
+            E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+            J = fisher_3x3(E_norm, F_tensor)
+            J_inv = torch.linalg.inv(J)
+            trace_val = torch.trace(J_inv)
+            loss = trace_val  # we want to minimize trace(J^-1)
+
+            loss.backward()
+            opt.step()
+
+            with torch.no_grad():
+                cur_norm = torch.linalg.norm(E_norm)
+                E_norm *= photon_budget ** 0.5 / cur_norm
+
+            cur_loss = loss.item()
+            run_loss_curve.append(cur_loss)
+
+            if (best_run_loss is None) or (cur_loss < best_run_loss):
+                best_run_loss = cur_loss
+                best_run_vec = E_norm.detach().clone()
+
+        all_loss_curves.append(run_loss_curve)
+        print(f"Restart {run_i+1}/{runs}: loss = {cur_loss:.5f}")
+
+        # Compare across runs
+        if (best_loss_overall is None) or (best_run_loss < best_loss_overall):
+            best_loss_overall = best_run_loss
+            best_vec = best_run_vec
+            best_loss_curve = run_loss_curve
+
+    # Now build final wavefront from best run
+    E_opt_cplx = best_vec[:, 0].cpu().numpy() + 1j * best_vec[:, 1].cpu().numpy()
+    J_np = fisher_3x3(torch.tensor(best_vec), F_tensor).detach().cpu().numpy()
+    J_inv_np = np.linalg.inv(J_np)
+    final_trace = np.trace(J_inv_np)
+
+    return E_opt_cplx, final_trace, best_loss_curve, all_loss_curves
+
+
+print("\n--- Minimizing Trace(J^-1) with multi-run ---")
+(
+    E_traceinv,
+    best_traceinv_val,
+    best_traceinv_curve,
+    all_traceinv_loss_curves,
+) = torch_optimize_traceinv(
+    F_tensor_torch, N_in=N_in, steps=4000, lr=1e-3, photon_budget=1, runs=100
+)
+print(f"Best final trace(J^-1) after multi-run: {best_traceinv_val:.5f}")
+
+# Visualize the multi-run loss curves in symlog
+plt.figure(figsize=(7, 5))
+colors = plt.cm.plasma(np.linspace(0, 1, len(all_traceinv_loss_curves)))
+for i, lc in enumerate(all_traceinv_loss_curves):
+    plt.plot(lc, color=colors[i], alpha=0.5)
+plt.yscale("symlog", linthresh=1e-3, linscale=1)
+plt.xlabel("Iteration")
+plt.ylabel("Trace(J^-1) [unnormalized]")
+plt.title("All Runs for Minimizing Trace(J^-1)")
+plt.tight_layout()
+plt.show()
+
+# Visualize best wavefront
+base_sim.reset()
+base_sim.set_input_field_kx(kx_array, E_traceinv)
+base_sim.solve_fields()
 base_sim.visualize_intensity()
 
 # %% 8) Compare and visualize wavefronts
@@ -486,6 +581,7 @@ wavefront_rot_norm = normalize_wavefront(wavefront_rot, photon_budget)
 v_sum_max_norm = normalize_wavefront(v_sum_max, photon_budget)
 E_opt_complex_norm = normalize_wavefront(E_opt_complex, photon_budget)
 E_opt_spec_complex_norm = normalize_wavefront(E_opt_spec_complex, photon_budget)
+E_traceinv_norm = normalize_wavefront(E_traceinv, photon_budget)
 
 wavefronts_dict = {
     r"Max $\mathcal{J}_x$": wavefront_x_norm,
@@ -494,7 +590,10 @@ wavefronts_dict = {
     r"Max Trace($\mathcal{J}$)": v_sum_max_norm,
     r"Max Det($\mathcal{J}$)": E_opt_complex_norm,
     "Min Spectral Radius ($\mathcal{J}^{-1}$)": E_opt_spec_complex_norm,
+    r"Min Trace($\mathcal{J}^{-1}$)": E_traceinv_norm,
 }
+
+
 visualize_multi_param_fisher_comparison(
     wavefronts_dict, F_tensor_torch, figure_title="Comparison of all wavefronts"
 )
@@ -590,7 +689,7 @@ def visualize_crlb_comparison(
     if show_random_wavefronts:
         num_boxplot_groups += 1
 
-    fig, ax = plt.subplots(figsize=(12 + 2 * num_boxplot_groups, 6))
+    fig, ax = plt.subplots(figsize=(7 + 2 * num_boxplot_groups, 6))
     x_idx_custom = np.arange(n_custom_wavefronts)
     width = 0.2
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
@@ -665,7 +764,7 @@ def visualize_crlb_comparison(
     ax.title.set_size(14)
 
     ax.set_xticks(all_x_ticks)
-    ax.set_xticklabels(all_labels, rotation=0, ha="center")
+    ax.set_xticklabels(all_labels, rotation=20, ha="center")
     ax.set_title(figure_title)
     ax.grid(True, linestyle=":")
     ax.set_ylabel("Estimation Error (units of param)")
@@ -793,6 +892,7 @@ visualize_J_and_inverse(
 # %% 11) Multi-objective optimization and Pareto Frontier Plot
 # For the "OffDiag" approach, we run multiple restarts and then plot all the loss curves.
 
+
 def nuisance_opt_run(
     F_tensor, N_in, steps, lr, photon_budget, approach_name, alpha=0.1, beta=1.0
 ):
@@ -822,9 +922,11 @@ def nuisance_opt_run(
         J_inv = torch.linalg.inv(J)
 
         if approach_name == "LogLin":
-            loss = (torch.log(J_inv[0, 0])
-                    + torch.log(J_inv[1, 1])
-                    - alpha * torch.log(J_inv[2, 2]))
+            loss = (
+                torch.log(J_inv[0, 0])
+                + torch.log(J_inv[1, 1])
+                # - alpha * torch.log(J_inv[2, 2])
+            )
         elif approach_name == "OffDiag":
             off_diag = J_inv[0, 2] ** 2 + J_inv[1, 2] ** 2 + J_inv[0, 1] ** 2
             off_diag += J_inv[2, 0] ** 2 + J_inv[2, 1] ** 2 + J_inv[1, 0] ** 2
@@ -866,9 +968,10 @@ print("=== Multi-Approach Nuisance Optimization + Extended Analysis ===")
 
 for ap in approaches:
     print(f"\n--- Approach: {ap} ---")
-    if True:
-        # Run OffDiag with multi-restarts
-        num_restarts = 25
+    # if True:
+    if ap == "OffDiag":
+        # Run with multi-restarts
+        num_restarts = 100
         all_loss_curves = []
         best_loss_overall = None
         best_wf_overall = None
@@ -878,7 +981,7 @@ for ap in approaches:
             wf_temp, loss_temp, crlb_temp, loss_curve_temp = nuisance_opt_run(
                 F_tensor_torch,
                 N_in=N_in,
-                steps=2000,
+                steps=4000,
                 lr=1e-3,
                 photon_budget=1,
                 approach_name=ap,
@@ -897,13 +1000,18 @@ for ap in approaches:
         colors = plt.cm.winter(np.linspace(0, 1, num_restarts))
         for i in range(num_restarts):
             plt.plot(all_loss_curves[i], color=colors[i], alpha=0.5)
-            plt.yscale('symlog', linthresh=1e-3, linscale=1)
+            plt.yscale("symlog", linthresh=1e-3, linscale=1)
         plt.xlabel("Iteration")
-        plt.ylabel("Loss ({ap}, unnormalized)")
+        plt.ylabel(f"Loss ({ap}, unnormalized)")
         plt.title(f"{ap} Loss Curves (All Restarts)")
         plt.tight_layout()
         plt.show()
-        wf_cplx, best_loss, crlb_vec, loss_curve = best_wf_overall, best_loss_overall, best_crlb, best_loss_curve
+        wf_cplx, best_loss, crlb_vec, loss_curve = (
+            best_wf_overall,
+            best_loss_overall,
+            best_crlb,
+            best_loss_curve,
+        )
     else:
         wf_cplx, best_loss, crlb_vec, loss_curve = nuisance_opt_run(
             F_tensor_torch,
@@ -920,7 +1028,9 @@ for ap in approaches:
     results[ap] = {"wavefront": wf_cplx, "loss": best_loss, "CRLB": crlb_vec}
     loss_histories[ap] = loss_curve
     print(f"  -> best loss = {best_loss:.5f}")
-    print(f"  -> final CRLB = [x={crlb_vec[0]:.2e}, z={crlb_vec[1]:.2e}, θ={crlb_vec[2]:.2e}]")
+    print(
+        f"  -> final CRLB = [x={crlb_vec[0]:.2e}, z={crlb_vec[1]:.2e}, θ={crlb_vec[2]:.2e}]"
+    )
 
 
 # 2) Visualize each approach's wavefront using base_sim.visualize_intensity()
@@ -980,12 +1090,17 @@ visualize_J_and_inverse(
 # 5) Bar plot of CRLB just for the new approaches (plus MaxDet if available)
 labels = ["x", "z", "θ"]
 all_keys = list(approaches)
+if E_traceinv_norm is not None:
+    all_keys.insert(0, r"MinTrace(J^-1)")
 if wf_maxdet is not None:
     all_keys.insert(0, "MaxDetJ")
 crlb_array = []
 for k in all_keys:
     if k == "MaxDetJ":
         J_mdet = compute_fisher_matrix_for_wavefront(wf_maxdet, F_tensor_torch)
+        crlb_array.append(np.sqrt(np.diag(np.linalg.inv(J_mdet))))
+    elif k == r"MinTrace(J^-1)":
+        J_mdet = compute_fisher_matrix_for_wavefront(E_traceinv_norm, F_tensor_torch)
         crlb_array.append(np.sqrt(np.diag(np.linalg.inv(J_mdet))))
     else:
         crlb_array.append(results[k]["CRLB"])
@@ -994,7 +1109,9 @@ plt.figure(figsize=(6, 4))
 x_inds = np.arange(len(all_keys))
 width = 0.25
 for i in range(3):
-    plt.bar(x_inds + i * width - width, crlb_array[:, i], width, label=f"CRLB_{labels[i]}")
+    plt.bar(
+        x_inds + i * width - width, crlb_array[:, i], width, label=f"CRLB_{labels[i]}"
+    )
 plt.xticks(x_inds, all_keys, rotation=45)
 plt.ylabel("CRLB (std dev)")
 plt.title("CRLB: Comparison of New Approaches + MaxDet")
@@ -1019,85 +1136,7 @@ plt.grid(True, linestyle=":")
 plt.tight_layout()
 plt.show()
 
-# 7a) Pareto-like plot: CRLB_x+CRLB_z vs CRLB_theta
-pareto_x = []
-pareto_y = []
-pareto_names = []
-offset = 0
-if wf_maxdet is not None:
-    c_mdet = crlb_array[0]
-    offset = 1
-    pareto_x.append(c_mdet[0] + c_mdet[1])
-    pareto_y.append(c_mdet[2])
-    pareto_names.append("MaxDetJ")
-for i, ap in enumerate(approaches):
-    c = crlb_array[i + offset]
-    s_xz = c[0] + c[1]
-    s_th = c[2]
-    pareto_x.append(s_xz)
-    pareto_y.append(s_th)
-    pareto_names.append(ap)
-pareto_x = np.array(pareto_x)
-pareto_y = np.array(pareto_y)
-plt.figure(figsize=(5.5, 5))
-plt.scatter(pareto_x, pareto_y, s=60, c="darkblue")
-for i, nm in enumerate(pareto_names):
-    plt.annotate(
-        nm,
-        (pareto_x[i], pareto_y[i]),
-        xytext=(5, 5),
-        textcoords="offset points",
-        fontsize=9,
-        arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6),
-    )
-plt.xlabel("CRLBₓ + CRLB_z")
-plt.ylabel("CRLB_θ")
-plt.title("Pareto Frontier: CRLB_(x+z) vs. CRLB_θ")
-plt.grid(True, ls=":")
-plt.tight_layout()
-plt.show()
-
-# 7b) Pareto-like plot: CRLB_x vs CRLB_z (product version)
-pareto_x = []
-pareto_y = []
-pareto_names = []
-offset = 0
-if wf_maxdet is not None:
-    c_mdet = crlb_array[0]
-    offset = 1
-    pareto_x.append(c_mdet[0] * c_mdet[1])
-    pareto_y.append(c_mdet[2])
-    pareto_names.append("MaxDetJ")
-for i, ap in enumerate(approaches):
-    c = crlb_array[i + offset]
-    s_xz = c[0] * c[1]
-    s_th = c[2]
-    pareto_x.append(s_xz)
-    pareto_y.append(s_th)
-    pareto_names.append(ap)
-pareto_x = np.array(pareto_x)
-pareto_y = np.array(pareto_y)
-plt.figure(figsize=(5.5, 5))
-plt.scatter(pareto_x, pareto_y, s=60, c="darkblue")
-for i, nm in enumerate(pareto_names):
-    plt.annotate(
-        nm,
-        (pareto_x[i], pareto_y[i]),
-        xytext=(5, 5),
-        textcoords="offset points",
-        fontsize=9,
-        arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6),
-    )
-plt.xlabel("CRLBₓ × CRLB_z")
-plt.ylabel("CRLB_θ")
-plt.title("Pareto Frontier: CRLB_(x*z) vs. CRLB_θ")
-plt.grid(True, ls=":")
-plt.tight_layout()
-plt.show()
-
-# 8) Additional Pareto Frontier Plot Including All Wavefronts
+# 7) Pareto Frontier Plot Including All Wavefronts
 nuisance_keys = ["LogLin", "OffDiag", "SubDet"]
 all_keys = list(wavefronts_dict.keys())
 crlb_dict = {}
@@ -1110,45 +1149,54 @@ crlb_array = np.array([crlb_dict[key] for key in all_keys])
 markers = []
 for key in all_keys:
     markers.append("o" if key in nuisance_keys else "s")
-fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 x1 = crlb_array[:, 0] + crlb_array[:, 1]
 y1 = crlb_array[:, 2]
 ax1 = axes[0]
 for i, key in enumerate(all_keys):
-    ax1.scatter(x1[i], y1[i], s=80, marker=markers[i],
-                color="blue" if key not in nuisance_keys else "red")
-    ax1.annotate(key, (x1[i], y1[i]), xytext=(5, 5), textcoords="offset points",
-                 fontsize=9, arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
-                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6))
-ax1.set_xlabel("CRLBₓ + CRLB_z")
+    ax1.scatter(
+        x1[i],
+        y1[i],
+        s=80,
+        marker=markers[i],
+        color="blue" if key not in nuisance_keys else "red",
+    )
+    ax1.annotate(
+        key,
+        (x1[i], y1[i]),
+        xytext=(5, 5),
+        textcoords="offset points",
+        fontsize=9,
+        arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.3),
+    )
+ax1.set_xlabel("CRLB_x + CRLB_z")
 ax1.set_ylabel("CRLB_θ")
-ax1.set_title("Sum: (x+z) vs. θ")
+ax1.set_title("Sum: (CLRB_x + CRLB_z) vs. CRLB_θ")
 ax1.grid(True)
-x2 = crlb_array[:, 0] * crlb_array[:, 1]
-y2 = crlb_array[:, 2]
-ax2 = axes[1]
-for i, key in enumerate(all_keys):
-    ax2.scatter(x2[i], y2[i], s=80, marker=markers[i],
-                color="green" if key not in nuisance_keys else "magenta")
-    ax2.annotate(key, (x2[i], y2[i]), xytext=(5, 5), textcoords="offset points",
-                 fontsize=9, arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
-                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6))
-ax2.set_xlabel("CRLBₓ × CRLB_z")
-ax2.set_ylabel("CRLB_θ")
-ax2.set_title("Product: (x*z) vs. θ")
-ax2.grid(True)
 x3 = crlb_array[:, 0]
 y3 = crlb_array[:, 1]
-ax3 = axes[2]
+ax3 = axes[1]
 for i, key in enumerate(all_keys):
-    ax3.scatter(x3[i], y3[i], s=80, marker=markers[i],
-                color="orange" if key not in nuisance_keys else "purple")
-    ax3.annotate(key, (x3[i], y3[i]), xytext=(5, 5), textcoords="offset points",
-                 fontsize=9, arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
-                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.6))
-ax3.set_xlabel("CRLBₓ")
+    ax3.scatter(
+        x3[i],
+        y3[i],
+        s=80,
+        marker=markers[i],
+        color="orange" if key not in nuisance_keys else "purple",
+    )
+    ax3.annotate(
+        key,
+        (x3[i], y3[i]),
+        xytext=(5, 5),
+        textcoords="offset points",
+        fontsize=9,
+        arrowprops=dict(arrowstyle="->", lw=0.5, alpha=0.5),
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.3),
+    )
+ax3.set_xlabel("CLRB_x")
 ax3.set_ylabel("CRLB_z")
-ax3.set_title("CRLBₓ vs. CRLB_z")
+ax3.set_title("CLRB_x vs. CRLB_z")
 ax3.grid(True)
 plt.tight_layout()
 plt.show()
