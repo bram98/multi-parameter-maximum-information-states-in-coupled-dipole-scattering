@@ -154,6 +154,7 @@ def partial_derivative_3params(
 
     return S_plus, S_minus, x_cam
 
+
 multi_runs = 10  # number of cold restarts for some optimizations
 
 # %% 1) define some dipoles
