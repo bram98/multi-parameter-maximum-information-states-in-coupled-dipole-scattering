@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
 
 class FisherMatrix:
@@ -258,6 +259,133 @@ class FisherMatrix:
     @property
     def r(self):
         return self._r
+
+
+def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
+    """
+    Return an array shape(2,4) with the x,z coords of 4 dipoles forming a square,
+    centered near 'center' (z=?, x=?), side length 'side'.
+    We'll interpret: scatterers[i] = (z_i, x_i).
+    """
+    half = side / 2
+    corners = np.array([(-half, -half), (-half, +half), (+half, -half), (+half, +half)])
+    corners[:, 0] += center[0]
+    corners[:, 1] += center[1]
+    return corners.T  # shape(2,4)
+
+
+def place_line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
+    """
+    Return an array shape(2, number) with the x,z coords of a line of dipoles.
+    We'll interpret: scatterers[i] = (z_i, x_i).
+    """
+    pos = np.zeros((2, number))
+    for i in range(number):
+        pos[1, i] = i * dist - (number // 2 * dist) + center[1]
+        pos[0, i] = center[0]
+    return pos
+
+
+def shift_and_rotate_dipoles(original_positions, dx, dz, dtheta):
+    """
+    original_positions: shape(2,N), each col is one dipole
+    dx, dz: translations in x,z
+    dtheta: rotation in radians about the shape's centroid
+    Return the new positions shape(2,N).
+    """
+    meanz = np.mean(original_positions[0, :])
+    meanx = np.mean(original_positions[1, :])
+    temp_z = original_positions[0, :] - meanz
+    temp_x = original_positions[1, :] - meanx
+    cosT = np.cos(dtheta)
+    sinT = np.sin(dtheta)
+    z_rot = cosT * temp_z - sinT * temp_x
+    x_rot = sinT * temp_z + cosT * temp_x
+    z_rot += meanz
+    x_rot += meanx
+    z_rot += dz
+    x_rot += dx
+    return np.vstack((z_rot, x_rot))
+
+
+def shift_and_rotate_dipoles_pm(original_positions, param_index):
+    """
+    original_positions: shape(2,N), each col is one dipole
+    dx, dz: translations in x,z
+    dtheta: rotation in radians about the shape's centroid
+    Return the new positions shape(2,N).
+    """
+    meanz = np.mean(original_positions[0, :])
+    meanx = np.mean(original_positions[1, :])
+    temp_z = original_positions[0, :] - meanz
+    temp_x = original_positions[1, :] - meanx
+    cosT = np.cos(dtheta)
+    sinT = np.sin(dtheta)
+    z_rot = cosT * temp_z - sinT * temp_x
+    x_rot = sinT * temp_z + cosT * temp_x
+    z_rot += meanz
+    x_rot += meanx
+    z_rot += dz
+    x_rot += dx
+    return np.vstack((z_rot, x_rot))
+
+
+def simulate_dS(sim_kwargs, scatterers_plus, scatterers_minus, angles_deg, delta=1e-3):
+    """
+    param_index in {0,1,2} => which param do we shift?
+      0 => x translation
+      1 => z translation
+      2 => rotation
+    Return (T_plus, T_minus, x_cam) for that param.
+
+    We'll do a CoupledDipoleSimulator with Ns=... and custom scatterers for each +/- shift.
+    """
+    assert len(scatterers_plus) == len(scatterers_minus)
+    assert sim_kwargs["Ns"] == len(scatterers_plus)
+
+    sim_minus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_minus.scatterers = scatterers_minus
+    S_minus, _ = sim_minus.build_scattering_matrix(angles_deg, flux_normalize=True)
+
+    sim_plus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_plus.scatterers = scatterers_plus
+    S_plus, _ = sim_plus.build_scattering_matrix(angles_deg, flux_normalize=True)
+
+    return (S_plus - S_minus) / (2 * delta)
+
+
+def simulate_dE(
+    sim_kwargs,
+    scatterers_plus,
+    scatterers_minus,
+    kx_array,
+    wavefront,
+    base_positions,
+    delta=1e-3,
+):
+    """
+    param_index in {0,1,2} => which param do we shift?
+      0 => x translation
+      1 => z translation
+      2 => rotation
+    Return (T_plus, T_minus, x_cam) for that param.
+
+    We'll do a CoupledDipoleSimulator with Ns=... and custom scatterers for each +/- shift.
+    """
+    # E_minus
+    sim_minus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_minus.scatterers = scatterers_minus
+    sim_minus.set_input_field_kx(kx_array, wavefront)
+    E_minus = sim_minus.compute_total_field()
+
+    # E_plus
+    sim_plus = CoupledDipoleSimulator(**sim_kwargs)
+    sim_plus.scatterers = scatterers_plus
+    sim_plus.set_input_field_kx(kx_array, wavefront)
+    E_plus = sim_plus.compute_total_field()
+
+    dE = (E_plus - E_minus) / (2 * delta)
+    return dE
 
 
 if __name__ == "__main__":
