@@ -154,6 +154,7 @@ def partial_derivative_3params(
 
     return S_plus, S_minus, x_cam
 
+multi_runs = 10  # number of cold restarts for some optimizations
 
 # %% 1) define some dipoles
 # base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
@@ -455,7 +456,7 @@ print("\n--- Minimizing Trace(J^-1) with multi-run ---")
     best_traceinv_curve,
     all_traceinv_loss_curves,
 ) = torch_optimize_traceinv(
-    F_tensor_torch, N_in=N_in, steps=4000, lr=1e-3, photon_budget=1, runs=100
+    F_tensor_torch, N_in=N_in, steps=4000, lr=1e-3, photon_budget=1, runs=multi_runs
 )
 print(f"Best final trace(J^-1) after multi-run: {best_traceinv_val:.5f}")
 
@@ -971,7 +972,7 @@ for ap in approaches:
     # if True:
     if ap == "OffDiag":
         # Run with multi-restarts
-        num_restarts = 100
+        num_restarts = multi_runs
         all_loss_curves = []
         best_loss_overall = None
         best_wf_overall = None
