@@ -171,12 +171,16 @@ class CoupledDipoleSimulator:
         G[distances == 0] = 0.0  # Handle singularity
         return G
 
-    def theta2k_x(self, theta):
+    def theta2k_x(self, theta, degree=False):
+        if degree:
+            theta = np.deg2rad(theta)
         k_x = self.k * np.sin(theta)
         return k_x
 
-    def k_x2theta(self, k_x):
+    def k_x2theta(self, k_x, degree=False):
         theta = np.arcsin(k_x / self.k)
+        if degree:
+            theta = np.rad2deg(theta)
         return theta
 
     def compute_kz(self, k_x_array):

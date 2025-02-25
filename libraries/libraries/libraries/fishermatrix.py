@@ -1,6 +1,5 @@
 import numpy as np
 from pathlib import Path
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
 
 class FisherMatrix:
@@ -8,13 +7,14 @@ class FisherMatrix:
     A class to compute and manage multiparameter Fisher matrices from dS matrices.
     """
 
-    def __init__(self, dS=None, seed=0):
+    def __init__(self, dS=None, param_names=None, seed=None):
         self._nparams = None
         self._nhilbert_in = None
         self._nhilbert_out = None
         self._F = None
         self._seed = seed
         self._r = None
+        self._param_names = param_names
 
         if dS is None:
             self._dS = None
@@ -181,9 +181,13 @@ class FisherMatrix:
         str
             Generated filename.
         """
-        filename = f"{name}_np-{self.nparams}_nhout-{self.nhilbert_out}_nhin-{self.nhilbert_in}"
+        filename = f"{name}"
+        if not self.param_names is None:
+            filename += "_" + ("-".join(self.param_names))
+
         if not self.seed is None:
             filename += f"_seed-{self.seed}"
+
         if not self.r is None:
             filename += f"_r-{self.r:.4f}"
 
@@ -259,6 +263,10 @@ class FisherMatrix:
     @property
     def r(self):
         return self._r
+
+    @property
+    def param_names(self):
+        return self._param_names
 
 
 if __name__ == "__main__":

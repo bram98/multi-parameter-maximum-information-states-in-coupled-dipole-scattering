@@ -23,9 +23,27 @@ class Optimizer:
         self.Ft = None
         self.device = device
 
-        self.nparams, self.nhilbert, _ = F.shape
+        self.nparams, _, self.nhilbert, _ = F.shape
 
-    def eig_optimize(self, tensor_function, maximize=True, num=1):
+    def eig_optimize(self, A, maximize=True, num=1):
+        eigvals, eigvecs = np.linalg.eigh(A)
+
+        sorted_index = eigvals.argsort()
+
+        if maximize:
+            sorted_index = np.flip(sorted_index)
+
+        if num == 1:
+            sorted_index = sorted_index[0]  # Return single element
+        else:
+            sorted_index = sorted_index[:num]  # Return slice of first num
+
+        eigvals = eigvals[sorted_index]
+        eigvecs = eigvecs[:, sorted_index]
+
+        return eigvals, eigvecs
+
+    def eig_optimize_F(self, tensor_function, maximize=True, num=1):
         """
         Optimizes as an eigenvalue problem.
 
@@ -52,22 +70,7 @@ class Optimizer:
 
         """
         T = tensor_function(self.F)
-        eigvals, eigvecs = np.linalg.eig(T)
-
-        sorted_index = eigvals.argsort()
-
-        if maximize:
-            sorted_index = np.flip(sorted_index)
-
-        if num == 1:
-            sorted_index = sorted_index[0]  # Return single element
-        else:
-            sorted_index = sorted_index[:num]  # Return slice of first num
-
-        eigvals = eigvals[sorted_index]
-        eigvecs = eigvecs[:, sorted_index]
-
-        return eigvals, eigvecs
+        return self.eig_optimize(T, maximize=maximize, num=num)
 
     def J(self, E):
         return torch.einsum("mnij, ...i, ...j -> ...mn", self.Ft, E.conj(), E).real
