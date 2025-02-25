@@ -26,7 +26,7 @@ class Optimizer:
         self.nparams, self.nhilbert, _ = F.shape
 
     def eig_optimize(self, tensor_function, maximize=True, num=1):
-        '''
+        """
         Optimizes as an eigenvalue problem.
 
         Parameters
@@ -50,9 +50,7 @@ class Optimizer:
             order if maximize is True (False)
         eigvecs: (nhilbert, nhilbert) array
 
-
         """
-        '''
         T = tensor_function(self.F)
         eigvals, eigvecs = np.linalg.eig(T)
 
