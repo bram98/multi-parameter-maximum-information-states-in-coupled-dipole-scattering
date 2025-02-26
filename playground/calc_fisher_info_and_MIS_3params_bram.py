@@ -153,7 +153,7 @@ def partial_derivative_field_3params(
 
 # %% 1) define some dipoles in a line
 # base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
-base_dipoles = place_line_of_dipoles(number=1)
+base_dipoles = place_line_of_dipoles(number=3)
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(

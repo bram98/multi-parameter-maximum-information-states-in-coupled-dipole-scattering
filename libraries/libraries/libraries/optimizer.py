@@ -22,8 +22,8 @@ class Optimizer:
         self.F = F
         self.Ft = None
         self.device = device
-
         self.nparams, _, self.nhilbert, _ = F.shape
+        self.loss = None
 
     def eig_optimize(self, A, maximize=True, num=1):
         eigvals, eigvecs = np.linalg.eigh(A)
@@ -57,7 +57,7 @@ class Optimizer:
             Decides whether to return the largest or smallest eigenvalues /
             eigenvectors.
         num: integer or None. Defaults to 1.
-            Returns the largest (smallest) num eigenvalues and eigenvectors
+            Returns the largest (smallest) `num` eigenvalues and eigenvectors
 
         Returns
         -------
@@ -78,13 +78,13 @@ class Optimizer:
     def J_np(self, E):
         return np.einsum("mnij, ...i, ...j -> ...mn", self.F, E.conj(), E).real
 
-    def normalize(self, E):
-        return E / torch.linalg.norm(E)
-
-    @staticmethod
-    def plot_loss(loss, title=None):
+    def plot_loss(self, loss=None, title=None, first=None):
+        if loss is None:
+            loss = self.loss
+        steps = np.arange(len(loss))[first:]
+        loss = loss[first:]
         plt.figure()
-        plt.plot(loss)
+        plt.plot(steps, np.abs(loss))
         plt.xlabel("steps")
         plt.ylabel("loss")
         plt.yscale("log")
@@ -146,7 +146,10 @@ class Optimizer:
             torch.manual_seed(seed)
 
         if self.Ft is None:
-            self.Ft = torch.from_numpy(self.F).to(torch.complex128).device(self.device)
+            self.Ft = torch.from_numpy(self.F).to(
+                dtype=torch.complex128, device=self.device
+            )
+            self.Ft.requires_grad = False
 
         E_param = torch.normal(
             0,
@@ -156,8 +159,9 @@ class Optimizer:
             device=self.device,
             requires_grad=True,
         )
+
         with torch.no_grad():
-            E_param = self.normalize(E_param)
+            E_param /= torch.linalg.norm(E_param)
 
         opt = torch.optim.Adam([E_param], lr=lr, maximize=maximize)
 
@@ -171,7 +175,7 @@ class Optimizer:
             # Perform "soft" normalization. This impacts the gradient and makes
             # sure the gradient does not point in the radial direction: it is
             # tangent to the sphere.
-            E_norm = self.normalize(E_param)
+            E_norm = E_param / torch.linalg.norm(E_param)
 
             # Calculate the Fisher information matrix and pass it to the loss
             # function
@@ -183,7 +187,7 @@ class Optimizer:
             # Perform "hard" normalization. This makes sure the input stays
             # normalized, even with numerical errors.
             with torch.no_grad():
-                E_param = self.normalize(E_param)
+                E_param /= torch.linalg.norm(E_param)
 
             cur_val = loss.item()
             if (
@@ -196,6 +200,8 @@ class Optimizer:
                 best_vec = E_param.detach().cpu().numpy().copy()
 
             loss_history.append(cur_val)
+
+            self.loss = loss_history
 
             if verbose and step % 10 == 0:
                 print(f"\rStep {step:4d} => loss={cur_val:.3f}", end="")
