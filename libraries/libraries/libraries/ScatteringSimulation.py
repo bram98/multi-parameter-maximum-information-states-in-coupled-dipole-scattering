@@ -357,7 +357,7 @@ class CoupledDipoleSimulator:
         plt.tight_layout()
         plt.show()
 
-    def _visualize(self, display_function, title, dpi=100):
+    def _visualize(self, display_function, title, dpi=100, figsize=(10, 8)):
         """
         Helper function that applies `display_function` to the entire field
         before plotting it.
@@ -366,7 +366,7 @@ class CoupledDipoleSimulator:
         if self.E_total is None:
             self.compute_total_field()
 
-        plt.figure(figsize=(10, 8 * self.Lx / self.Lz), dpi=dpi)
+        plt.figure(figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi)
         plt.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
@@ -374,7 +374,7 @@ class CoupledDipoleSimulator:
             shading="auto",
             cmap="viridis",
         )
-        plt.colorbar(label=r"$|E|^2$")
+        plt.colorbar(label=r"$|E|^2$  (a.u.)")
         plt.scatter(
             self.scatterers[0, :] / self.lambda_0,
             self.scatterers[1, :] / self.lambda_0,

@@ -37,15 +37,18 @@ from libraries.optimizer import Optimizer
 
 
 # %% 1) define some dipoles in a line
-# base_dipoles = place_square_of_dipoles(center=(4.0, 0.0), side=1.0)
-base_dipoles = placedipoles.line_of_dipoles(number=7)
-Ns = len(base_dipoles)
+# base_dipoles = placedipoles.square_of_dipoles(center=(4.0, 0.0), side=1.0)
+base_dipoles = placedipoles.line_of_dipoles(center=(5.0, 0), number=7)
+# frozen_dipoles = placedipoles.line_of_dipoles(center=(3., 0), number=7)
+frozen_dipoles = [[], []]
+
+Ns = len(base_dipoles[0]) + len(frozen_dipoles[0])
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
     lambda_0=1.0,
     Lz=8.0,
     Lx=8.0,
-    Ns=len(base_dipoles.T),
+    Ns=Ns,
     seed=123,
     grid_points_x=300,
     theta_inc_deg=0.0,
@@ -55,37 +58,59 @@ angles_deg = np.linspace(-max_angle, max_angle, 100)
 
 # We'll create a base simulator for the wavefront injection steps later:
 base_sim = CoupledDipoleSimulator(**sim_kwargs)
-base_sim.scatterers = base_dipoles
+
+base_sim.scatterers = np.hstack([base_dipoles, frozen_dipoles])
 # k0 = base_sim.k
 # kx_array = k0 * np.sin(np.deg2rad(angles_deg))
 kx_array = base_sim.theta2k_x(angles_deg, degree=True)
 
-plot_dpi = 100  # 100 for speed, 300 for quality
-
-# %% 3) Build partial derivatives for each param => dS[mu]
+plot_dpi = 300  # 100 for speed, 300 for quality
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta = 1e-3
-dS = []
 
-shifted_dipoles = placedipoles.shift_and_rotate_dipoles_3params(
-    base_dipoles, dx=delta, dz=delta, dtheta=delta
+# %% 3) Build partial derivatives for each param => dS[mu]
+
+# Simple placement (No frozen dipoles)
+
+dS = placedipoles.simulate_dS_3params(
+    sim_kwargs, angles_deg, base_dipoles, dx=delta, frozen_dipoles=frozen_dipoles
 )
-dS = placedipoles.simulate_dS_3params(sim_kwargs, angles_deg, base_dipoles, dx=delta)
+
 fishermatrix = FisherMatrix(dS, param_names=["x", "z", "theta"])
-filename = fishermatrix.filename(name=f"line{Ns}")
+filename = fishermatrix.filename(name=f"double_line{Ns}")
 
 if False:
     fishermatrix.save(filename=filename, folder="../data/simulation_scatter_deriv")
 
-F = fishermatrix.F
+F_raw = fishermatrix.F
+optimizer_raw = Optimizer(F_raw)
+# %%
 
+dS_norm = np.zeros_like(dS)
+
+for i in range(3):
+    f_max, E_max = optimizer_raw.eig_optimize_F(lambda F: F[i, i])
+    dS_norm[i] = dS[i] / np.sqrt(f_max)
+
+fishermatrix_norm = FisherMatrix(dS_norm, param_names=["x", "z", "theta"])
+F_norm = fishermatrix_norm.F
+
+# %%
+normalize_dS = False
+
+if normalize_dS:
+    F = F_norm
+    optimizer = Optimizer(F)
+    norm_text = "normalized"
+else:
+    F = F_raw
+    optimizer = Optimizer(F)
+    norm_text = ""
 
 # %% 5) Single-parameter MIS wavefronts: store them explicitly for later usage
 wavefront_x = None
 wavefront_z = None
 wavefront_rot = None
-
-optimizer = Optimizer(F)
 
 for i in range(3):
     f_max, E_max = optimizer.eig_optimize_F(lambda F: F[i, i])
@@ -99,16 +124,40 @@ for i in range(3):
         dpi=plot_dpi,
     )
 
+    result = optimizer.torch_optimize_loss(
+        lambda J: J[i, i], steps=3000, maximize=True, verbose=True, seed=0
+    )
+    f_max_test = result["bestval"]
+    E_max_test = result["bestvec"]
+
+    optimizer.plot_loss(title="Singe-param. with torch", first=500)
+
+    print(f"\nSingle-param MIS => {param_names[i]}, largest eigenvalue = {f_max:.3g}")
+    base_sim.reset()
+    base_sim.set_input_field_kx(kx_array, E_max_test)
+    base_sim.solve_fields()
+    base_sim.visualize_intensity(
+        title=f"Single-Parameter Optimized Wavefront for {param_names[i]} torch (f={f_max_test:.3g})",
+        dpi=plot_dpi,
+    )
+
     # Store them for final comparison
     if i == 0:
         wavefront_x = E_max
+        f_x = f_max
+        f_x_test = f_max_test
     elif i == 1:
         wavefront_z = E_max
+        f_z = f_max
+        f_z_test = f_max_test
     else:
         wavefront_rot = E_max
+        f_rot = f_max
+        f_rot_test = f_max_test
 
 
 # %% 6) Combined wavefront => sum of diagonal blocks (trace)
+
 f_tr, wavefront_tr = optimizer.eig_optimize_F(lambda F: F[0, 0] + F[1, 1] + F[2, 2])
 
 print(f"\nCombined param wavefront => largest eigenvalue = {f_tr:.3g}")
@@ -119,6 +168,7 @@ base_sim.solve_fields()
 base_sim.visualize_intensity(
     title=f"Trace optimized wavefront (f={f_tr:.3g})", dpi=plot_dpi
 )
+
 
 print("Done with single-param and sum-diag solutions.")
 ###########################################################
@@ -137,12 +187,20 @@ f_det = result["bestval"]
 print(f"\nDet-optimized wavefront, best determinant = {f_det:.3f}")
 
 # E_opt_complex = E_optim_det[:, 0] + 1j * E_optim_det[:, 1]
-
+# %%
 base_sim.reset()
 base_sim.set_input_field_kx(kx_array, wavefront_det)
 base_sim.solve_fields()
 
 base_sim.visualize_intensity(title="Determinant Optimized Wavefront", dpi=plot_dpi)
+
+# publish worthy (?) plotting
+# base_sim._visualize(
+#     display_function=lambda field: np.abs(field) ** 2,
+#     title="Determinant Optimized Wavefront",
+#     dpi=300,
+#     figsize=(7, 5)
+# )
 
 # %% 7b) Spectral Radius Optimization with torch (Minimize maximum eigenvalue of J⁻¹)
 print("-- Optimizing Spectral radius --")
@@ -280,6 +338,7 @@ wavefront_x_norm = normalize_wavefront(wavefront_x, photon_budget)
 wavefront_z_norm = normalize_wavefront(wavefront_z, photon_budget)
 wavefront_rot_norm = normalize_wavefront(wavefront_rot, photon_budget)
 wavefront_tr_norm = normalize_wavefront(wavefront_tr, photon_budget)
+# wavefront_tr_w_norm = normalize_wavefront(wavefront_tr_w, photon_budget)
 wavefront_det_norm = normalize_wavefront(wavefront_det, photon_budget)
 wavefront_spec_norm = normalize_wavefront(wavefront_spec, photon_budget)
 
@@ -289,11 +348,12 @@ wavefronts_dict = {
     r"$J_{z}$": wavefront_z_norm,
     r"$J_{\theta}$": wavefront_rot_norm,
     r"$\mathrm{tr}\, J$": wavefront_tr_norm,
+    # r"$\mathrm{tr}_w\, J$": wavefront_tr_w_norm,
     r"$\mathrm{det}\, J$": wavefront_det_norm,
     "Spectral\nRadius": wavefront_spec_norm,
 }
 visualize_multi_param_fisher_comparison(
-    wavefronts_dict, optimizer, figure_title="Comparison of all wavefronts"
+    wavefronts_dict, optimizer_raw, figure_title="Comparison of all wavefronts"
 )
 
 
@@ -334,6 +394,7 @@ def visualize_crlb_comparison(
     ax.set_title(figure_title)
     ax.set_xticks(x_idx)
     ax.set_xticklabels(wave_names, rotation=25)
+    ax.set_ylim(0, 0.030)
     ax.legend()
     ax.grid(True, linestyle=":")
     if take_sqrt:
@@ -344,15 +405,15 @@ def visualize_crlb_comparison(
     plt.show()
 
 
-visualize_crlb_comparison(
-    wavefronts_dict,
-    optimizer,
-    figure_title="CRLB (J^-1 diagonal) for each wavefront",
-)
+# visualize_crlb_comparison(
+#     wavefronts_dict,
+#     optimizer_raw,
+#     figure_title="CRLB (J^-1 diagonal) for each wavefront",
+# )
 
 visualize_crlb_comparison(
     wavefronts_dict,
-    optimizer,
-    figure_title="STD (sqrt(CRLB)) for each wavefront",
+    optimizer_raw,
+    figure_title="STD (sqrt(CRLB)) for each wavefront " + norm_text,
     take_sqrt=True,
 )

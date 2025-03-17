@@ -35,7 +35,9 @@ def line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
     return pos
 
 
-def shift_and_rotate_dipoles(original_positions, dx, dz, dtheta):
+def shift_and_rotate_dipoles(
+    original_positions, dx, dz, dtheta, frozen_dipoles=[[], []]
+):
     """
     original_positions: shape(2,N), each col is one dipole
     dx, dz: translations in x,z
@@ -54,10 +56,13 @@ def shift_and_rotate_dipoles(original_positions, dx, dz, dtheta):
     x_rot += meanx
     z_rot += dz
     x_rot += dx
-    return np.vstack((z_rot, x_rot))
+    shifted_dipoles = np.vstack((z_rot, x_rot))
+    return np.hstack([shifted_dipoles, frozen_dipoles])
 
 
-def shift_and_rotate_dipoles_3params(original_positions, dx, dz=None, dtheta=None):
+def shift_and_rotate_dipoles_3params(
+    original_positions, dx, dz=None, dtheta=None, frozen_dipoles=[[], []]
+):
     """
     Convenience function for generated shifted dipole pairs, to be used in
     finite difference.
@@ -66,7 +71,7 @@ def shift_and_rotate_dipoles_3params(original_positions, dx, dz=None, dtheta=Non
     dx, dz: translations in x,z
     dtheta: rotation in radians about the shape's centroid
     Returns array [(scatters_plus_x, scatters_minus_x), ...] with shape
-    (3, 2, 2, Ns)
+    (3, 2, 2, Ns) = (Nparam, 2, d, Ns)
     """
     if dz is None:
         dz = dx
@@ -75,11 +80,16 @@ def shift_and_rotate_dipoles_3params(original_positions, dx, dz=None, dtheta=Non
 
     shifted_dipoles = []
     for dx_, dz_, dtheta_ in zip([dx, 0, 0], [0, dz, 0], [0, 0, dtheta]):
-        dipoles_p = shift_and_rotate_dipoles(original_positions, dx_, dz_, dtheta_)
-        dipoles_m = shift_and_rotate_dipoles(original_positions, -dx_, -dz_, -dtheta_)
+        dipoles_p = shift_and_rotate_dipoles(
+            original_positions, dx_, dz_, dtheta_, frozen_dipoles=frozen_dipoles
+        )
+        dipoles_m = shift_and_rotate_dipoles(
+            original_positions, -dx_, -dz_, -dtheta_, frozen_dipoles=frozen_dipoles
+        )
         shifted_dipoles.append([dipoles_p, dipoles_m])
 
-    return np.array(shifted_dipoles)
+    # print(shifted_dipoles, frozen_dipoles)
+    return shifted_dipoles
 
 
 def simulate_dS(sim_kwargs, scatterers_plus, scatterers_minus, angles_deg, delta=1e-3):
@@ -186,7 +196,9 @@ def simulate_dE(
     return dE
 
 
-def simulate_dS_3params(sim_kwargs, angles_deg, base_dipoles, dx, dz=None, dtheta=None):
+def simulate_dS_3params(
+    sim_kwargs, angles_deg, base_dipoles, dx, dz=None, dtheta=None, frozen_dipoles=None
+):
     """
     Calculates the partial derivative dS/dtheta of the scattering matrix using
     the CoupledDipoleSimulator class. Performs a finite difference by first
@@ -211,7 +223,7 @@ def simulate_dS_3params(sim_kwargs, angles_deg, base_dipoles, dx, dz=None, dthet
         Partial derivative of the scattering matrix
     """
     shifted_dipoles = shift_and_rotate_dipoles_3params(
-        base_dipoles, dx=dx, dz=dz, dtheta=dtheta
+        base_dipoles, dx=dx, dz=dz, dtheta=dtheta, frozen_dipoles=frozen_dipoles
     )
 
     dS = []
