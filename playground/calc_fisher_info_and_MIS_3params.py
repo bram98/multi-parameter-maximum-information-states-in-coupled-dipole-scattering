@@ -154,6 +154,7 @@ def partial_derivative_3params(
 
     return S_plus, S_minus, x_cam
 
+
 multi_runs = 5  # number of cold restarts for some optimizations
 
 # %% 1) define some dipoles
@@ -1216,8 +1217,10 @@ wavefront_x_norm = normalize_wavefront(wavefront_x, photon_budget)
 # --- Optimization Functions ---
 
 # 1. Minimize (J^-1)_{xx} (CRLB for x)
-def torch_optimize_crlb_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, num_runs=10):
-    best_loss = float('inf')
+def torch_optimize_crlb_xx(
+    F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, num_runs=10
+):
+    best_loss = float("inf")
     best_vec = None
     all_loss_curves = []
     for run in range(num_runs):
@@ -1230,7 +1233,9 @@ def torch_optimize_crlb_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1,
         for step in range(steps):
             opt.zero_grad()
             E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
-            J = fisher_3x3(E_norm, F_tensor)  # Assumed function to compute 3x3 Fisher matrix
+            J = fisher_3x3(
+                E_norm, F_tensor
+            )  # Assumed function to compute 3x3 Fisher matrix
             J_inv = torch.linalg.inv(J)
             loss = J_inv[0, 0]  # CRLB for x
             loss.backward()
@@ -1239,7 +1244,9 @@ def torch_optimize_crlb_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1,
                 E_norm *= (photon_budget ** 0.5) / torch.linalg.norm(E_norm)
             loss_curve.append(loss.item())
             if step % 500 == 0:
-                print(f"CRLB Run {run+1}/{num_runs}, Step {step}: CRLB_x = {loss.item():.5f}")
+                print(
+                    f"CRLB Run {run+1}/{num_runs}, Step {step}: CRLB_x = {loss.item():.5f}"
+                )
         all_loss_curves.append(loss_curve)
         if loss_curve[-1] < best_loss:
             best_loss = loss_curve[-1]
@@ -1247,9 +1254,12 @@ def torch_optimize_crlb_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1,
     E_opt_cplx = best_vec[:, 0].cpu().numpy() + 1j * best_vec[:, 1].cpu().numpy()
     return E_opt_cplx, best_loss, all_loss_curves
 
+
 # 2. Maximize J_xx directly
-def torch_optimize_J_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, num_runs=10):
-    best_J_xx = -float('inf')
+def torch_optimize_J_xx(
+    F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, num_runs=10
+):
+    best_J_xx = -float("inf")
     best_vec = None
     all_loss_curves = []
     for run in range(num_runs):
@@ -1271,7 +1281,9 @@ def torch_optimize_J_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, nu
                 E_norm *= (photon_budget ** 0.5) / torch.linalg.norm(E_norm)
             loss_curve.append(J_xx.item())  # Store J_xx value
             if step % 500 == 0:
-                print(f"J_xx Run {run+1}/{num_runs}, Step {step}: J_xx = {J_xx.item():.5f}")
+                print(
+                    f"J_xx Run {run+1}/{num_runs}, Step {step}: J_xx = {J_xx.item():.5f}"
+                )
         all_loss_curves.append(loss_curve)
         if loss_curve[-1] > best_J_xx:
             best_J_xx = loss_curve[-1]
@@ -1279,18 +1291,27 @@ def torch_optimize_J_xx(F_tensor, N_in, steps=4000, lr=1e-3, photon_budget=1, nu
     E_opt_cplx = best_vec[:, 0].cpu().numpy() + 1j * best_vec[:, 1].cpu().numpy()
     return E_opt_cplx, best_J_xx, all_loss_curves
 
+
 print("\nOptimizing for CRLB_x...")
 E_opt_crlb_xx, best_crlb_xx, all_loss_curves_crlb = torch_optimize_crlb_xx(
-    F_tensor_torch, N_in=N_in, steps=4000, lr=1e-3,
-    photon_budget=photon_budget, num_runs=multi_runs
+    F_tensor_torch,
+    N_in=N_in,
+    steps=4000,
+    lr=1e-3,
+    photon_budget=photon_budget,
+    num_runs=multi_runs,
 )
 E_opt_crlb_xx_norm = normalize_wavefront(E_opt_crlb_xx, photon_budget)
 print(f"\nBest CRLB_x from optimization: {best_crlb_xx:.3e}")
 
 print("\nOptimizing for J_xx...")
 E_opt_J_xx, best_J_xx, all_loss_curves_J_xx = torch_optimize_J_xx(
-    F_tensor_torch, N_in=N_in, steps=4000, lr=1e-3,
-    photon_budget=photon_budget, num_runs=multi_runs
+    F_tensor_torch,
+    N_in=N_in,
+    steps=4000,
+    lr=1e-3,
+    photon_budget=photon_budget,
+    num_runs=multi_runs,
 )
 E_opt_J_xx_norm = normalize_wavefront(E_opt_J_xx, photon_budget)
 print(f"\nBest J_xx from optimization: {best_J_xx:.3e}")
@@ -1299,7 +1320,7 @@ print(f"\nBest J_xx from optimization: {best_J_xx:.3e}")
 plt.figure(figsize=(10, 5))
 plt.subplot(1, 2, 1)
 for i, loss_curve in enumerate(all_loss_curves_crlb):
-    plt.plot(loss_curve, label=f'Run {i+1}', alpha=0.7)
+    plt.plot(loss_curve, label=f"Run {i+1}", alpha=0.7)
 plt.xlabel("Iteration")
 plt.ylabel("CRLB_x")
 plt.title("CRLB_x Optimization Loss Curves")
@@ -1308,7 +1329,7 @@ plt.grid(True, linestyle=":", alpha=0.5)
 
 plt.subplot(1, 2, 2)
 for i, loss_curve in enumerate(all_loss_curves_J_xx):
-    plt.plot(loss_curve, label=f'Run {i+1}', alpha=0.7)
+    plt.plot(loss_curve, label=f"Run {i+1}", alpha=0.7)
 plt.xlabel("Iteration")
 plt.ylabel("J_xx")
 plt.title("J_xx Optimization Loss Curves")
@@ -1320,7 +1341,7 @@ plt.show()
 wavefronts = {
     "MIS_x": wavefront_x_norm,
     "Optimized CRLB_x": E_opt_crlb_xx_norm,
-    "Optimized J_xx": E_opt_J_xx_norm
+    "Optimized J_xx": E_opt_J_xx_norm,
 }
 
 for name, wf in wavefronts.items():
@@ -1331,7 +1352,9 @@ for name, wf in wavefronts.items():
     base_sim.visualize_intensity()
 
 # Compute CRLB for all three wavefronts
-crlb_mis = compute_crlb_for_wavefront(wavefront_x_norm, F_tensor_torch)  # Assumed function
+crlb_mis = compute_crlb_for_wavefront(
+    wavefront_x_norm, F_tensor_torch
+)  # Assumed function
 crlb_opt_crlb = compute_crlb_for_wavefront(E_opt_crlb_xx_norm, F_tensor_torch)
 crlb_opt_J_xx = compute_crlb_for_wavefront(E_opt_J_xx_norm, F_tensor_torch)
 
@@ -1344,10 +1367,16 @@ param_labels = ["x", "z", "θ"]
 fig, ax = plt.subplots(figsize=(10, 6))
 x_idx = np.arange(len(wavefront_names))
 width = 0.2
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
+colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]  # Blue, Orange, Green
 
 for i in range(3):  # For each parameter (x, z, theta)
-    ax.bar(x_idx + i * width, crlb_values[:, i], width, label=param_labels[i], color=colors[i])
+    ax.bar(
+        x_idx + i * width,
+        crlb_values[:, i],
+        width,
+        label=param_labels[i],
+        color=colors[i],
+    )
 
 ax.set_xticks(x_idx + width)
 ax.set_xticklabels(wavefront_names)
