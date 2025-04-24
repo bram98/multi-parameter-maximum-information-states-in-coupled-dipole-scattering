@@ -205,5 +205,7 @@ class Optimizer:
 
             if verbose and step % 10 == 0:
                 print(f"\rStep {step:4d} => loss={cur_val:.3f}", end="")
+        if verbose:
+            print()
 
         return {"bestval": best_val, "bestvec": best_vec, "loss": loss_history}

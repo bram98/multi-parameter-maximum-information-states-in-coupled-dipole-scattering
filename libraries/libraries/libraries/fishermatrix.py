@@ -19,7 +19,7 @@ class FisherMatrix:
         if dS is None:
             self._dS = None
         else:
-            self.dS = dS  # This will trigger the setter.
+            self.dS = np.array(dS)  # This will trigger the setter.
 
     @staticmethod
     def F_from_dS(dS):

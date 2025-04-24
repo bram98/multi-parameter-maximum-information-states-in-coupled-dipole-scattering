@@ -5,6 +5,7 @@ scipy==1.14.1
 black==24.10.0
 isort==5.12.0
 torch==2.6.0+cu118
+toposort==1.10
 
 -e ./libraries/fourierfun
 -e ./libraries/libraries
