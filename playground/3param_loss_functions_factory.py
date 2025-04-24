@@ -19,8 +19,9 @@ from libraries import placedipoles
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
 
-# import sys
-# sys.exit()
+import sys
+
+sys.exit()
 
 # %%
 
@@ -325,17 +326,23 @@ kx_array = base_sim.theta2k_x(angles_deg, degree=True)
 plot_dpi = 100  # 100 for speed, 300 for quality
 sim_name = f"double_line{Ns}"
 param_names = ["shiftX", "shiftZ", "rotation"]
-delta = 1e-3
+delta = 1e-5
 
 saveobj(base_sim, "coupleddipolesimulator", folder)
 saveobj(kx_array, "kx_array", folder)
 
 # %%
 dS = placedipoles.simulate_dS_3params(
-    sim_kwargs, angles_deg, base_dipoles, dx=delta, frozen_dipoles=frozen_dipoles
+    sim_kwargs,
+    angles_deg,
+    base_dipoles,
+    dx=delta,
+    frozen_dipoles=frozen_dipoles,
+    delta=delta,
+    flux_normalize=False,
 )
 
-fishermatrix = FisherMatrix(dS, param_names=["x", "z", "theta"])
+fishermatrix = FisherMatrix(dS, param_names=["x", "z", "theta"], delta=delta)
 filename = fishermatrix.filename(name=sim_name)
 
 if False:

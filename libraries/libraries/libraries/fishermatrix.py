@@ -7,13 +7,14 @@ class FisherMatrix:
     A class to compute and manage multiparameter Fisher matrices from dS matrices.
     """
 
-    def __init__(self, dS=None, param_names=None, seed=None):
+    def __init__(self, dS=None, param_names=None, delta=None, seed=None):
         self._nparams = None
         self._nhilbert_in = None
         self._nhilbert_out = None
         self._F = None
         self._seed = seed
         self._r = None
+        self._delta = delta
         self._param_names = param_names
 
         if dS is None:
@@ -259,6 +260,14 @@ class FisherMatrix:
     @seed.setter
     def seed(self, seed):
         self._seed = seed
+
+    @property
+    def delta(self):
+        return self._delta
+
+    @delta.setter
+    def delta(self, delta):
+        self._delta = delta
 
     @property
     def r(self):

@@ -187,15 +187,20 @@ class CoupledDipoleSimulator:
         k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
-    def set_input_field_kx(self, k_x_array, E_kx_array):
+    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize):
         k_x_array = np.array(k_x_array)
         E_kx_array = np.array(E_kx_array)
 
         if k_x_array.shape != E_kx_array.shape:
             raise ValueError("k_x_array and E_kx_array must have the same shape.")
 
+        if flux_normalize:
+            amp = _flux_amplitude_2d(self.k, k_x_array)
+        else:
+            amp = 1.0
+
         self.k_x_array = k_x_array
-        self.E_kx_array = E_kx_array
+        self.E_kx_array = E_kx_array * amp
         self.reset()  # Reset computed fields
 
     def compute_incident_field(self, x, z):
@@ -603,13 +608,13 @@ class CoupledDipoleSimulator:
         for n, th_deg in enumerate(angles_deg):
             th_rad = np.deg2rad(th_deg)
             kx = self.k * np.sin(th_rad)
-            if flux_normalize:
-                amp = _flux_amplitude_2d(self.k, kx)
-            else:
-                amp = 1.0
+            # if flux_normalize:
+            #     amp = _flux_amplitude_2d(self.k, kx)
+            # else:
+            #     amp = 1.0
 
             # set input
-            self.set_input_field_kx([kx], [amp])
+            self.set_input_field_kx([kx], [1.0], flux_normalize=flux_normalize)
             self.solve_fields()
             E_zL = self.compute_zL_fields_direct()
             S[:, n] = E_zL

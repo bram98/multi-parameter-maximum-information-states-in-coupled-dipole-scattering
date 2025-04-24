@@ -92,7 +92,14 @@ def shift_and_rotate_dipoles_3params(
     return shifted_dipoles
 
 
-def simulate_dS(sim_kwargs, scatterers_plus, scatterers_minus, angles_deg, delta=1e-3):
+def simulate_dS(
+    sim_kwargs,
+    scatterers_plus,
+    scatterers_minus,
+    angles_deg,
+    delta=1e-3,
+    flux_normalize=True,
+):
     """
     Calculates the partial derivative dS/dtheta of the scattering matrix using
     the CoupledDipoleSimulator class. Performs a finite difference by first
@@ -132,11 +139,15 @@ def simulate_dS(sim_kwargs, scatterers_plus, scatterers_minus, angles_deg, delta
 
     sim_minus = CoupledDipoleSimulator(**sim_kwargs)
     sim_minus.scatterers = scatterers_minus
-    S_minus, _ = sim_minus.build_scattering_matrix(angles_deg, flux_normalize=True)
+    S_minus, _ = sim_minus.build_scattering_matrix(
+        angles_deg, flux_normalize=flux_normalize
+    )
 
     sim_plus = CoupledDipoleSimulator(**sim_kwargs)
     sim_plus.scatterers = scatterers_plus
-    S_plus, _ = sim_plus.build_scattering_matrix(angles_deg, flux_normalize=True)
+    S_plus, _ = sim_plus.build_scattering_matrix(
+        angles_deg, flux_normalize=flux_normalize
+    )
 
     return (S_plus - S_minus) / (2 * delta)
 
@@ -197,7 +208,15 @@ def simulate_dE(
 
 
 def simulate_dS_3params(
-    sim_kwargs, angles_deg, base_dipoles, dx, dz=None, dtheta=None, frozen_dipoles=None
+    sim_kwargs,
+    angles_deg,
+    base_dipoles,
+    dx,
+    dz=None,
+    dtheta=None,
+    frozen_dipoles=None,
+    delta=1e-3,
+    flux_normalize=True,
 ):
     """
     Calculates the partial derivative dS/dtheta of the scattering matrix using
@@ -229,7 +248,14 @@ def simulate_dS_3params(
     dS = []
 
     for dipoles_plus, dipoles_minus in shifted_dipoles:
-        dS_cur = simulate_dS(sim_kwargs, dipoles_plus, dipoles_minus, angles_deg)
+        dS_cur = simulate_dS(
+            sim_kwargs,
+            dipoles_plus,
+            dipoles_minus,
+            angles_deg,
+            delta,
+            flux_normalize=flux_normalize,
+        )
         dS.append(dS_cur)
 
     return np.array(dS)
