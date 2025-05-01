@@ -10,6 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import animation
+from scipy import stats
 import os
 import numpy as np
 import torch
@@ -19,8 +20,9 @@ from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
 from libraries.savestate import saveobj, loadobj
 
-# import sys
-# sys.exit()
+import sys
+
+sys.exit()
 
 # %%
 folder = "../data/double_line7"
@@ -32,90 +34,117 @@ fishermatrix = loadobj("fishermatrix", folder)
 loss_functions = loadobj("loss_functions", folder)
 
 # %%
-delta = 1e-3
+# delta = 1e-3
 
-dE_dtheta = np.zeros((3, sim.grid_points_x), dtype=complex)
+# dE_dtheta_manual = np.zeros((3, sim.grid_points_x), dtype=complex)
 
-for p in range(3):
-    loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
-    wavefront = loss_function.wavefront
-    sim.set_input_field_kx(kx_array, wavefront)
 
-    dtheta_vec = delta * np.eye(3)[p]
-    shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
-        base_dipoles, *dtheta_vec, frozen_dipoles=frozen_dipoles
-    )
-    sim.reset()
-    sim.scatterers = shifted_dipoles
-    E_plus = sim.compute_zL_fields_direct()
+# loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
+# wavefront = loss_function.wavefront
+# sim.set_input_field_kx(kx_array, wavefront, flux_normalize=True)
 
-    shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
-        base_dipoles, *(-dtheta_vec), frozen_dipoles=frozen_dipoles
-    )
-    sim.reset()
-    sim.scatterers = shifted_dipoles
-    E_minus = sim.compute_zL_fields_direct()
+# for p in range(3):
 
-    dE_dtheta[p] = (E_plus - E_minus) / (2 * delta)
+#     dtheta_vec = delta * np.eye(3)[p]
+#     shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
+#         base_dipoles, *dtheta_vec, frozen_dipoles=frozen_dipoles
+#     )
+#     sim.reset()
+#     sim.scatterers = shifted_dipoles
+#     E_plus = sim.compute_zL_fields_direct()
+
+#     shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
+#         base_dipoles, *(-dtheta_vec), frozen_dipoles=frozen_dipoles
+#     )
+#     sim.reset()
+#     sim.scatterers = shifted_dipoles
+#     E_minus = sim.compute_zL_fields_direct()
+
+#     dE_dtheta_manual[p] = (E_plus - E_minus) / (2 * delta)
 # %%
+"""
+Calculate dE/dtheta, E(theta) and E0 = E(0)
+"""
+
+
+def calc_dE_dtheta(dS, wavefront):
+    dE_dtheta = [dS[p] @ wavefront for p in range(len(dS))]
+    return np.array(dE_dtheta)
+
+
+def calc_E0(sim, base_dipoles, frozen_dipoles):
+    sim.reset()
+    sim.scatterers = np.hstack([base_dipoles, frozen_dipoles])
+    E0 = sim.compute_zL_fields_direct()
+    return E0
+
+
+def calc_E_range_theta(sim, theta_range, base_dipoles, frozen_dipoles):
+    E_output = np.zeros((n_theta, 3, sim.grid_points_x), dtype=complex)
+    for p in range(3):
+        for i, dtheta in enumerate(theta_range):
+            dtheta_vec = dtheta * np.eye(3)[p]
+            shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
+                base_dipoles, *dtheta_vec, frozen_dipoles=frozen_dipoles
+            )
+            sim.reset()
+            sim.scatterers = shifted_dipoles
+            E_output[i, p] = sim.compute_zL_fields_direct()
+    return E_output
+
+
 n_theta = 200
-E_output = np.zeros((3, n_theta, sim.grid_points_x), dtype=complex)
+dE_dtheta = np.zeros((3, sim.grid_points_x), dtype=complex)
 theta_range = 0.1
 theta_in = np.linspace(-theta_range, theta_range, num=n_theta)
 
-# dE_dtheta = np.zeros((3, sim.grid_points_x), dtype=complex)
-E0 = np.zeros((3, sim.grid_points_x), dtype=complex)
 
-for p in range(3):
-    loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
-    wavefront = loss_function.wavefront
-    sim.set_input_field_kx(kx_array, wavefront)
+loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
+wavefront = loss_function.wavefront
 
-    sim.reset()
-    sim.scatterers = np.hstack([base_dipoles, frozen_dipoles])
-    E0[p] = sim.compute_zL_fields_direct()
-    # E0[p] = loss_function.normalize_wavefront(E0[p])
-    # dE_dtheta[p] = fishermatrix.dS[p] @ wavefront
 
-    # theta_meas = np.zeros_like(theta_in)
+sim.set_input_field_kx(kx_array, wavefront, flux_normalize=True)
 
-    for i, dtheta in enumerate(theta_in):
-        dtheta_vec = dtheta * np.eye(3)[p]
-        shifted_dipoles = placedipoles.shift_and_rotate_dipoles(
-            base_dipoles, *dtheta_vec, frozen_dipoles=frozen_dipoles
+dE_dtheta = calc_dE_dtheta(fishermatrix.dS, wavefront)
+E0 = calc_E0(sim, base_dipoles, frozen_dipoles)
+E_output = calc_E_range_theta(sim, theta_in, base_dipoles, frozen_dipoles)
+
+
+# %%
+"""
+Plot E(theta)
+"""
+
+
+def plot_E_theta_range(E, theta_range, zmin, zmax):
+    for p in range(3):
+        plt.figure()
+        # ims = plt.imshow(np.abs(E_output[p].T), extent=[np.min(sim.z), np.max(sim.z), np.min(theta_in), np.max(theta_in)])
+        ims = plt.imshow(
+            np.abs(E[:, p].T),
+            # extent=[np.min(theta_in), np.max(theta_in), np.min(sim.z), np.max(sim.z)],
+            extent=[np.min(theta_range), np.max(theta_range), zmin, zmax],
         )
-        sim.reset()
-        sim.scatterers = shifted_dipoles
-        E_output[p, i] = sim.compute_zL_fields_direct()
-        # E_output[p, i] = loss_function.normalize_wavefront(E_output[p, i])
-    # sim.visualize_intensity()
-# %%
-for p in range(3):
-    plt.figure()
-    # ims = plt.imshow(np.abs(E_output[p].T), extent=[np.min(sim.z), np.max(sim.z), np.min(theta_in), np.max(theta_in)])
-    ims = plt.imshow(
-        np.abs(E_output[p].T),
-        # extent=[np.min(theta_in), np.max(theta_in), np.min(sim.z), np.max(sim.z)],
-        extent=[np.min(theta_in), np.max(theta_in), np.min(sim.z), np.max(sim.z)],
-    )
 
-    plt.gca().set_aspect("auto")
-    divider = make_axes_locatable(plt.gca())
-    plt.xlabel(r"$\theta-\theta_0$")
-    plt.ylabel(r"$x / \lambda$")
-    plt.title(f"Output field for {fishermatrix.param_names[p]}")
-    cax = divider.append_axes("right", size="4%", pad=0.1)
-    plt.colorbar(ims, cax=cax)
-    plt.show()
+        plt.gca().set_aspect("auto")
+        divider = make_axes_locatable(plt.gca())
+        plt.xlabel(r"$\theta-\theta_0$")
+        plt.ylabel(r"$x / \lambda$")
+        plt.title(f"Output field for {fishermatrix.param_names[p]}")
+        cax = divider.append_axes("right", size="4%", pad=0.1)
+        plt.colorbar(ims, cax=cax)
+        plt.show()
+
+
+plot_E_theta_range(E_output, theta_in, np.min(sim.z), np.max(sim.z))
 # %%
+"""
+Plot E0 + dE/dtheta * theta - E(theta), how big is the linear region?
+"""
 for p in range(3):
     plt.figure()
     ims = plt.imshow(
-        np.abs(
-            E0[p, :, np.newaxis]
-            + dE_dtheta[p, :, np.newaxis] * theta_in[np.newaxis, :]
-            - E_output[p].T
-        ),
+        np.abs(E0 + dE_dtheta[p] * theta_in[:, np.newaxis] - E_output[:, p, :]).T,
         extent=[np.min(theta_in), np.max(theta_in), np.min(sim.z), np.max(sim.z)],
     )
     # ims = plt.imshow(
@@ -140,25 +169,152 @@ for p in range(3):
 
 # %%
 """
-E = E0 + d_theta E0 (theta - theta0)
-==> theta - theta0 = d_theta E0^* . (E - E0) /|d_theta E0|^2
+Plot best estimator. Use the following linear model:
+    E = E0 + d_theta E0 (theta - theta0)
+To solve for theta:
+    ==> theta - theta0 = d_theta E0^* . (E - E0) /|d_theta E0|^2
 """
+
+
+def best_estimate_simple(E, dE_dtheta, E0):
+    """
+    Version with no numpy trickery for debugging and readability.
+    """
+    theta_est = (dE_dtheta.conj()) @ (E - E0) / (dE_dtheta.conj() @ dE_dtheta)
+    theta_est = np.real(theta_est)
+    return dtheta
+
+
+def best_estimate(E, dE_dtheta, E0):
+    """
+    Version with numpy trickery for faster computation.
+    """
+    theta_est = np.vecdot(dE_dtheta, E - E0) / np.vecdot(dE_dtheta, dE_dtheta)
+    # theta_est =  (E - E0[np.newaxis, :]) @ (dE_dtheta.conj()[:, np.newaxis])/ (dE_dtheta.conj() @ dE_dtheta)
+    theta_est = np.real(theta_est)
+    return theta_est
+
+
+dtheta = best_estimate(E_output, dE_dtheta, E0)
 for p in range(3):
     i = 0
-    dtheta = [
-        (dE_dtheta[p].conj()) @ (E - E0[p]) / (dE_dtheta[p].conj() @ dE_dtheta[p])
-        for E in E_output[p]
-    ]
-    dtheta = np.real(dtheta)
-    dtheta = np.real(dtheta)
 
     plt.figure()
-    plt.plot(theta_in, dtheta)
+    plt.plot(theta_in, dtheta[:, p])
     theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
     plt.plot(theta_exact, theta_exact)
     param = fishermatrix.param_names[p]
     plt.xlabel(r"${}$".format(param))
     plt.ylabel(r"predicted ${}$".format(param))
-    plt.title(f"{fishermatrix.param_names[p]}")
+    plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
     # plt.ylim(np.min(dtheta), np.max(dtheta))
     plt.show()
+
+
+# %%
+def measure_poisson(I, integration_time, nsamples=None):
+    """
+    Models a camera with shot noise. Here I is an array representing the
+    intensity in photons / second at every pixel of the camera. The integration
+    time determines for how long photons are collected. Returns an array with
+    photon counts.
+
+    Parameters
+    ----------
+    I: array
+        Intensity in units of photons / second.
+    integration_time: float
+        Integration time in seconds
+    nsamples: int, default: None
+        Perform multiple measurements if necessary.
+
+    Returns
+    -------
+        Array of photon counts of type int with shape (nsamples, I.shape) if
+        nsamples is given or otherwise with same shape as I
+    """
+    I = np.array(I)
+    # I_flat = I.flatten()
+    if nsamples is None:
+        photon_counts = stats.poisson.rvs(I * integration_time)
+    else:
+        photon_counts = stats.poisson.rvs(
+            I * integration_time, size=(nsamples, *I.shape)
+        )
+    return photon_counts
+
+
+def measure_heterodyne(E, integration_time, nsamples=None):
+    """
+    https://chatgpt.com/share/681242ae-2044-8004-b701-f3d14a45781b
+    Models a camera with shot noise. Here E is an array representing the field
+    strength in units of square root of photons (???). integration_time is the
+    integration time in units of coherence lengths ~ 1 / linewidth. Returns an
+    array of field samples.
+
+    Parameters
+    ----------
+    E: complex array
+        field strength in units of sqrt(photons) / coherence times(???).
+    integration_time: float
+        Integration time in coherence times.
+    nsamples: int, default: None
+        Perform multiple measurements if necessary.
+
+    Returns
+    -------
+        Array of photon counts of type int with shape (nsamples, I.shape) if
+        nsamples is given or otherwise with same shape as I
+    """
+    E = np.array(E)
+    E_real = E.view(E.real.dtype)  # convert complex array to real array
+    if nsamples is None:
+        field_samples = stats.norm.rvs(loc=E_real, scale=1 / (2 * integration_time))
+    else:
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=1 / (2 * integration_time), size=(nsamples, *E_real.shape)
+        )
+    field_samples = field_samples.view(E.dtype)  # convert back to complex array
+    return field_samples
+
+
+int_time = 1.0
+nsamples = 100
+E_output_poisson = measure_heterodyne(
+    E_output, integration_time=int_time, nsamples=nsamples
+)
+
+
+# plot_E_theta_range(E_output_poisson[0], theta_in, np.min(sim.z), np.max(sim.z))
+# dtheta = 0
+
+# dtheta_poisson = np.zeros((nsamples, p, len(E0)), dtype=np.complex128)
+
+# for s in range(nsamples):
+#     for p in range(3):
+#         i = 0
+dtheta_poisson = best_estimate(E_output_poisson, dE_dtheta, E0)
+dtheta_mean = np.mean(dtheta_poisson, axis=0)
+dtheta_var = np.std(dtheta_poisson, axis=0)
+for p in range(3):
+    plt.figure()
+    plt.plot(theta_in, dtheta_mean[:, p], label="Linear Estimator")
+    mean = dtheta_mean[:, p]
+    var = dtheta_var[:, p]
+    plt.fill_between(theta_in, mean - var, mean + var, alpha=0.5)
+    theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
+    plt.plot(theta_exact, theta_exact, zorder=500, label="Exact")
+    param = fishermatrix.param_names[p]
+    plt.xlabel(r"${}$".format(param))
+    plt.ylabel(r"predicted ${}$".format(param))
+    plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
+    plt.legend()
+    # plt.ylim(np.min(dtheta), np.max(dtheta))
+    plt.show()
+
+# %%
+
+plt.figure()
+max_var = np.max(var)
+plt.plot(theta_in, var)
+plt.show()

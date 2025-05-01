@@ -339,7 +339,7 @@ dS = placedipoles.simulate_dS_3params(
     dx=delta,
     frozen_dipoles=frozen_dipoles,
     delta=delta,
-    flux_normalize=False,
+    flux_normalize=True,
 )
 
 fishermatrix = FisherMatrix(dS, param_names=["x", "z", "theta"], delta=delta)
@@ -399,12 +399,28 @@ def tr_norm(F):
     return Fnorm[0, 0] + Fnorm[1, 1] + Fnorm[2, 2]
 
 
+def tr_norm_nuissance(F):
+    Fnorm = F_norm(F)
+    return Fnorm[0, 0] + Fnorm[1, 1] - Fnorm[2, 2]
+
+
 loss_functions.append(
     LossFunction(
         tr_norm,
         "tr_norm",
         displayname="Normalized Trace",
         shortname=r"$\operatorname{tr}_N J$",
+        maximize=True,
+        method="eig",
+    )
+)
+
+loss_functions.append(
+    LossFunction(
+        tr_norm_nuissance,
+        "tr_norm_nuissance",
+        displayname="Nuissance Trace",
+        shortname=r"$\operatorname{tr}_{N}^* J$",
         maximize=True,
         method="eig",
     )

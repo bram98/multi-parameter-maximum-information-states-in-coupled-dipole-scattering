@@ -187,7 +187,7 @@ class CoupledDipoleSimulator:
         k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
-    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize):
+    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
         k_x_array = np.array(k_x_array)
         E_kx_array = np.array(E_kx_array)
 
