@@ -4,12 +4,9 @@ import sys
 import fourierfun as ff
 import matplotlib.pyplot as plt
 import numpy as np
-
-from matplotlib.colors import LogNorm
-from matplotlib.ticker import MultipleLocator, MaxNLocator
-
-
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
+from matplotlib.colors import LogNorm
+from matplotlib.ticker import MaxNLocator, MultipleLocator
 
 #%%
 
@@ -56,7 +53,7 @@ class SMatrixCalculator:
         elif inc == self.right and out == self.right:
             return self.Rrr
 
-        raise ValueError('Values inc={inc} and out={out} are not valid.')
+        raise ValueError("Values inc={inc} and out={out} are not valid.")
 
     def get_matrices(self, inc=left, out=left):
         matrices = []
@@ -70,7 +67,6 @@ class SMatrixCalculator:
             matrices.append(self.Rrr)
 
         return matrices
-
 
     def set_zero(self, inc=both, out=both):
         if inc & self.left and out & self.left:
@@ -86,14 +82,13 @@ class SMatrixCalculator:
         for matrix in self.get_matrices(inc, out):
             # fig, ax = plt.subplots()
             if log:
-                plt.imshow(np.abs(matrix), norm=LogNorm(vmin=0.001, vmax=1.))
+                plt.imshow(np.abs(matrix), norm=LogNorm(vmin=0.001, vmax=1.0))
             else:
                 plt.imshow(np.abs(matrix))
             plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
             plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
             plt.colorbar()
             plt.show()
-
 
 
 class CoupledDipoleSMatrix(SMatrixCalculator):
@@ -132,9 +127,9 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
 
         dk_sample = 2 * self._kxmax / (self.N_states - 0)
 
-        xmax = 1*2*np.pi/dk_sample
-        dx = self.lambda_0 / 8.
-        n = np.ceil(xmax/dx).astype(int)
+        xmax = 1 * 2 * np.pi / dk_sample
+        dx = self.lambda_0 / 8.0
+        n = np.ceil(xmax / dx).astype(int)
         # dx = xmax / n
         # print('_kxmax', self._kxmax)
         # print('dk_sample', dk_sample)
@@ -158,7 +153,10 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
     def calc_input_both(self):
         self._kxmax = self.k * np.sin(self.theta_max)
         self.k_range = np.linspace(
-            -self._kxmax, self._kxmax, num=self.N_states, endpoint=False  # [ -kxmax, kxmax )
+            -self._kxmax,
+            self._kxmax,
+            num=self.N_states,
+            endpoint=False,  # [ -kxmax, kxmax )
         )
 
         # dk_sample = 2*self._kxmax / (self.N_states - 0)
@@ -167,7 +165,7 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
         # n = np.ceil(xmax/dx).astype(int)
         # dx = xmax / n
         # dx = self.cds.Lx / (self.cds.grid_points_x - 1)
-        self.k_range = np.fft.fftfreq(self.N_states, d=1/(2*self._kxmax))
+        self.k_range = np.fft.fftfreq(self.N_states, d=1 / (2 * self._kxmax))
         # dk = 2*np.pi/xmax
         # print(dk, 1/(2*self._kxmax))
 
@@ -190,7 +188,6 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
 
         k_x_range = self.input_states_l
 
-
         # debugging purposes; leave here for now.
         dkk = k_x_range[1] - k_x_range[0]
         # print(f'dk input:\t {dkk} ')
@@ -207,8 +204,6 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
         k_x_samples = k_x_range
         k_x_samples_index = np.round(k_x_samples / dkk).astype(int)
 
-
-
         for i, kx in enumerate(self.input_states_l):
             # if i > self.N_states - 5:
             #     break
@@ -218,18 +213,15 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
             self.cds.reset()
             E_output = self.cds.compute_zL_fields_direct()
 
-
             # I need to exclude the endpoint in order for the 'k' to correspond with
             # the correct physical dimensions.
             E_output = E_output[:-1]
 
-
-            E_k = np.fft.fft(E_output, norm='forward')
+            E_k = np.fft.fft(E_output, norm="forward")
             # E_k = np.fft.fftshift(E_k)
 
-
-            plt.plot(np.real(E_k), label='Re(E_k)')
-            plt.plot(np.abs(E_k), label='abs(E_k)')
+            plt.plot(np.real(E_k), label="Re(E_k)")
+            plt.plot(np.abs(E_k), label="abs(E_k)")
 
             # plt.plot(np.real(E_output), label='Re(E_k)')
             # plt.plot(np.abs(E_output), label='abs(E_k)')
@@ -237,9 +229,7 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
             plt.legend()
             plt.show()
 
-
             self.Tlr[i] = E_k[k_x_samples_index]
-
 
     def theta2k_x(self, theta):
         k_x = self.k * np.sin(theta)
@@ -257,11 +247,10 @@ class CoupledDipoleSMatrix(SMatrixCalculator):
     def theta_max_deg(self, deg):
         self.theta_max = np.deg2rad(deg)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     cdsm = CoupledDipoleSMatrix(theta_max_deg=80, N_states=51, Ns=1)
     cdsm.calc_input_both()
-
-
 
     def show_total_field(cds, kx):
         # cds.compute_total_field()
@@ -282,6 +271,5 @@ if __name__ == '__main__':
     # cdsm.for_each_input_left(show_total_field)
 
     cdsm.calc_from_left()
-
 
     cdsm.show(log=True)
