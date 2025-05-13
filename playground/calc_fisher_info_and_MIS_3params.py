@@ -25,6 +25,7 @@ Demo:
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import math
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
 
@@ -1392,3 +1393,534 @@ for name, crlb in zip(wavefront_names, [crlb_mis, crlb_opt_crlb, crlb_opt_J_xx])
     print(f"\nCRLB Values for {name} Wavefront:")
     for i, param in enumerate(param_labels):
         print(f"  {param}: {crlb[i]:.3e}")
+
+
+# %% 13) Optimization Maximizing det(J_interest|nuisance_rotation)
+
+def compute_fisher_interest_nuisance(J_full, nuisance_param_index=2):
+    """
+    Computes the Fisher information matrix for parameters of interest,
+    accounting for a single nuisance parameter.
+    Assumes J_full is a 3x3 torch tensor (classical FIM).
+    nuisance_param_index = 0 for x, 1 for z, 2 for theta (rotation).
+    Returns the 2x2 FIM for the parameters of interest.
+    """
+    if nuisance_param_index == 0: # x is nuisance, interest are z, theta
+        J11 = J_full[1:, 1:]
+        J12 = J_full[1:, 0].unsqueeze(1)
+        J21 = J_full[0, 1:].unsqueeze(0)
+        J22 = J_full[0, 0].unsqueeze(0).unsqueeze(0) # Make it 1x1
+    elif nuisance_param_index == 1: # z is nuisance, interest are x, theta
+        indices_interest = [0, 2]
+        J11 = J_full[torch.tensor(indices_interest)[:, None], torch.tensor(indices_interest)]
+        J12 = J_full[indices_interest, nuisance_param_index].unsqueeze(1)
+        J21 = J_full[nuisance_param_index, indices_interest].unsqueeze(0)
+        J22 = J_full[nuisance_param_index, nuisance_param_index].unsqueeze(0).unsqueeze(0) # Make it 1x1
+    elif nuisance_param_index == 2: # theta is nuisance, interest are x, z
+        J11 = J_full[:2, :2]
+        J12 = J_full[:2, 2].unsqueeze(1)
+        J21 = J_full[2, :2].unsqueeze(0)
+        J22 = J_full[2, 2].unsqueeze(0).unsqueeze(0) # Make it 1x1
+    else:
+        raise ValueError("nuisance_param_index must be 0, 1, or 2")
+
+    if torch.det(J22) == 0:
+        # Handle singular J22 (e.g., return J11 or a penalized version)
+        # For simplicity, we might return J11, implying no information can be gained by accounting for nuisance
+        # Or, add a small epsilon to J22 to make it invertible, though this affects the result.
+        # For now, let's return NaN or raise an error if J22 is exactly singular.
+        # A very small determinant can also cause issues.
+        print("Warning: J22 is singular or near singular in compute_fisher_interest_nuisance.")
+        # Return a matrix of NaNs or J11 if J22 is not invertible
+        # return torch.full_like(J11, float('nan'))
+        # A more robust approach might involve regularization or pseudo-inverse
+        try:
+            J22_inv = torch.linalg.inv(J22 + torch.eye(J22.shape[0], device=J22.device) * 1e-12) # Regularization
+        except torch.linalg.LinAlgError:
+            return J11 # Fallback if still singular
+    else:
+         J22_inv = torch.linalg.inv(J22)
+
+    J_interest_nuisance = J11 - J12 @ J22_inv @ J21
+    return J_interest_nuisance
+
+losses_det_interest_nuisance = []
+torch.manual_seed(13) # New seed for this section
+
+def torch_optimize_det_interest_nuisance(F_tensor, N_in, steps=1000, lr=1e-3, photon_budget=1, nuisance_idx=2):
+    E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
+    with torch.no_grad():
+        norm_init = torch.linalg.norm(E_param)
+        E_param *= (photon_budget ** 0.5) / norm_init
+
+    opt = torch.optim.Adam([E_param], lr=lr)
+    best_det_val = None
+    best_vec = None
+
+    current_losses = []
+
+    for step in range(steps):
+        opt.zero_grad()
+        E_norm = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+        J_full = fisher_3x3(E_norm, F_tensor) # Assumes fisher_3x3 is defined and works with torch tensors
+        J_interest = compute_fisher_interest_nuisance(J_full, nuisance_param_index=nuisance_idx)
+
+        det_val_interest = torch.linalg.det(J_interest)
+        loss = -det_val_interest # Maximize determinant
+
+        if torch.isnan(loss):
+            print(f"Det Interest (Nuisance) Opt Step {step:4d} => NaN loss, skipping backward.")
+            # Optionally, penalize or stop if NaN occurs
+            # For now, just don't update if loss is NaN
+        else:
+            loss.backward()
+            opt.step()
+
+        with torch.no_grad():
+            cur_norm_e = torch.linalg.norm(E_param) # Use E_param for consistent normalization update
+            E_param *= (photon_budget ** 0.5) / cur_norm_e
+
+            # Re-calculate for reporting and best_vec update based on the normalized E_param
+            E_norm_report = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+            J_full_report = fisher_3x3(E_norm_report, F_tensor)
+            J_interest_report = compute_fisher_interest_nuisance(J_full_report, nuisance_param_index=nuisance_idx)
+            current_det_val_report = torch.linalg.det(J_interest_report)
+
+        if not torch.isnan(current_det_val_report):
+            if best_det_val is None or current_det_val_report.item() > best_det_val:
+                best_det_val = current_det_val_report.item()
+                best_vec = E_norm_report.detach().clone()
+            current_losses.append(-current_det_val_report.item()) # Store negative det as loss
+        else:
+            current_losses.append(float('nan'))
+
+
+        if step % 100 == 0:
+            if not torch.isnan(current_det_val_report):
+                print(f"Det Interest (Nuisance) Opt Step {step:4d} => det(J_interest)={current_det_val_report.item():.3e}")
+            else:
+                print(f"Det Interest (Nuisance) Opt Step {step:4d} => det(J_interest)= NaN")
+
+    return best_vec.cpu().numpy() if best_vec is not None else None, best_det_val, current_losses
+
+print("\n--- Maximizing Det(J_interest|nuisance_rotation) ---")
+E_det_interest_nuisance_parts, best_det_interest_nuisance, losses_det_interest_nuisance_run = torch_optimize_det_interest_nuisance(
+    F_tensor_torch, N_in=N_in, steps=2000, lr=1e-3, photon_budget=photon_budget, nuisance_idx=2
+)
+
+if E_det_interest_nuisance_parts is not None:
+    E_det_interest_nuisance = E_det_interest_nuisance_parts[:, 0] + 1j * E_det_interest_nuisance_parts[:, 1]
+    print(f"Best det(J_interest|nuisance_rotation) = {best_det_interest_nuisance:.3e}")
+
+    base_sim.reset()
+    base_sim.set_input_field_kx(kx_array, E_det_interest_nuisance)
+    base_sim.solve_fields()
+    base_sim.visualize_intensity() # Assumes this function shows a plot title
+    plt.title(f"Wavefront for Max Det(J_interest|nuisance_rotation)\nDet = {best_det_interest_nuisance:.2e}")
+    plt.show()
+
+    plt.figure()
+    plt.plot(losses_det_interest_nuisance_run)
+    plt.xlabel("Iteration")
+    plt.ylabel("-det(J_interest|nuisance_rotation)")
+    plt.title("Loss for Max Det(J_interest|nuisance_rotation)")
+    plt.yscale('symlog', linthresh=1e-3)
+    plt.grid(True, linestyle=":")
+    plt.show()
+else:
+    print("Optimization for Max Det(J_interest|nuisance_rotation) failed to find a valid wavefront.")
+    E_det_interest_nuisance = None # Ensure it's defined for later sections
+
+# Add to wavefronts_dict (handle potential None)
+if E_det_interest_nuisance is not None:
+    wavefronts_dict[r"Max Det($J_{\psi|\phi}$)"] = normalize_wavefront(E_det_interest_nuisance, photon_budget)
+else:
+    wavefronts_dict[r"Max Det($J_{\psi|\phi}$)"] = np.zeros(N_in, dtype=complex) # Placeholder if failed
+
+
+# %% 14) Optimization Minimizing Tr(J_interest|nuisance_rotation ^ -1)
+
+torch.manual_seed(14) # New seed
+
+def torch_optimize_traceinv_interest_nuisance(F_tensor, N_in, steps=3000, lr=1e-3, photon_budget=1, nuisance_idx=2, runs=5):
+    best_loss_overall = None
+    best_vec_overall = None
+    all_loss_curves_all_runs = []
+
+    for run_i in range(runs):
+        E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
+        with torch.no_grad():
+            norm_init = torch.linalg.norm(E_param)
+            E_param *= (photon_budget ** 0.5) / norm_init
+
+        opt = torch.optim.Adam([E_param], lr=lr)
+        current_run_losses = []
+        best_loss_this_run = float('inf')
+        best_vec_this_run = None
+
+        for step in range(steps):
+            opt.zero_grad()
+            E_norm = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+            J_full = fisher_3x3(E_norm, F_tensor)
+            J_interest = compute_fisher_interest_nuisance(J_full, nuisance_param_index=nuisance_idx)
+
+            current_loss_val = float('nan')
+            try:
+                if torch.det(J_interest) == 0: # Check for singularity
+                    # print(f"TraceInv Interest Opt Run {run_i+1} Step {step:4d} => J_interest singular, assign high loss.")
+                    loss = torch.tensor(float('inf'), device=F_tensor.device) # High loss for singular matrix
+                else:
+                    J_interest_inv = torch.linalg.inv(J_interest)
+                    loss = torch.trace(J_interest_inv) # Minimize trace of inverse
+
+                if not torch.isnan(loss) and not torch.isinf(loss):
+                    loss.backward()
+                    opt.step()
+                current_loss_val = loss.item()
+            except torch.linalg.LinAlgError:
+                # print(f"TraceInv Interest Opt Run {run_i+1} Step {step:4d} => LinAlgError, assign high loss.")
+                current_loss_val = float('inf')
+
+
+            with torch.no_grad():
+                cur_norm_e = torch.linalg.norm(E_param)
+                E_param *= (photon_budget ** 0.5) / cur_norm_e
+
+            current_run_losses.append(current_loss_val)
+            if current_loss_val < best_loss_this_run:
+                best_loss_this_run = current_loss_val
+                # Update best_vec based on the current E_param after normalization
+                E_norm_update = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+                best_vec_this_run = E_norm_update.detach().clone()
+
+
+            if step % 500 == 0 :
+                 print(f"TraceInv Interest Opt Run {run_i+1}/{runs} Step {step:4d} => Tr(J_interest^-1)={current_loss_val:.3e}")
+
+        all_loss_curves_all_runs.append(current_run_losses)
+        print(f"Run {run_i+1}/{runs} final Tr(J_interest^-1) = {best_loss_this_run:.3e}")
+
+        if best_vec_this_run is not None: # Check if a valid vector was found for this run
+            if best_loss_overall is None or best_loss_this_run < best_loss_overall:
+                best_loss_overall = best_loss_this_run
+                best_vec_overall = best_vec_this_run
+
+    return best_vec_overall.cpu().numpy() if best_vec_overall is not None else None, best_loss_overall, all_loss_curves_all_runs
+
+print("\n--- Minimizing Tr(J_interest|nuisance_rotation ^ -1) ---")
+E_traceinv_interest_nuisance_parts, best_traceinv_interest_nuisance, all_traceinv_interest_loss_curves = torch_optimize_traceinv_interest_nuisance(
+    F_tensor_torch, N_in=N_in, steps=3000, lr=1e-3, photon_budget=photon_budget, nuisance_idx=2, runs=multi_runs
+)
+
+if E_traceinv_interest_nuisance_parts is not None:
+    E_traceinv_interest_nuisance = E_traceinv_interest_nuisance_parts[:, 0] + 1j * E_traceinv_interest_nuisance_parts[:, 1]
+    print(f"Best Tr(J_interest|nuisance_rotation ^ -1) = {best_traceinv_interest_nuisance:.3e}")
+
+    base_sim.reset()
+    base_sim.set_input_field_kx(kx_array, E_traceinv_interest_nuisance)
+    base_sim.solve_fields()
+    base_sim.visualize_intensity()
+    plt.title(f"Wavefront for Min Tr(J_interest|nuisance_rotation ^-1)\nTr = {best_traceinv_interest_nuisance:.2e}")
+    plt.show()
+
+    plt.figure(figsize=(7,5))
+    colors = plt.cm.viridis(np.linspace(0,1,len(all_traceinv_interest_loss_curves)))
+    for i, lc in enumerate(all_traceinv_interest_loss_curves):
+        plt.plot(lc, color=colors[i], alpha=0.7, label=f"Run {i+1}")
+    plt.xlabel("Iteration")
+    plt.ylabel("Tr(J_interest|nuisance_rotation ^ -1)")
+    plt.title("Loss for Min Tr(J_interest|nuisance_rotation ^ -1)")
+    plt.yscale('symlog', linthresh=1e-1)
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.show()
+else:
+    print("Optimization for Min Tr(J_interest|nuisance_rotation ^ -1) failed.")
+    E_traceinv_interest_nuisance = None
+
+if E_traceinv_interest_nuisance is not None:
+    wavefronts_dict[r"Min Tr($J_{\psi|\phi}^{-1}$)"] = normalize_wavefront(E_traceinv_interest_nuisance, photon_budget)
+else:
+    wavefronts_dict[r"Min Tr($J_{\psi|\phi}^{-1}$)"] = np.zeros(N_in, dtype=complex)
+
+# %% 15) Optimization Maximizing Smallest Eigenvalue of J_interest|nuisance_rotation
+
+losses_spec_interest_nuisance = []
+torch.manual_seed(15) # New seed
+
+def torch_optimize_spec_interest_nuisance(F_tensor, N_in, steps=2000, lr=1e-3, photon_budget=1, nuisance_idx=2):
+    E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
+    with torch.no_grad():
+        norm_init = torch.linalg.norm(E_param)
+        E_param *= (photon_budget ** 0.5) / norm_init
+
+    opt = torch.optim.Adam([E_param], lr=lr)
+    best_min_eig_val = None
+    best_vec = None
+    current_losses = []
+
+    for step in range(steps):
+        opt.zero_grad()
+        E_norm = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+        J_full = fisher_3x3(E_norm, F_tensor)
+        J_interest = compute_fisher_interest_nuisance(J_full, nuisance_param_index=nuisance_idx)
+
+        # Initialize report variable
+        current_min_eig_for_loss_calculation = float('-inf')
+
+        try:
+            if torch.det(J_interest) < 1e-12: # Check for near singularity to avoid issues with eigvalsh
+                # print(f"Spec Interest Opt Step {step:4d} => J_interest nearly singular for eigval.")
+                loss = torch.tensor(float('inf'), device=F_tensor.device) # Effectively -infinity for min_eig, leading to large loss
+                current_min_eig_for_loss_calculation = float('-inf')
+            else:
+                eigvals_interest = torch.linalg.eigvalsh(J_interest) # Eigenvalues of Hermitian matrix
+                min_eig_interest = eigvals_interest[0]
+                loss = -min_eig_interest # Maximize smallest eigenvalue
+                current_min_eig_for_loss_calculation = min_eig_interest.item()
+
+            if not torch.isnan(loss) and not torch.isinf(loss):
+                loss.backward()
+                opt.step()
+
+        except torch.linalg.LinAlgError:
+            # print(f"Spec Interest Opt Step {step:4d} => LinAlgError for eigval calculation.")
+            loss = torch.tensor(float('inf'), device=F_tensor.device) # Assign large loss
+            current_min_eig_for_loss_calculation = float('-inf') # If error, assume worst case
+
+        # Normalize E_param after optimizer step
+        with torch.no_grad():
+            cur_norm_e = torch.linalg.norm(E_param)
+            if cur_norm_e > 1e-9: # Avoid division by zero if E_param becomes zero
+                 E_param *= (photon_budget ** 0.5) / cur_norm_e
+
+            # Re-calculate for reporting and best_vec update based on the normalized E_param
+            E_norm_report = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param) # Use updated E_param
+            J_full_report = fisher_3x3(E_norm_report, F_tensor)
+            J_interest_report = compute_fisher_interest_nuisance(J_full_report, nuisance_param_index=nuisance_idx)
+            current_min_eig_report_float = float('-inf') # Initialize as float
+            try:
+                 if torch.det(J_interest_report) > 1e-12:
+                     eigvals_report = torch.linalg.eigvalsh(J_interest_report)
+                     current_min_eig_report_float = eigvals_report[0].item()
+            except torch.linalg.LinAlgError:
+                 pass # current_min_eig_report_float remains float('-inf')
+
+        # Use math.isinf and math.isnan for Python floats
+        if not math.isinf(current_min_eig_report_float) and not math.isnan(current_min_eig_report_float):
+            if best_min_eig_val is None or current_min_eig_report_float > best_min_eig_val:
+                best_min_eig_val = current_min_eig_report_float
+                best_vec = E_norm_report.detach().clone()
+            current_losses.append(-current_min_eig_report_float) # Store negative min_eig as loss
+        else:
+            # If current_min_eig_report_float is inf or nan, store a nan or a representation of a failed step
+            current_losses.append(float('nan'))
+
+        if step % 100 == 0:
+            print(f"Spec Interest (Nuisance) Opt Step {step:4d} => min_eig(J_interest)={current_min_eig_report_float:.3e}")
+
+    return best_vec.cpu().numpy() if best_vec is not None else None, best_min_eig_val, current_losses
+
+losses_spec_interest_nuisance = [] # This might be redundant if current_losses from function is used directly
+torch.manual_seed(15) # New seed
+
+print("\n--- Maximizing Min Eigenvalue of J_interest|nuisance_rotation ---")
+# Ensure F_tensor_torch, N_in, photon_budget, kx_array, base_sim are defined from previous parts of your script
+E_spec_interest_nuisance_parts, best_spec_interest_nuisance, losses_spec_interest_nuisance_run = torch_optimize_spec_interest_nuisance(
+    F_tensor_torch, N_in=N_in, steps=2000, lr=1e-3, photon_budget=photon_budget, nuisance_idx=2
+)
+
+if E_spec_interest_nuisance_parts is not None and best_spec_interest_nuisance is not None :
+    E_spec_interest_nuisance = E_spec_interest_nuisance_parts[:, 0] + 1j * E_spec_interest_nuisance_parts[:, 1]
+    print(f"Best min_eig(J_interest|nuisance_rotation) = {best_spec_interest_nuisance:.3e}")
+
+    base_sim.reset()
+    base_sim.set_input_field_kx(kx_array, E_spec_interest_nuisance)
+    base_sim.solve_fields()
+    base_sim.visualize_intensity()
+    plt.title(f"Wavefront for Max MinEig(J_interest|nuisance_rotation)\nMinEig = {best_spec_interest_nuisance:.2e}")
+    plt.show()
+
+    plt.figure()
+    plt.plot(losses_spec_interest_nuisance_run) # Plot the losses returned by the function
+    plt.xlabel("Iteration")
+    plt.ylabel("-min_eig(J_interest|nuisance_rotation)")
+    plt.title("Loss for Max MinEig(J_interest|nuisance_rotation)")
+    plt.yscale('symlog', linthresh=np.nanmin(np.abs(losses_spec_interest_nuisance_run))/100 if not all(np.isnan(losses_spec_interest_nuisance_run)) else 1e-3, linscale=0.5)
+    plt.grid(True, linestyle=":")
+    plt.show()
+else:
+    print("Optimization for Max MinEig(J_interest|nuisance_rotation) failed to find a valid wavefront or result.")
+    E_spec_interest_nuisance = None # Ensure it's defined for later sections
+
+# Add to wavefronts_dict (handle potential None)
+if E_spec_interest_nuisance is not None:
+    wavefronts_dict[r"Max MinEig($J_{\psi|\phi}$)"] = normalize_wavefront(E_spec_interest_nuisance, photon_budget)
+else:
+    wavefronts_dict[r"Max MinEig($J_{\psi|\phi}$)"] = np.zeros(N_in, dtype=complex) # Placeholder if failed
+
+
+# %% 16) Updated Comparisons: Multi-Param Fisher, CRLB, J and J^-1
+
+print("\n--- Updated Full Wavefront Comparisons (including nuisance-aware) ---")
+
+# Ensure all wavefronts are normalized and added to the dictionary correctly
+# The individual sections 13, 14, 15 should have handled adding their respective wavefronts.
+# Check if any are None and replace with a zero vector if so, to avoid errors in visualization functions,
+# though ideally, optimization should yield a valid vector.
+for key in [r"Max Det($J_{\psi|\phi}$)", r"Min Tr($J_{\psi|\phi}^{-1}$)", r"Max MinEig($J_{\psi|\phi}$)",]:
+    if key not in wavefronts_dict or wavefronts_dict[key] is None:
+        print(f"Warning: Wavefront for {key} was not successfully optimized. Using placeholder for visualization.")
+        wavefronts_dict[key] = normalize_wavefront(np.random.randn(N_in) + 1j*np.random.randn(N_in), photon_budget)
+
+
+# Re-run visualization_multi_param_fisher_comparison
+print("\nVisualizing Multi-Param Fisher properties for ALL wavefronts (including nuisance-aware):")
+visualize_multi_param_fisher_comparison(
+    wavefronts_dict, F_tensor_torch, figure_title="Comparison of ALL Wavefronts (incl. Nuisance-Aware)"
+)
+
+# Re-run visualize_crlb_comparison
+print("\nVisualizing CRLB for ALL wavefronts (including nuisance-aware):")
+visualize_crlb_comparison(
+    wavefronts_dict,
+    F_tensor_torch,
+    sim_kwargs, # Make sure sim_kwargs is defined
+    base_dipoles, # Make sure base_dipoles is defined
+    angles_deg, # Make sure angles_deg is defined
+    photon_budget,
+    kx_array, # Make sure kx_array is defined
+    figure_title="CRLB Comparison for ALL Wavefronts (incl. Nuisance-Aware)",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+)
+
+# Re-run visualize_J_and_inverse
+print("\nVisualizing J and J^-1 for ALL wavefronts (including nuisance-aware):")
+visualize_J_and_inverse(
+    wavefronts_dict,
+    F_tensor_torch,
+    title="Comparison of J and J^-1 for ALL Wavefronts (incl. Nuisance-Aware)"
+)
+
+# %% 17) Updated Pareto Frontier Plot (including nuisance-aware wavefronts)
+
+print("\n--- Updated Pareto Frontier Plot (including nuisance-aware) ---")
+
+# Ensure all_keys for CRLB calculations and plotting includes the new wavefronts
+all_keys_pareto_updated = list(wavefronts_dict.keys()) # Use all keys from the dictionary
+
+crlb_dict_pareto_updated = {}
+for key in all_keys_pareto_updated:
+    wf = wavefronts_dict[key]
+    if wf is None or np.all(wf==0): # Handle cases where optimization might have failed
+        print(f"Warning: Wavefront for key '{key}' is None or zeros. Assigning NaN CRLBs for Pareto plot.")
+        crlb_dict_pareto_updated[key] = np.array([float('nan'), float('nan'), float('nan')])
+        continue
+    try:
+        J_mat_pareto = compute_fisher_matrix_for_wavefront(wf, F_tensor_torch)
+        if np.linalg.det(J_mat_pareto) == 0:
+            crlb_dict_pareto_updated[key] = np.array([float('inf'), float('inf'), float('inf')])
+        else:
+            crlb_pareto = np.sqrt(np.diag(np.linalg.inv(J_mat_pareto)))
+            crlb_dict_pareto_updated[key] = crlb_pareto
+    except Exception as e:
+        print(f"Error computing CRLB for {key} in Pareto: {e}")
+        crlb_dict_pareto_updated[key] = np.array([float('nan'), float('nan'), float('nan')])
+
+
+crlb_array_pareto_updated = np.array([crlb_dict_pareto_updated[key] for key in all_keys_pareto_updated])
+
+# Identify nuisance-aware and other multi-objective optimization wavefronts for different markers/colors
+nuisance_aware_keys = [r"Max Det($J_{\psi|\phi}$)", r"Min Tr($J_{\psi|\phi}^{-1}$)", r"Max MinEig($J_{\psi|\phi}$)"]
+multi_obj_original_keys = ["LogLin", "OffDiag", "SubDet"] # From your section 11
+
+markers_pareto_updated = []
+colors_pareto_updated = []
+
+for key in all_keys_pareto_updated:
+    if key in nuisance_aware_keys:
+        markers_pareto_updated.append('^') # Triangle up for new nuisance-aware
+        colors_pareto_updated.append('green')
+    elif key in multi_obj_original_keys:
+        markers_pareto_updated.append('s') # Square for original multi-objective
+        colors_pareto_updated.append('red')
+    elif key in [r"Max $\mathcal{J}_x$", r"Max $\mathcal{J}_z$", r"Max $\mathcal{J}_\theta$"]:
+        markers_pareto_updated.append('x') # Cross for single-param MIS
+        colors_pareto_updated.append('purple')
+    else:
+        markers_pareto_updated.append('o') # Circle for others (Max Tr(J), Max Det(J), etc.)
+        colors_pareto_updated.append('blue')
+
+fig_pareto_updated, axes_pareto_updated = plt.subplots(1, 2, figsize=(14, 6))
+
+# Plot 1: (CRLB_x + CRLB_z) vs CRLB_theta
+# Filter out NaN values for plotting
+valid_indices_plot1 = ~np.isnan(crlb_array_pareto_updated[:,0]) & ~np.isnan(crlb_array_pareto_updated[:,1]) & ~np.isnan(crlb_array_pareto_updated[:,2])
+x1_pareto = (crlb_array_pareto_updated[valid_indices_plot1, 0] + crlb_array_pareto_updated[valid_indices_plot1, 1])
+y1_pareto = crlb_array_pareto_updated[valid_indices_plot1, 2]
+keys_plot1 = [all_keys_pareto_updated[i] for i, valid in enumerate(valid_indices_plot1) if valid]
+markers_plot1 = [markers_pareto_updated[i] for i, valid in enumerate(valid_indices_plot1) if valid]
+colors_plot1 = [colors_pareto_updated[i] for i, valid in enumerate(valid_indices_plot1) if valid]
+
+
+ax1_pareto = axes_pareto_updated[0]
+for i in range(len(keys_plot1)):
+    ax1_pareto.scatter(
+        x1_pareto[i], y1_pareto[i], s=100, marker=markers_plot1[i], color=colors_plot1[i], label=keys_plot1[i] if i < 10 else None, alpha=0.7 # Limit labels to avoid clutter
+    )
+# Annotations can be very cluttered; consider adding them selectively for key points or using interactive plots
+# for i, key in enumerate(keys_plot1):
+#     ax1_pareto.annotate(key, (x1_pareto[i], y1_pareto[i]), xytext=(5,5), textcoords="offset points", fontsize=8, alpha=0.7)
+
+ax1_pareto.set_xlabel("CRLB_x + CRLB_z (Sum of Position CRLBs)")
+ax1_pareto.set_ylabel("CRLB_θ (Rotation CRLB)")
+ax1_pareto.set_title("Pareto: Position Estimation vs. Rotation Estimation")
+ax1_pareto.grid(True, linestyle=":")
+ax1_pareto.set_xscale('log')
+ax1_pareto.set_yscale('log')
+# ax1_pareto.legend(fontsize='small', loc='best') # Legend can be very crowded
+
+# Plot 2: CRLB_x vs CRLB_z
+valid_indices_plot2 = ~np.isnan(crlb_array_pareto_updated[:,0]) & ~np.isnan(crlb_array_pareto_updated[:,1])
+x2_pareto = crlb_array_pareto_updated[valid_indices_plot2, 0]
+y2_pareto = crlb_array_pareto_updated[valid_indices_plot2, 1]
+keys_plot2 = [all_keys_pareto_updated[i] for i, valid in enumerate(valid_indices_plot2) if valid]
+markers_plot2 = [markers_pareto_updated[i] for i, valid in enumerate(valid_indices_plot2) if valid]
+colors_plot2 = [colors_pareto_updated[i] for i, valid in enumerate(valid_indices_plot2) if valid]
+
+ax2_pareto = axes_pareto_updated[1]
+for i in range(len(keys_plot2)):
+    ax2_pareto.scatter(
+        x2_pareto[i], y2_pareto[i], s=100, marker=markers_plot2[i], color=colors_plot2[i], label=keys_plot2[i] if i < 10 else None, alpha=0.7
+    )
+
+ax2_pareto.set_xlabel("CRLB_x")
+ax2_pareto.set_ylabel("CRLB_z")
+ax2_pareto.set_title("Pareto: CRLB_x vs. CRLB_z")
+ax2_pareto.grid(True, linestyle=":")
+ax2_pareto.set_xscale('log')
+ax2_pareto.set_yscale('log')
+# ax2_pareto.legend(fontsize='small', loc='best')
+
+
+# Create a single legend for the figure
+handles, labels = [], []
+# Collect unique legend entries
+unique_labels_for_legend = {}
+for i in range(len(all_keys_pareto_updated)):
+    # Use a generic label for each marker type to simplify the legend
+    marker_type_label = "Other Optimal"
+    if all_keys_pareto_updated[i] in nuisance_aware_keys: marker_type_label = "Nuisance-Aware ($J_{\psi|\phi}$)"
+    elif all_keys_pareto_updated[i] in multi_obj_original_keys: marker_type_label = "Multi-Objective (Original)"
+    elif all_keys_pareto_updated[i] in [r"Max $\mathcal{J}_x$", r"Max $\mathcal{J}_z$", r"Max $\mathcal{J}_\theta$"]: marker_type_label = "Single-Param MIS"
+
+    if marker_type_label not in unique_labels_for_legend:
+         # Create a dummy scatter plot point for the legend entry
+        unique_labels_for_legend[marker_type_label] = plt.Line2D([0], [0], marker=markers_pareto_updated[i], color=colors_pareto_updated[i], linestyle='None', markersize=10)
+
+fig_pareto_updated.legend(unique_labels_for_legend.values(), unique_labels_for_legend.keys(), loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.03))
+
+plt.tight_layout(rect=[0, 0.05, 1, 0.95]) # Adjust layout to make space for legend
+plt.suptitle("Updated Pareto Frontier Comparison (incl. Nuisance-Aware Wavefronts)", fontsize=14)
+plt.show()
