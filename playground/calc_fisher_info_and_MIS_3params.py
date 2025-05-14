@@ -1724,190 +1724,142 @@ if E_traceinv_interest_nuisance is not None:
 else:
     wavefronts_dict[r"Min Tr($J_{\psi|\phi}^{-1}$)"] = np.zeros(N_in, dtype=complex)
 
-# %% 15) Optimization Maximizing Smallest Eigenvalue of J_interest|nuisance_rotation
+# %% 15) Optimization Maximizing Smallest Eigenvalue of J_interest|nuisance_rotation [MULTI-RUN]
 
-losses_spec_interest_nuisance = []
-torch.manual_seed(15)  # New seed
+torch.manual_seed(15) # Consistent seed for this section's start
 
+def torch_optimize_spec_interest_nuisance_multirun(F_tensor, N_in, steps=2000, lr=1e-3, photon_budget=1, nuisance_idx=2, runs=5):
+    best_min_eig_val_overall = None 
+    best_vec_overall = None
+    all_loss_curves_all_runs = []
 
-def torch_optimize_spec_interest_nuisance(
-    F_tensor, N_in, steps=2000, lr=1e-3, photon_budget=1, nuisance_idx=2
-):
-    E_param = torch.randn(
-        (N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device
-    )
-    with torch.no_grad():
-        norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget ** 0.5) / norm_init
-
-    opt = torch.optim.Adam([E_param], lr=lr)
-    best_min_eig_val = None
-    best_vec = None
-    current_losses = []
-
-    for step in range(steps):
-        opt.zero_grad()
-        E_norm = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
-        J_full = fisher_3x3(E_norm, F_tensor)
-        J_interest = compute_fisher_interest_nuisance(
-            J_full, nuisance_param_index=nuisance_idx
-        )
-
-        # Initialize report variable
-        current_min_eig_for_loss_calculation = float("-inf")
-
-        try:
-            if (
-                torch.det(J_interest) < 1e-12
-            ):  # Check for near singularity to avoid issues with eigvalsh
-                # print(f"Spec Interest Opt Step {step:4d} => J_interest nearly singular for eigval.")
-                loss = torch.tensor(
-                    float("inf"), device=F_tensor.device
-                )  # Effectively -infinity for min_eig, leading to large loss
-                current_min_eig_for_loss_calculation = float("-inf")
-            else:
-                eigvals_interest = torch.linalg.eigvalsh(
-                    J_interest
-                )  # Eigenvalues of Hermitian matrix
-                min_eig_interest = eigvals_interest[0]
-                loss = -min_eig_interest  # Maximize smallest eigenvalue
-                current_min_eig_for_loss_calculation = min_eig_interest.item()
-
-            if not torch.isnan(loss) and not torch.isinf(loss):
-                loss.backward()
-                opt.step()
-
-        except torch.linalg.LinAlgError:
-            # print(f"Spec Interest Opt Step {step:4d} => LinAlgError for eigval calculation.")
-            loss = torch.tensor(
-                float("inf"), device=F_tensor.device
-            )  # Assign large loss
-            current_min_eig_for_loss_calculation = float(
-                "-inf"
-            )  # If error, assume worst case
-
-        # Normalize E_param after optimizer step
+    for run_i in range(runs):
+        E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
         with torch.no_grad():
-            cur_norm_e = torch.linalg.norm(E_param)
-            if cur_norm_e > 1e-9:  # Avoid division by zero if E_param becomes zero
-                E_param *= (photon_budget ** 0.5) / cur_norm_e
+            norm_init = torch.linalg.norm(E_param)
+            if norm_init > 1e-12: # Avoid division by zero for very small initial norms
+                E_param *= (photon_budget ** 0.5) / norm_init
+            else: # Re-initialize if norm is too small
+                E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
+                E_param *= (photon_budget ** 0.5) / torch.linalg.norm(E_param) # Re-normalize
 
-            # Re-calculate for reporting and best_vec update based on the normalized E_param
-            E_norm_report = (
-                (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
-            )  # Use updated E_param
-            J_full_report = fisher_3x3(E_norm_report, F_tensor)
-            J_interest_report = compute_fisher_interest_nuisance(
-                J_full_report, nuisance_param_index=nuisance_idx
-            )
-            current_min_eig_report_float = float("-inf")  # Initialize as float
-            try:
-                if torch.det(J_interest_report) > 1e-12:
-                    eigvals_report = torch.linalg.eigvalsh(J_interest_report)
-                    current_min_eig_report_float = eigvals_report[0].item()
-            except torch.linalg.LinAlgError:
-                pass  # current_min_eig_report_float remains float('-inf')
+        opt = torch.optim.Adam([E_param], lr=lr)
+        
+        current_run_losses = []
+        best_min_eig_this_run = None  
+        best_vec_this_run = None
 
-        # Use math.isinf and math.isnan for Python floats
-        if not math.isinf(current_min_eig_report_float) and not math.isnan(
-            current_min_eig_report_float
-        ):
-            if (
-                best_min_eig_val is None
-                or current_min_eig_report_float > best_min_eig_val
-            ):
-                best_min_eig_val = current_min_eig_report_float
-                best_vec = E_norm_report.detach().clone()
-            current_losses.append(
-                -current_min_eig_report_float
-            )  # Store negative min_eig as loss
-        else:
-            # If current_min_eig_report_float is inf or nan, store a nan or a representation of a failed step
-            current_losses.append(float("nan"))
+        print(f"\nSpec Interest (Nuisance) Opt - Run {run_i+1}/{runs}")
+        for step in range(steps):
+            opt.zero_grad()
+            
+            current_norm_e_param_for_loss = torch.linalg.norm(E_param)
+            # Let potential division by zero or small norm propagate if it occurs here, per instructions
+            E_param_normalized_for_loss = (photon_budget ** 0.5) * E_param / current_norm_e_param_for_loss
 
-        if step % 100 == 0:
-            print(
-                f"Spec Interest (Nuisance) Opt Step {step:4d} => min_eig(J_interest)={current_min_eig_report_float:.3e}"
-            )
+            J_full = fisher_3x3(E_param_normalized_for_loss, F_tensor)  
+            J_interest = compute_fisher_interest_nuisance(J_full, nuisance_param_index=nuisance_idx)
+            
+            # Calculate eigenvalues. If J_interest is not positive semi-definite or singular,
+            # eigvalsh might behave in specific ways or error out. Let it happen.
+            eigvals_interest = torch.linalg.eigvalsh(J_interest) 
+            min_eig_interest = eigvals_interest[0] # Smallest eigenvalue
+            loss = -min_eig_interest # We want to maximize the smallest eigenvalue
+            
+            # Per instructions, let NaN/Inf propagate. Do not skip backward() or step().
+            loss.backward()
+            opt.step()
 
-    return (
-        best_vec.cpu().numpy() if best_vec is not None else None,
-        best_min_eig_val,
-        current_losses,
-    )
+            # Post-step operations
+            with torch.no_grad():
+                cur_norm_e_param_after_step = torch.linalg.norm(E_param)  
+                if cur_norm_e_param_after_step > 1e-12: # Check to avoid division by zero if E_param became zero
+                    E_param *= (photon_budget ** 0.5) / cur_norm_e_param_after_step
+                # If E_param becomes NaN/Inf, this normalization will also become NaN/Inf.
+                
+                E_norm_report = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+                # Recalculate J_full_report and J_interest_report for accurate reporting if E_param changed
+                J_full_report = fisher_3x3(E_norm_report, F_tensor)
+                J_interest_report = compute_fisher_interest_nuisance(J_full_report, nuisance_param_index=nuisance_idx)
+                
+                eigvals_report = torch.linalg.eigvalsh(J_interest_report)
+                current_min_eig_report_item = eigvals_report[0].item() # Convert to float for Python logic
 
+            # Store loss for plotting (it's -min_eig)
+            # If min_eig_interest was NaN/Inf, loss.item() will be NaN/Inf
+            current_run_losses.append(loss.item()) 
 
-losses_spec_interest_nuisance = (
-    []
-)  # This might be redundant if current_losses from function is used directly
-torch.manual_seed(15)  # New seed
+            # Update best for this run (use float values for comparison)
+            if not (math.isnan(current_min_eig_report_item) or math.isinf(current_min_eig_report_item)):
+                if best_min_eig_this_run is None or current_min_eig_report_item > best_min_eig_this_run:
+                    best_min_eig_this_run = current_min_eig_report_item
+                    best_vec_this_run = E_norm_report.detach().clone()
 
-print("\n--- Maximizing Min Eigenvalue of J_interest|nuisance_rotation ---")
-# Ensure F_tensor_torch, N_in, photon_budget, kx_array, base_sim are defined from previous parts of your script
-(
-    E_spec_interest_nuisance_parts,
-    best_spec_interest_nuisance,
-    losses_spec_interest_nuisance_run,
-) = torch_optimize_spec_interest_nuisance(
-    F_tensor_torch,
-    N_in=N_in,
-    steps=2000,
-    lr=1e-3,
-    photon_budget=photon_budget,
-    nuisance_idx=2,
+            if step % 200 == 0:  
+                val_to_print = f"{current_min_eig_report_item:.3e}" if not (math.isnan(current_min_eig_report_item) or math.isinf(current_min_eig_report_item)) else 'NaN/Inf'
+                print(f"  Step {step:4d} => min_eig(J_interest)={val_to_print}")
+        
+        all_loss_curves_all_runs.append(current_run_losses)
+        val_this_run_to_print = f"{best_min_eig_this_run:.3e}" if best_min_eig_this_run is not None and not (math.isnan(best_min_eig_this_run) or math.isinf(best_min_eig_this_run)) else 'NaN/Inf or No Valid Found'
+        print(f"Run {run_i+1}/{runs} final best min_eig(J_interest) = {val_this_run_to_print}")
+        
+        if best_vec_this_run is not None and best_min_eig_this_run is not None:
+            if not (math.isnan(best_min_eig_this_run) or math.isinf(best_min_eig_this_run)):
+                if best_min_eig_val_overall is None or best_min_eig_this_run > best_min_eig_val_overall:
+                    best_min_eig_val_overall = best_min_eig_this_run
+                    best_vec_overall = best_vec_this_run
+                
+    return best_vec_overall.cpu().numpy() if best_vec_overall is not None else None, best_min_eig_val_overall, all_loss_curves_all_runs
+
+print("\n--- Maximizing Min Eigenvalue of J_interest|nuisance_rotation [MULTI-RUN] ---")
+# Assuming multi_runs is defined in your script
+E_spec_interest_nuisance_parts, best_spec_interest_nuisance, all_losses_spec_interest_nuisance = torch_optimize_spec_interest_nuisance_multirun(
+    F_tensor_torch, N_in=N_in, steps=2000, lr=1e-3, photon_budget=photon_budget, nuisance_idx=2, runs=multi_runs 
 )
 
-if (
-    E_spec_interest_nuisance_parts is not None
-    and best_spec_interest_nuisance is not None
-):
-    E_spec_interest_nuisance = (
-        E_spec_interest_nuisance_parts[:, 0] + 1j * E_spec_interest_nuisance_parts[:, 1]
-    )
-    print(
-        f"Best min_eig(J_interest|nuisance_rotation) = {best_spec_interest_nuisance:.3e}"
-    )
+if E_spec_interest_nuisance_parts is not None and best_spec_interest_nuisance is not None:
+    E_spec_interest_nuisance = E_spec_interest_nuisance_parts[:, 0] + 1j * E_spec_interest_nuisance_parts[:, 1]
+    print(f"Overall Best min_eig(J_interest|nuisance_rotation) after multi-run = {best_spec_interest_nuisance:.3e}")
 
     base_sim.reset()
-    base_sim.set_input_field_kx(kx_array, E_spec_interest_nuisance)
+    base_sim.set_input_field_kx(kx_array, E_spec_interest_nuisance) 
     base_sim.solve_fields()
-    base_sim.visualize_intensity()
-    plt.title(
-        f"Wavefront for Max MinEig(J_interest|nuisance_rotation)\nMinEig = {best_spec_interest_nuisance:.2e}"
-    )
+    base_sim.visualize_intensity()  
+    plt.title(f"Wavefront for Max MinEig(J_interest|nuisance_rotation) [Multi-Run]\nMinEig = {best_spec_interest_nuisance:.2e}")
     plt.show()
 
-    plt.figure()
-    plt.plot(
-        losses_spec_interest_nuisance_run
-    )  # Plot the losses returned by the function
+    plt.figure(figsize=(7,5))
+    colors_loss_spec_interest = plt.cm.viridis(np.linspace(0,1,len(all_losses_spec_interest_nuisance))) # Changed colormap for variety
+    for i, lc in enumerate(all_losses_spec_interest_nuisance):
+        lc_plot = [val if not math.isnan(val) else np.nan for val in lc] 
+        plt.plot(lc_plot, color=colors_loss_spec_interest[i], alpha=0.7, label=f"Run {i+1}")
     plt.xlabel("Iteration")
-    plt.ylabel("-min_eig(J_interest|nuisance_rotation)")
-    plt.title("Loss for Max MinEig(J_interest|nuisance_rotation)")
-    plt.yscale(
-        "symlog",
-        linthresh=np.nanmin(np.abs(losses_spec_interest_nuisance_run)) / 100
-        if not all(np.isnan(losses_spec_interest_nuisance_run))
-        else 1e-3,
-        linscale=0.5,
-    )
+    plt.ylabel("-min_eig(J_interest|nuisance_rotation)") # Loss is negative of the value we maximize
+    plt.title("Loss Curves for Max MinEig(J_interest|nuisance_rotation) [Multi-Run]")
+    
+    valid_losses_flat = [x for x_list in all_losses_spec_interest_nuisance for x in x_list if not (math.isnan(x) or math.isinf(x))]
+    if valid_losses_flat:
+        # For symlog, linthresh must be positive. Calculate based on min absolute non-zero value.
+        abs_losses = np.abs(valid_losses_flat)
+        min_abs_loss = np.min(abs_losses[np.nonzero(abs_losses)]) if len(abs_losses[np.nonzero(abs_losses)]) > 0 else 1e-5
+        linthresh_val = min_abs_loss / 10 if min_abs_loss > 1e-9 else 1e-5 
+    else:
+        linthresh_val = 1e-5 
+    plt.yscale('symlog', linthresh=linthresh_val, linscale=0.5)
+    plt.legend()
     plt.grid(True, linestyle=":")
+    plt.tight_layout()
     plt.show()
 else:
-    print(
-        "Optimization for Max MinEig(J_interest|nuisance_rotation) failed to find a valid wavefront or result."
-    )
-    E_spec_interest_nuisance = None  # Ensure it's defined for later sections
+    print("Optimization for Max MinEig(J_interest|nuisance_rotation) [Multi-Run] failed to find a valid wavefront or result.")
+    E_spec_interest_nuisance = None 
 
-# Add to wavefronts_dict (handle potential None)
+key_for_dict_spec_psi_phi = r"Max MinEig($J_{\psi|\phi}$)"  
 if E_spec_interest_nuisance is not None:
-    wavefronts_dict[r"Max MinEig($J_{\psi|\phi}$)"] = normalize_wavefront(
-        E_spec_interest_nuisance, photon_budget
-    )
+    wavefronts_dict[key_for_dict_spec_psi_phi] = normalize_wavefront(E_spec_interest_nuisance, photon_budget)
 else:
-    wavefronts_dict[r"Max MinEig($J_{\psi|\phi}$)"] = np.zeros(
-        N_in, dtype=complex
-    )  # Placeholder if failed
+    if key_for_dict_spec_psi_phi not in wavefronts_dict:
+         wavefronts_dict[key_for_dict_spec_psi_phi] = np.zeros(N_in, dtype=complex)
 
 
 # %% 16) Updated Comparisons: Multi-Param Fisher, CRLB, J and J^-1
@@ -2164,4 +2116,149 @@ plt.tight_layout(rect=[0, 0.05, 1, 0.95])  # Adjust layout to make space for leg
 plt.suptitle(
     "Updated Pareto Frontier Comparison (incl. Nuisance-Aware Wavefronts)", fontsize=14
 )
+plt.show()
+
+# %% 18) Pareto Frontier Plot with Individual Point Labels
+
+print("\n--- Pareto Frontier Plot with Individual Labels ---")
+
+all_keys_for_plot_18 = list(wavefronts_dict.keys())
+crlb_data_for_plot_18 = {}
+
+for key in all_keys_for_plot_18:
+    wf = wavefronts_dict[key]
+    try:
+        crlb_vals = compute_crlb_for_wavefront(wf, F_tensor_torch) 
+        # Ensure crlb_vals are float, not complex due to numerical precision issues
+        crlb_data_for_plot_18[key] = np.real(crlb_vals)
+    except np.linalg.LinAlgError: # Catching this specifically for plotting
+        print(f"Warning: LinAlgError computing CRLB for '{key}'. Assigning [inf, inf, inf].")
+        crlb_data_for_plot_18[key] = np.array([float('inf'), float('inf'), float('inf')])
+    except Exception as e: # Catch any other error during CRLB computation for a specific WF
+        print(f"Warning: Could not compute CRLB for '{key}' due to {e}. Assigning [nan, nan, nan].")
+        crlb_data_for_plot_18[key] = np.array([float('nan'), float('nan'), float('nan')])
+
+
+crlb_array_plot_18 = np.array([crlb_data_for_plot_18[key] for key in all_keys_for_plot_18])
+
+nuisance_aware_keys_plot_18 = [k for k in all_keys_for_plot_18 if "$J_{\psi|\phi}$" in k]
+multi_obj_original_keys_plot_18 = ["LogLin", "OffDiag", "SubDet"]
+single_param_mis_keys_plot_18 = [r"Max $\mathcal{J}_x$", r"Max $\mathcal{J}_z$", r"Max $\mathcal{J}_\theta$"]
+
+markers_plot_18 = []
+colors_plot_18 = []
+sizes_plot_18 = []
+
+for key in all_keys_for_plot_18:
+    if key in nuisance_aware_keys_plot_18:
+        markers_plot_18.append('^') 
+        colors_plot_18.append('green')
+        sizes_plot_18.append(80)
+    elif key in multi_obj_original_keys_plot_18:
+        markers_plot_18.append('s') 
+        colors_plot_18.append('red')
+        sizes_plot_18.append(80)
+    elif key in single_param_mis_keys_plot_18:
+        markers_plot_18.append('x') 
+        colors_plot_18.append('purple')
+        sizes_plot_18.append(100)
+    elif "Plane Waves" in key or "Random WF" in key: # Assuming these might be added to dict
+        markers_plot_18.append('.')
+        colors_plot_18.append('gray')
+        sizes_plot_18.append(30)
+    else:
+        markers_plot_18.append('o') 
+        colors_plot_18.append('blue')
+        sizes_plot_18.append(80)
+
+fig_pareto_labeled, axes_pareto_labeled = plt.subplots(1, 2, figsize=(18, 7)) # Increased figure size
+
+# Plot 1: (CRLB_x + CRLB_z) vs CRLB_theta
+ax1_labeled = axes_pareto_labeled[0]
+x_data_ax1 = crlb_array_plot_18[:, 0] + crlb_array_plot_18[:, 1]
+y_data_ax1 = crlb_array_plot_18[:, 2]
+
+for i, key in enumerate(all_keys_for_plot_18):
+    # Only plot if data is finite
+    if np.isfinite(x_data_ax1[i]) and np.isfinite(y_data_ax1[i]):
+        ax1_labeled.scatter(
+            x_data_ax1[i], y_data_ax1[i], 
+            s=sizes_plot_18[i], 
+            marker=markers_plot_18[i], 
+            color=colors_plot_18[i], 
+            alpha=0.7,
+            label=key # Can add label here if you want a legend too, or remove for pure annotation
+        )
+        ax1_labeled.annotate(
+            key,
+            (x_data_ax1[i], y_data_ax1[i]),
+            xytext=(5, 5), # Offset text slightly
+            textcoords="offset points",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.5) # Add a box for readability
+        )
+
+ax1_labeled.set_xlabel("CRLB_x + CRLB_z (Sum of Position Errors)")
+ax1_labeled.set_ylabel("CRLB_θ (Rotation Error)")
+ax1_labeled.set_title("Pareto: Sum of Position Errors vs. Rotation Error")
+ax1_labeled.grid(True, linestyle=":", alpha=0.7)
+ax1_labeled.set_xscale('log')
+ax1_labeled.set_yscale('log')
+
+# Plot 2: CRLB_x vs CRLB_z
+ax2_labeled = axes_pareto_labeled[1]
+x_data_ax2 = crlb_array_plot_18[:, 0]
+y_data_ax2 = crlb_array_plot_18[:, 1]
+
+for i, key in enumerate(all_keys_for_plot_18):
+    if np.isfinite(x_data_ax2[i]) and np.isfinite(y_data_ax2[i]):
+        ax2_labeled.scatter(
+            x_data_ax2[i], y_data_ax2[i], 
+            s=sizes_plot_18[i], 
+            marker=markers_plot_18[i], 
+            color=colors_plot_18[i], 
+            alpha=0.7,
+            label=key # Optional: for legend
+        )
+        ax2_labeled.annotate(
+            key,
+            (x_data_ax2[i], y_data_ax2[i]),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.5)
+        )
+
+ax2_labeled.set_xlabel("CRLB_x (x-shift Error)")
+ax2_labeled.set_ylabel("CRLB_z (z-shift Error)")
+ax2_labeled.set_title("Pareto: x-shift Error vs. z-shift Error")
+ax2_labeled.grid(True, linestyle=":", alpha=0.7)
+ax2_labeled.set_xscale('log')
+ax2_labeled.set_yscale('log')
+
+# Optional: Add a legend for marker types if desired, though direct labels are primary
+# Creating a custom legend for marker types:
+legend_elements = []
+seen_labels_for_legend = set()
+
+marker_map = {
+    "Nuisance-Aware ($J_{\psi|\phi}$)": ('^', 'green'),
+    "Multi-Objective (Original)": ('s', 'red'),
+    "Single-Param MIS": ('x', 'purple'),
+    "Other Optimal/Benchmark": ('o', 'blue'),
+    "Reference (Plane/Random)": ('.', 'gray')
+}
+
+for key_type, (marker, color) in marker_map.items():
+    if key_type not in seen_labels_for_legend:
+        legend_elements.append(plt.Line2D([0], [0], marker=marker, color='w', label=key_type,
+                                          markerfacecolor=color, markersize=10))
+        seen_labels_for_legend.add(key_type)
+
+# fig_pareto_labeled.legend(handles=legend_elements, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 0.03))
+# Decided against a general legend as individual annotations are primary. 
+# If a legend is desired, it can be added back.
+
+plt.suptitle("Pareto Frontier Comparison with Individual Labels", fontsize=16, y=0.99)
+plt.tight_layout(rect=[0, 0, 1, 0.97]) # Adjust rect to make space for suptitle
 plt.show()
