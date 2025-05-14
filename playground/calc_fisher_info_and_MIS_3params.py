@@ -1396,8 +1396,7 @@ for name, crlb in zip(wavefront_names, [crlb_mis, crlb_opt_crlb, crlb_opt_J_xx])
         print(f"  {param}: {crlb[i]:.3e}")
 
 
-# %% 13) Optimization Maximizing det(J_interest|nuisance_rotation)
-
+# %% 13) Optimization Maximizing det(J_interest|nuisance_rotation) [MULTI-RUN]
 
 def compute_fisher_interest_nuisance(J_full, nuisance_param_index=2):
     """
@@ -1415,7 +1414,7 @@ def compute_fisher_interest_nuisance(J_full, nuisance_param_index=2):
     elif nuisance_param_index == 1:  # z is nuisance, interest are x, theta
         indices_interest = [0, 2]
         J11 = J_full[
-            torch.tensor(indices_interest)[:, None], torch.tensor(indices_interest)
+            torch.tensor(indices_interest, device=J_full.device)[:, None], torch.tensor(indices_interest, device=J_full.device)
         ]
         J12 = J_full[indices_interest, nuisance_param_index].unsqueeze(1)
         J21 = J_full[nuisance_param_index, indices_interest].unsqueeze(0)
@@ -1430,171 +1429,157 @@ def compute_fisher_interest_nuisance(J_full, nuisance_param_index=2):
     else:
         raise ValueError("nuisance_param_index must be 0, 1, or 2")
 
-    if torch.det(J22) == 0:
-        # Handle singular J22 (e.g., return J11 or a penalized version)
-        # For simplicity, we might return J11, implying no information can be gained by accounting for nuisance
-        # Or, add a small epsilon to J22 to make it invertible, though this affects the result.
-        # For now, let's return NaN or raise an error if J22 is exactly singular.
-        # A very small determinant can also cause issues.
-        print(
-            "Warning: J22 is singular or near singular in compute_fisher_interest_nuisance."
+    # Check determinant of J22 before inversion
+    det_J22 = torch.det(J22)
+    if abs(det_J22.item()) < 1e-12: # Using a small threshold for near-singularity
+        # print(
+        #     "Warning: J22 is singular or near singular in compute_fisher_interest_nuisance. Applying regularization."
+        # )
+        # Apply regularization to J22. Ensure eye matrix is on the same device and dtype.
+        J22_inv = torch.linalg.inv(
+            J22 + torch.eye(J22.shape[0], device=J22.device, dtype=J22.dtype) * 1e-12
         )
-        # Return a matrix of NaNs or J11 if J22 is not invertible
-        # return torch.full_like(J11, float('nan'))
-        # A more robust approach might involve regularization or pseudo-inverse
-        try:
-            J22_inv = torch.linalg.inv(
-                J22 + torch.eye(J22.shape[0], device=J22.device) * 1e-12
-            )  # Regularization
-        except torch.linalg.LinAlgError:
-            return J11  # Fallback if still singular
     else:
         J22_inv = torch.linalg.inv(J22)
 
     J_interest_nuisance = J11 - J12 @ J22_inv @ J21
     return J_interest_nuisance
+torch.manual_seed(13) # Consistent seed for this section's start
 
+def torch_optimize_det_interest_nuisance_multirun(F_tensor, N_in, steps=1000, lr=1e-3, photon_budget=1, nuisance_idx=2, runs=5):
+    best_det_val_overall = None 
+    best_vec_overall = None
+    all_loss_curves_all_runs = []
 
-losses_det_interest_nuisance = []
-torch.manual_seed(13)  # New seed for this section
-
-
-def torch_optimize_det_interest_nuisance(
-    F_tensor, N_in, steps=1000, lr=1e-3, photon_budget=1, nuisance_idx=2
-):
-    E_param = torch.randn(
-        (N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device
-    )
-    with torch.no_grad():
-        norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget ** 0.5) / norm_init
-
-    opt = torch.optim.Adam([E_param], lr=lr)
-    best_det_val = None
-    best_vec = None
-
-    current_losses = []
-
-    for step in range(steps):
-        opt.zero_grad()
-        E_norm = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
-        J_full = fisher_3x3(
-            E_norm, F_tensor
-        )  # Assumes fisher_3x3 is defined and works with torch tensors
-        J_interest = compute_fisher_interest_nuisance(
-            J_full, nuisance_param_index=nuisance_idx
-        )
-
-        det_val_interest = torch.linalg.det(J_interest)
-        loss = -det_val_interest  # Maximize determinant
-
-        if torch.isnan(loss):
-            print(
-                f"Det Interest (Nuisance) Opt Step {step:4d} => NaN loss, skipping backward."
-            )
-            # Optionally, penalize or stop if NaN occurs
-            # For now, just don't update if loss is NaN
-        else:
-            loss.backward()
-            opt.step()
-
+    for run_i in range(runs):
+        E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
         with torch.no_grad():
-            cur_norm_e = torch.linalg.norm(
-                E_param
-            )  # Use E_param for consistent normalization update
-            E_param *= (photon_budget ** 0.5) / cur_norm_e
+            norm_init = torch.linalg.norm(E_param)
+            if norm_init > 1e-9: 
+                E_param *= (photon_budget ** 0.5) / norm_init
+            else: 
+                E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True, device=F_tensor.device)
+                E_param *= (photon_budget ** 0.5) / torch.linalg.norm(E_param)
 
-            # Re-calculate for reporting and best_vec update based on the normalized E_param
-            E_norm_report = (
-                (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
-            )
-            J_full_report = fisher_3x3(E_norm_report, F_tensor)
-            J_interest_report = compute_fisher_interest_nuisance(
-                J_full_report, nuisance_param_index=nuisance_idx
-            )
-            current_det_val_report = torch.linalg.det(J_interest_report)
+        opt = torch.optim.Adam([E_param], lr=lr)
+        
+        current_run_losses = []
+        best_det_this_run = None  
+        best_vec_this_run = None
 
-        if not torch.isnan(current_det_val_report):
-            if best_det_val is None or current_det_val_report.item() > best_det_val:
-                best_det_val = current_det_val_report.item()
-                best_vec = E_norm_report.detach().clone()
-            current_losses.append(
-                -current_det_val_report.item()
-            )  # Store negative det as loss
-        else:
-            current_losses.append(float("nan"))
+        print(f"\nDet Interest (Nuisance) Opt - Run {run_i+1}/{runs}")
+        for step in range(steps):
+            opt.zero_grad()
+            # Normalize E_param before using it to calculate J
+            with torch.no_grad(): # Ensure normalization doesn't affect gradients for E_param
+                current_norm_for_E_norm = torch.linalg.norm(E_param)
+                if current_norm_for_E_norm > 1e-9:
+                    E_norm = (photon_budget ** 0.5) * E_param / current_norm_for_E_norm
+                else: # If E_param somehow became zero, re-initialize or handle
+                    E_norm = E_param # Avoid division by zero, loss will likely be NaN or inf
+            
+            # Ensure E_norm requires grad if E_param does, or use E_param and normalize inside loss calculation
+            # For simplicity, let's re-attach E_norm to the graph if E_param is part of it
+            # Or, more directly, calculate loss based on E_param and handle normalization within
+            # Let's use E_param directly and normalize inside the path to loss
+            E_param_normalized_for_loss = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
 
-        if step % 100 == 0:
-            if not torch.isnan(current_det_val_report):
-                print(
-                    f"Det Interest (Nuisance) Opt Step {step:4d} => det(J_interest)={current_det_val_report.item():.3e}"
-                )
+
+            J_full = fisher_3x3(E_param_normalized_for_loss, F_tensor) 
+            J_interest = compute_fisher_interest_nuisance(J_full, nuisance_param_index=nuisance_idx)
+            
+            current_det_val_interest = torch.linalg.det(J_interest)
+            loss = -current_det_val_interest # We want to maximize determinant
+            
+            if torch.isnan(loss) or torch.isinf(loss):
+                pass # Skip backward and step if loss is invalid
             else:
-                print(
-                    f"Det Interest (Nuisance) Opt Step {step:4d} => det(J_interest)= NaN"
-                )
+                loss.backward()
+                opt.step()
 
-    return (
-        best_vec.cpu().numpy() if best_vec is not None else None,
-        best_det_val,
-        current_losses,
-    )
+            with torch.no_grad():
+                cur_norm_e_param = torch.linalg.norm(E_param) 
+                if cur_norm_e_param > 1e-9: E_param *= (photon_budget ** 0.5) / cur_norm_e_param
+                
+                # For reporting and best_vec, use the current state of E_param, normalized
+                E_norm_report = (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
+                J_full_report = fisher_3x3(E_norm_report, F_tensor)
+                J_interest_report = compute_fisher_interest_nuisance(J_full_report, nuisance_param_index=nuisance_idx)
+                current_det_val_report_item = torch.linalg.det(J_interest_report).item()
 
+            if not math.isnan(current_det_val_report_item) and not math.isinf(current_det_val_report_item):
+                if best_det_this_run is None or current_det_val_report_item > best_det_this_run:
+                    best_det_this_run = current_det_val_report_item
+                    best_vec_this_run = E_norm_report.detach().clone()
+                current_run_losses.append(-current_det_val_report_item) 
+            else:
+                current_run_losses.append(float('nan'))
 
-print("\n--- Maximizing Det(J_interest|nuisance_rotation) ---")
-(
-    E_det_interest_nuisance_parts,
-    best_det_interest_nuisance,
-    losses_det_interest_nuisance_run,
-) = torch_optimize_det_interest_nuisance(
-    F_tensor_torch,
-    N_in=N_in,
-    steps=2000,
-    lr=1e-3,
-    photon_budget=photon_budget,
-    nuisance_idx=2,
+            if step % 200 == 0:  
+                # Corrected print statement
+                val_to_print = f"{current_det_val_report_item:.3e}" if not (math.isnan(current_det_val_report_item) or math.isinf(current_det_val_report_item)) else 'NaN/Inf'
+                print(f"  Step {step:4d} => det(J_interest)={val_to_print}")
+        
+        all_loss_curves_all_runs.append(current_run_losses)
+        val_this_run_to_print = f"{best_det_this_run:.3e}" if best_det_this_run is not None and not (math.isnan(best_det_this_run) or math.isinf(best_det_this_run)) else 'NaN/Inf or No Valid Found'
+        print(f"Run {run_i+1}/{runs} final best det(J_interest) = {val_this_run_to_print}")
+        
+        if best_vec_this_run is not None and best_det_this_run is not None:
+             if not (math.isnan(best_det_this_run) or math.isinf(best_det_this_run)):
+                if best_det_val_overall is None or best_det_this_run > best_det_val_overall:
+                    best_det_val_overall = best_det_this_run
+                    best_vec_overall = best_vec_this_run
+                
+    return best_vec_overall.cpu().numpy() if best_vec_overall is not None else None, best_det_val_overall, all_loss_curves_all_runs
+
+print("\n--- Maximizing Det(J_interest|nuisance_rotation) [MULTI-RUN] ---")
+# Assuming multi_runs is defined in your script (e.g., multi_runs = 5)
+# Also ensure F_tensor_torch, N_in, photon_budget, kx_array, base_sim are defined
+E_det_interest_nuisance_parts, best_det_interest_nuisance, all_losses_det_interest_nuisance = torch_optimize_det_interest_nuisance_multirun(
+    F_tensor_torch, N_in=N_in, steps=2000, lr=1e-3, photon_budget=photon_budget, nuisance_idx=2, runs=multi_runs 
 )
 
-if E_det_interest_nuisance_parts is not None:
-    E_det_interest_nuisance = (
-        E_det_interest_nuisance_parts[:, 0] + 1j * E_det_interest_nuisance_parts[:, 1]
-    )
-    print(f"Best det(J_interest|nuisance_rotation) = {best_det_interest_nuisance:.3e}")
+if E_det_interest_nuisance_parts is not None and best_det_interest_nuisance is not None:
+    E_det_interest_nuisance = E_det_interest_nuisance_parts[:, 0] + 1j * E_det_interest_nuisance_parts[:, 1]
+    print(f"Overall Best det(J_interest|nuisance_rotation) after multi-run = {best_det_interest_nuisance:.3e}")
 
     base_sim.reset()
-    base_sim.set_input_field_kx(kx_array, E_det_interest_nuisance)
+    base_sim.set_input_field_kx(kx_array, E_det_interest_nuisance) 
     base_sim.solve_fields()
-    base_sim.visualize_intensity()  # Assumes this function shows a plot title
-    plt.title(
-        f"Wavefront for Max Det(J_interest|nuisance_rotation)\nDet = {best_det_interest_nuisance:.2e}"
-    )
-    plt.show()
+    base_sim.visualize_intensity()  
 
-    plt.figure()
-    plt.plot(losses_det_interest_nuisance_run)
+    plt.figure(figsize=(7,5))
+    colors_loss_det_interest = plt.cm.plasma(np.linspace(0,1,len(all_losses_det_interest_nuisance)))
+    for i, lc in enumerate(all_losses_det_interest_nuisance):
+        lc_plot = [val if not math.isnan(val) else np.nan for val in lc] 
+        plt.plot(lc_plot, color=colors_loss_det_interest[i], alpha=0.7, label=f"Run {i+1}")
     plt.xlabel("Iteration")
     plt.ylabel("-det(J_interest|nuisance_rotation)")
-    plt.title("Loss for Max Det(J_interest|nuisance_rotation)")
-    plt.yscale("symlog", linthresh=1e-3)
+    plt.title("Loss Curves for Max Det(J_interest|nuisance_rotation) [Multi-Run]")
+    
+    valid_losses_flat = [x for x_list in all_losses_det_interest_nuisance for x in x_list if not (math.isnan(x) or math.isinf(x))]
+    if valid_losses_flat:
+        min_abs_loss = np.min(np.abs(valid_losses_flat))
+        linthresh_val = min_abs_loss / 10 if min_abs_loss > 1e-9 else 1e-5 # ensure linthresh is positive
+    else:
+        linthresh_val = 1e-5 # Default if all are NaN/Inf
+    plt.yscale('symlog', linthresh=linthresh_val, linscale=0.5) # Adjusted linthresh logic
+    plt.legend()
     plt.grid(True, linestyle=":")
+    plt.tight_layout()
     plt.show()
 else:
-    print(
-        "Optimization for Max Det(J_interest|nuisance_rotation) failed to find a valid wavefront."
-    )
-    E_det_interest_nuisance = None  # Ensure it's defined for later sections
+    print("Optimization for Max Det(J_interest|nuisance_rotation) [Multi-Run] failed to find a valid wavefront or result.")
+    E_det_interest_nuisance = None 
 
-# Add to wavefronts_dict (handle potential None)
+key_for_dict_det_psi_phi = r"Max Det($J_{\psi|\phi}$)"  
 if E_det_interest_nuisance is not None:
-    wavefronts_dict[r"Max Det($J_{\psi|\phi}$)"] = normalize_wavefront(
-        E_det_interest_nuisance, photon_budget
-    )
+    wavefronts_dict[key_for_dict_det_psi_phi] = normalize_wavefront(E_det_interest_nuisance, photon_budget)
 else:
-    wavefronts_dict[r"Max Det($J_{\psi|\phi}$)"] = np.zeros(
-        N_in, dtype=complex
-    )  # Placeholder if failed
-
-
+    if key_for_dict_det_psi_phi not in wavefronts_dict:
+         wavefronts_dict[key_for_dict_det_psi_phi] = np.zeros(N_in, dtype=complex)
+         
+         
 # %% 14) Optimization Minimizing Tr(J_interest|nuisance_rotation ^ -1)
 
 torch.manual_seed(14)  # New seed
