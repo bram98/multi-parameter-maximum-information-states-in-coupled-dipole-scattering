@@ -13,6 +13,8 @@ import os
 import numpy as np
 import torch
 import dill  # saving objects to disk
+import toposort
+from adjustText import adjust_text
 from pathlib import Path
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 from libraries import placedipoles
@@ -179,16 +181,60 @@ class LossFunction:
     def wavefront(self, wavefront):
         self._wavefront = wavefront
 
+    def __str__(self):
+        return f"<LossFunction {self.name}>"
 
-def _bar_loss_functions_metrics(
-    loss_functions,
-    optimizer: Optimizer,
-    metric_functions,
-    metric_labels,
-    ax=None,
-    title=None,
-    ylabel=None,
-    dpi=100,
+    def __repr__(self):
+        return f"<LossFunction {self.name}>"
+
+
+def calc_results(
+    loss_functions: list[LossFunction], optimizer: Optimizer, metric_function: callable
+):
+    """
+    Calculates the single parameter results using the loss_functions objects.
+    The Fisher information matrix J is calculated and passed onto the metric
+    function. Returns a list of tuples of the form (loss_function, result)
+    where result is returned from metric_function.
+
+    Parameters
+    ----------
+    loss_functions: list of LossFunction
+        List of LossFunction objects.
+    optimizer: Optimizer
+        The optimizer object.
+    metric_function: lambda or function
+        Gets passed J and should return the result.
+
+    Returns
+    -------
+    results: list of tuples (loss_function, result)
+
+    """
+    results = []
+    for loss_function in loss_functions:
+        J = optimizer.J_np(loss_function.wavefront)
+        results.append((loss_function, metric_function(J)))
+    return results
+
+
+def calc_std_ideal(loss_functions, optimizer):
+    return calc_results(
+        loss_functions, optimizer, lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2])
+    )
+
+
+def calc_std_joint(loss_functions, optimizer):
+    def std(J):
+        # print(J)
+        Sigma = np.linalg.inv(J)
+        return (Sigma[0, 0], Sigma[1, 1], Sigma[2, 2])
+
+    return calc_results(loss_functions, optimizer, std)
+
+
+def _bar_plot_loss_functions_metrics(
+    results, metric_labels, ax=None, title=None, ylabel=None, dpi=100, **plot_kwargs
 ):
     newplot = ax is None
     if newplot:
@@ -196,9 +242,10 @@ def _bar_loss_functions_metrics(
 
     data = []
     wave_abbr = []
-    for loss_function in loss_functions:
-        J = optimizer.J_np(loss_function.wavefront)
-        data.append(metric_functions(J))
+    for result in results:
+        # print(result)
+        loss_function, data_ = result
+        data.append(data_)
         wave_abbr.append(loss_function.shortname)
 
     data = np.array(data)
@@ -209,10 +256,7 @@ def _bar_loss_functions_metrics(
     for m in range(len(data[0])):
         offset = (m - 1) * width
         ax.bar(
-            x + offset,
-            data[:, m],
-            width=width,
-            label=metric_labels[m],
+            x + offset, data[:, m], width=width, label=metric_labels[m], **plot_kwargs
         )
 
     ax.set_title(title)
@@ -227,51 +271,177 @@ def _bar_loss_functions_metrics(
         plt.show()
 
 
-def bar_single_param_fisher(loss_functions, optimizer, title=None, ax=None, dpi=100):
-    _bar_loss_functions_metrics(
-        loss_functions,
-        optimizer,
-        lambda J: (J[0, 0], J[1, 1], J[2, 2]),
+def bar_plot_J(results, title=None, ax=None, dpi=100, **plot_kwargs):
+    _bar_plot_loss_functions_metrics(
+        results,
         metric_labels=(r"$J_{xx}$", r"$J_{zz}$", r"$J_{\theta\theta}$"),
         ylabel="STD (Cramér-Rao bound)",
         ax=ax,
         title=title,
         dpi=dpi,
+        **plot_kwargs,
     )
 
 
-def bar_single_param_STD(loss_functions, optimizer, title=None, ax=None, dpi=100):
-    def std(J):
-        Sigma = np.linalg.inv(J)
-        return (Sigma[0, 0], Sigma[1, 1], Sigma[2, 2])
-
+def bar_plot_STD_joint(results, title=None, ax=None, dpi=100, **plot_kwargs):
     labels = (r"$\Sigma_{xx}$", r"$\Sigma_{zz}$", r"$\Sigma_{\theta\theta}$")
 
-    _bar_loss_functions_metrics(
-        loss_functions,
-        optimizer,
-        std,
+    _bar_plot_loss_functions_metrics(
+        results,
         metric_labels=labels,
         ylabel="STD (Cramér-Rao bound)",
         ax=ax,
         title=title,
         dpi=dpi,
+        **plot_kwargs,
     )
 
 
-def bar_single_param_STD_naive(loss_functions, optimizer, title=None, ax=None, dpi=100):
+def bar_plot_STD_ideal(results, title=None, ax=None, dpi=100, **plot_kwargs):
     labels = (r"$1\,/\ J_{xx}$", r"$1\,/\ J_{zz}$", r"$1\,/\ J_{\theta\theta}$")
 
-    _bar_loss_functions_metrics(
-        loss_functions,
-        optimizer,
-        lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2]),
+    _bar_plot_loss_functions_metrics(
+        results,
         metric_labels=labels,
         ylabel="STD (Cramér-Rao bound)",
         ax=ax,
         title=title,
         dpi=dpi,
+        **plot_kwargs,
     )
+
+
+def pareto_optimal(a, b, lowerisbetter=True):
+    """
+    Returns True if a is better than b. Assumes a, b are a tuple
+    (LossFunction, result).
+    """
+    if lowerisbetter:
+        return np.all(np.array(a[1])[:2] < np.array(b[1])[:2])
+    else:
+        return np.all(np.array(a[1])[:2] > np.array(b[1])[:2])
+
+
+# def pareto_order(results, lowerisbetter=True):
+
+#     pareto_dict = {
+#         result1[0].name: {
+#             result2[0].name
+#             for result2 in results
+#             if pareto_optimal(result1, result2, lowerisbetter)
+#         }
+#         for result1 in results
+#     }
+#     for result1 in results:
+#         for result2 in results:
+#             if pareto_optimal(result1, result2, lowerisbetter):
+#                 s = '>'
+#             elif pareto_optimal(result2, result1, lowerisbetter):
+#                 s = '<'
+#             else:
+#                 s = '?'
+#             print(f'{result1[0].name} {s} {result2[0].name}')
+#     return list(toposort.toposort(pareto_dict)), pareto_dict
+
+
+def calc_pareto_front(results, lowerisbetter=True):
+    pareto_front = []
+
+    for candidate in results:
+        dominated = False
+        for other in results:
+            if candidate is other:
+                continue
+            if pareto_optimal(other, candidate, lowerisbetter=lowerisbetter):
+                print(other[0].name, " dominates ", candidate[0].name)
+                dominated = True
+                break
+            else:
+                print(candidate[0].name, other[0].name)
+        if not dominated:
+            pareto_front.append(candidate)
+    return pareto_front
+
+
+def pareto_plot(results, xmax=None, ymax=None, lowerisbetter=True, dpi=100):
+    fig, ax = plt.subplots(dpi=dpi)
+
+    points = []
+    texts = []
+    p_front = calc_pareto_front(results, lowerisbetter=lowerisbetter)
+    p_front_names = [result[0].name for result in p_front]
+
+    for i, result in enumerate(results):
+        loss_function, data = result
+        x = data[0]  # x
+        y = data[1]  # z
+
+        marker = "x"
+        color = "blue"
+        label = "Non-efficient"
+
+        if loss_function.name in p_front_names:
+            color = "r"
+            label = "Efficient"
+
+        x_out_bounds = not xmax is None and x > xmax
+        y_out_bounds = not ymax is None and y > ymax
+
+        if x_out_bounds:
+            x = xmax
+            marker = matplotlib.markers.CARETRIGHT
+            color = "black"
+            label = None
+        if y_out_bounds:
+            y = ymax
+            marker = matplotlib.markers.CARETUP
+            color = "black"
+            label = None
+        if x_out_bounds and y_out_bounds:
+            marker = "D"
+
+        point = ax.scatter(x, y, s=80, marker=marker, color=color, label=label)
+        text = ax.annotate(
+            loss_function.shortname,
+            (x, y),
+            fontsize=11,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="grey", alpha=1.0),
+            zorder=10,
+        )
+        points.append(point)
+        texts.append(text)
+    # plt.scatter(4e-5, 6e-5, color='red', marker='v')
+    ax.set_xlabel("CRLB x")
+    ax.set_ylabel("CRLB z")
+    plt.xlim(None, xmax)
+    plt.ylim(None, ymax)
+    ax.set_title("Pareto Front of Cramér-Rao Lower bounds")
+
+    ax.grid(True)
+
+    # delete duplicate labels
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+
+    plt.tight_layout()
+    adjust_text(
+        texts,
+        ax=ax,
+        # only_move={'text':'xy', 'explode':'xy'}, # allow text to move in both directions, points only in y
+        arrowprops=dict(arrowstyle="-", lw=0.5, alpha=1.0, zorder=0),
+        expand=(2.5, 2.5),  # how much to "inflate" the text boxes,
+        avoid_self=True,
+        force_text=0.5,  # strength of repulsion
+        force_static=0.1,
+        lim=10,  # max iterations
+    )
+
+    plt.show()
+
+
+# calc_pareto_front(std_joint)
+pareto_plot(std_joint, xmax=5e-5, ymax=2.0e-5, dpi=300)
 
 
 def saveobj(obj, name, folder):
@@ -293,15 +463,19 @@ folder = Path(folder)
 if not folder.exists():
     folder.mkdir()
     print(f"Created folder {folder.absolute()}")
+
+save_state = False
 # %% 1) define some dipoles in a line
 # base_dipoles = placedipoles.square_of_dipoles(center=(4.0, 0.0), side=1.0)
 base_dipoles = placedipoles.line_of_dipoles(center=(5.0, 0), number=7)
 frozen_dipoles = placedipoles.line_of_dipoles(center=(3.0, 0), number=7)
 # frozen_dipoles = [[], []]
 
-saveobj((base_dipoles, frozen_dipoles), "dipoles", folder)
-
 Ns = len(base_dipoles[0]) + len(frozen_dipoles[0])
+
+if save_state:
+    saveobj((base_dipoles, frozen_dipoles), "dipoles", folder)
+
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
     lambda_0=1.0,
@@ -328,8 +502,9 @@ sim_name = f"double_line{Ns}"
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta = 1e-5
 
-saveobj(base_sim, "coupleddipolesimulator", folder)
-saveobj(kx_array, "kx_array", folder)
+if save_state:
+    saveobj(base_sim, "coupleddipolesimulator", folder)
+    saveobj(kx_array, "kx_array", folder)
 
 # %%
 dS = placedipoles.simulate_dS_3params(
@@ -345,13 +520,14 @@ dS = placedipoles.simulate_dS_3params(
 fishermatrix = FisherMatrix(dS, param_names=["x", "z", "theta"], delta=delta)
 filename = fishermatrix.filename(name=sim_name)
 
-if False:
-    fishermatrix.save(filename=filename, folder="../data/simulation_scatter_deriv")
+# if False:
+#     fishermatrix.save(filename=filename, folder="../data/simulation_scatter_deriv")
 
 F = fishermatrix.F
 optimizer = Optimizer(F)
 
-saveobj(fishermatrix, "fishermatrix", folder)
+if save_state:
+    saveobj(fishermatrix, "fishermatrix", folder)
 
 
 # %%
@@ -476,22 +652,21 @@ for loss_function in loss_functions:
 """
 Save wavefronts
 """
-# filename = f"../data/simulation_scatter_deriv/{sim_name}_wavefronts"
-# wavefronts_dict = {}
-# print("Saving wavefronts")
-# for loss_function in loss_functions:
-#     wavefronts_dict[loss_function.name] = loss_function.wavefront
 
-# np.savez(filename, **wavefronts_dict)
-saveobj(loss_functions, "loss_functions", folder)
+if save_state:
+    saveobj(loss_functions, "loss_functions", folder)
 
 # %%
-bar_single_param_STD(
-    loss_functions, optimizer, dpi=75, title=r"Single Param.Performance"
+
+std_joint = calc_std_joint(loss_functions, optimizer)
+std_ideal = calc_std_ideal(loss_functions, optimizer)
+
+fig, ax = plt.subplots()
+
+bar_plot_STD_joint(
+    std_joint, dpi=75, title=r"Single Param. Performance (joint)", ax=ax, alpha=0.4
 )
-bar_single_param_STD_naive(
-    loss_functions,
-    optimizer,
-    dpi=75,
-    title=r"Single Param. Performance (Without Coupling)",
-)
+
+plt.gca().set_prop_cycle(None)
+bar_plot_STD_ideal(std_ideal, dpi=75, title=r"Single Param. Performance (ideal)", ax=ax)
+plt.show()

@@ -212,6 +212,15 @@ for p in range(3):
 
 
 # %%
+"""
+Now use the statistical nature of our field for low photon counts to get
+errorbars on the measurements. I first wrote the poisson camera, but then I
+realized that was stupid because we need complex field detection. After some
+correspondence with Chat GPT I believe I used the right way to sample, but I
+would have to check, because I'm not very confident
+"""
+
+
 def measure_poisson(I, integration_time, nsamples=None):
     """
     Models a camera with shot noise. Here I is an array representing the
@@ -247,15 +256,15 @@ def measure_poisson(I, integration_time, nsamples=None):
 def measure_heterodyne(E, integration_time, nsamples=None):
     """
     https://chatgpt.com/share/681242ae-2044-8004-b701-f3d14a45781b
-    Models a camera with shot noise. Here E is an array representing the field
-    strength in units of square root of photons (???). integration_time is the
-    integration time in units of coherence lengths ~ 1 / linewidth. Returns an
-    array of field samples.
+    Models a camera with complex field detection Here E is an array
+    representing the field strength in units of square root of photons per
+    coherence time (???). integration_time is the integration time in units of
+    coherence lengths ~ 1 / linewidth. Returns an array of field samples.
 
     Parameters
     ----------
     E: complex array
-        field strength in units of sqrt(photons) / coherence times(???).
+        Field strength in units of sqrt(photons) / coherence times(???).
     integration_time: float
         Integration time in coherence times.
     nsamples: int, default: None
@@ -263,8 +272,8 @@ def measure_heterodyne(E, integration_time, nsamples=None):
 
     Returns
     -------
-        Array of photon counts of type int with shape (nsamples, I.shape) if
-        nsamples is given or otherwise with same shape as I
+        Array of complex fields with shape (nsamples, E.shape) if
+        nsamples is given or otherwise E.shape.
     """
     E = np.array(E)
     E_real = E.view(E.real.dtype)  # convert complex array to real array
@@ -278,9 +287,45 @@ def measure_heterodyne(E, integration_time, nsamples=None):
     return field_samples
 
 
+def measure_heterodyne2(E, integration_time, nsamples=None):
+    """
+    https://chatgpt.com/share/681242ae-2044-8004-b701-f3d14a45781b
+    Models a camera with complex field detection Here E is an array
+    representing the field strength in units of square root of photons per
+    coherence time (???). integration_time is the integration time in units of
+    coherence lengths ~ 1 / linewidth. Returns an array of field samples.
+
+    Parameters
+    ----------
+    E: complex array
+        Field strength in units of sqrt(photons) / coherence times(???).
+    integration_time: float
+        Integration time in coherence times.
+    nsamples: int, default: None
+        Perform multiple measurements if necessary.
+
+    Returns
+    -------
+        Array of complex fields with shape (nsamples, E.shape) if
+        nsamples is given or otherwise E.shape.
+    """
+    E = np.array(E)
+    E_real = E.view(E.real.dtype)  # convert complex array to real array
+
+    sigma = np.sqrt(1 / (2 * integration_time))
+    if nsamples is None:
+        field_samples = stats.norm.rvs(loc=E_real, scale=sigma)
+    else:
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=sigma, size=(nsamples, *E_real.shape)
+        )
+    field_samples = field_samples.view(E.dtype)  # convert back to complex array
+    return field_samples
+
+
 int_time = 1.0
 nsamples = 100
-E_output_poisson = measure_heterodyne(
+E_output_noise = measure_heterodyne(
     E_output, integration_time=int_time, nsamples=nsamples
 )
 
@@ -293,7 +338,7 @@ E_output_poisson = measure_heterodyne(
 # for s in range(nsamples):
 #     for p in range(3):
 #         i = 0
-dtheta_poisson = best_estimate(E_output_poisson, dE_dtheta, E0)
+dtheta_poisson = best_estimate(E_output_noise, dE_dtheta, E0)
 dtheta_mean = np.mean(dtheta_poisson, axis=0)
 dtheta_var = np.std(dtheta_poisson, axis=0)
 for p in range(3):
