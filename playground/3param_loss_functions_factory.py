@@ -103,10 +103,11 @@ class LossFunction:
         self, optimizer: Optimizer, seed=None, steps=2000, num_eig=1, verbose=True
     ):
         """
-        Performs the optimization. If method == 'eig', the optimizer find the
+        Performs the optimization. If method == 'eig', the optimizer finds the
         eigenvectors and eigenvalues of the matrix returned by loss_function.
-        If method == 'torch', the loss_function is optimized using torch. It
-        should return a scalar and torch methods should be used for calculations.
+        If method == 'torch', the loss_function is optimized using torch. The
+        loss_function should return a scalar and for calculations, torch
+        methods should be used.
 
         Parameters
         ----------
@@ -464,7 +465,7 @@ if not folder.exists():
     folder.mkdir()
     print(f"Created folder {folder.absolute()}")
 
-save_state = False
+save_state = True
 # %% 1) define some dipoles in a line
 # base_dipoles = placedipoles.square_of_dipoles(center=(4.0, 0.0), side=1.0)
 base_dipoles = placedipoles.line_of_dipoles(center=(5.0, 0), number=7)
@@ -533,31 +534,28 @@ if save_state:
 # %%
 LossFunction.photon_budget = 1.0
 
-loss_functions = []
+loss_functions = {}
 
 # Single parameters
 for i, param in enumerate(["x", "z", r"\theta"]):
-    loss_functions.append(
-        LossFunction(
-            lambda F, i_=i: F[i_, i_],
-            name=param.replace("\\", ""),
-            displayname=f"Singe parameter ${param}$",
-            shortname=f"$J_{{{param}}}$",
-            maximize=True,
-            method="eig",
-        )
-    )
-
-# Trace
-loss_functions.append(
-    LossFunction(
-        lambda F: F[0, 0] + F[1, 1] + F[2, 2],
-        "tr",
-        displayname="Trace",
-        shortname=r"$\operatorname{tr}J$",
+    name = param.replace("\\", "")
+    loss_functions[name] = LossFunction(
+        lambda F, i_=i: F[i_, i_],
+        name=name,
+        displayname=f"Singe parameter ${param}$",
+        shortname=f"$J_{{{param}}}$",
         maximize=True,
         method="eig",
     )
+
+# Trace
+loss_functions["tr"] = LossFunction(
+    lambda F: F[0, 0] + F[1, 1] + F[2, 2],
+    "tr",
+    displayname="Trace",
+    shortname=r"$\operatorname{tr}J$",
+    maximize=True,
+    method="eig",
 )
 
 
@@ -580,38 +578,32 @@ def tr_norm_nuissance(F):
     return Fnorm[0, 0] + Fnorm[1, 1] - Fnorm[2, 2]
 
 
-loss_functions.append(
-    LossFunction(
-        tr_norm,
-        "tr_norm",
-        displayname="Normalized Trace",
-        shortname=r"$\operatorname{tr}_N J$",
-        maximize=True,
-        method="eig",
-    )
+loss_functions["tr_norm"] = LossFunction(
+    tr_norm,
+    "tr_norm",
+    displayname="Normalized Trace",
+    shortname=r"$\operatorname{tr}_N J$",
+    maximize=True,
+    method="eig",
 )
 
-loss_functions.append(
-    LossFunction(
-        tr_norm_nuissance,
-        "tr_norm_nuissance",
-        displayname="Nuissance Trace",
-        shortname=r"$\operatorname{tr}_{N}^* J$",
-        maximize=True,
-        method="eig",
-    )
+loss_functions["tr_norm_nuissance"] = LossFunction(
+    tr_norm_nuissance,
+    "tr_norm_nuissance",
+    displayname="Nuissance Trace",
+    shortname=r"$\operatorname{tr}_{N}^* J$",
+    maximize=True,
+    method="eig",
 )
 
 # Determinant
-loss_functions.append(
-    LossFunction(
-        lambda J: torch.linalg.det(J),
-        "det",
-        displayname="Determinant",
-        shortname=r"$\operatorname{det} J$",
-        maximize=True,
-        method="torch",
-    )
+loss_functions["det"] = LossFunction(
+    lambda J: torch.linalg.det(J),
+    "det",
+    displayname="Determinant",
+    shortname=r"$\operatorname{det} J$",
+    maximize=True,
+    method="torch",
 )
 
 
@@ -621,15 +613,13 @@ def spectral_radius(J):
     return eigvals[0]  # return smallest eigenvalue
 
 
-loss_functions.append(
-    LossFunction(
-        spectral_radius,
-        "spec_rad",
-        displayname="Spectral Radius",
-        shortname=r"$\rho(J)$",
-        maximize=True,
-        method="torch",
-    )
+loss_functions["spec_rad"] = LossFunction(
+    spectral_radius,
+    "spec_rad",
+    displayname="Spectral Radius",
+    shortname=r"$\rho(J)$",
+    maximize=True,
+    method="torch",
 )
 
 
@@ -638,7 +628,7 @@ loss_functions.append(
 Optimize
 """
 
-for loss_function in loss_functions:
+for loss_function in loss_functions.values():
     loss_function.optimize(optimizer, seed=0, steps=2000, verbose=True)
 
 # %%

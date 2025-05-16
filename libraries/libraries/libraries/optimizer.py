@@ -141,6 +141,7 @@ class Optimizer:
         verbose=True,
         maximize=False,
         seed=None,
+        record_vec_history=False,  # Record the wavefronts
     ):
         if not seed is None:
             torch.manual_seed(seed)
@@ -168,13 +169,14 @@ class Optimizer:
         best_val = -np.inf if maximize else np.inf
         best_vec = None
         loss_history = []
+        vec_history = [] if record_vec_history else None
 
         for step in range(steps):
             opt.zero_grad()
 
             # Perform "soft" normalization. This impacts the gradient and makes
             # sure the gradient does not point in the radial direction: it is
-            # tangent to the sphere.
+            # tangent to the sphere of normalized states.
             E_norm = E_param / torch.linalg.norm(E_param)
 
             # Calculate the Fisher information matrix and pass it to the loss
@@ -190,6 +192,10 @@ class Optimizer:
                 E_param /= torch.linalg.norm(E_param)
 
             cur_val = loss.item()
+            if record_vec_history:
+                cur_vec = E_param.detach().cpu().numpy().copy()
+                vec_history.append(cur_vec)
+
             if (
                 (cur_val < best_val)
                 and (not maximize)
@@ -208,4 +214,8 @@ class Optimizer:
         if verbose:
             print()
 
-        return {"bestval": best_val, "bestvec": best_vec, "loss": loss_history}
+        result = {"bestval": best_val, "bestvec": best_vec, "loss": loss_history}
+        if record_vec_history:
+            result.update(vec_history=vec_history)
+
+        return result
