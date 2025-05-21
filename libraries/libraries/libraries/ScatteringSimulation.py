@@ -24,7 +24,7 @@ def _flux_amplitude_2d(k0, kx):
     has ~ unit flux. k0 = 2π/λ, kx in [-k0, k0], and
     kz = sqrt(k0^2 - kx^2).
     """
-    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)
+    kz = np.sqrt(k0**2 - kx**2 + 0j)
     return np.sqrt((kz / k0).real)
 
 
@@ -171,27 +171,36 @@ class CoupledDipoleSimulator:
         G[distances == 0] = 0.0  # Handle singularity
         return G
 
-    def theta2k_x(self, theta):
+    def theta2k_x(self, theta, degree=False):
+        if degree:
+            theta = np.deg2rad(theta)
         k_x = self.k * np.sin(theta)
         return k_x
 
-    def k_x2theta(self, k_x):
+    def k_x2theta(self, k_x, degree=False):
         theta = np.arcsin(k_x / self.k)
+        if degree:
+            theta = np.rad2deg(theta)
         return theta
 
     def compute_kz(self, k_x_array):
-        k_z_array = np.sqrt(self.k ** 2 - k_x_array ** 2, dtype=complex)
+        k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
-    def set_input_field_kx(self, k_x_array, E_kx_array):
+    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
         k_x_array = np.array(k_x_array)
         E_kx_array = np.array(E_kx_array)
 
         if k_x_array.shape != E_kx_array.shape:
             raise ValueError("k_x_array and E_kx_array must have the same shape.")
 
+        if flux_normalize:
+            amp = _flux_amplitude_2d(self.k, k_x_array)
+        else:
+            amp = 1.0
+
         self.k_x_array = k_x_array
-        self.E_kx_array = E_kx_array
+        self.E_kx_array = E_kx_array * amp
         self.reset()  # Reset computed fields
 
     def compute_incident_field(self, x, z):
@@ -238,7 +247,7 @@ class CoupledDipoleSimulator:
         # Interaction matrix
         A = np.eye(self.Ns, dtype=complex)
         G_matrix = self._G0(self.scatterers, self.scatterers, self.k)
-        A -= self.k ** 2 * self.alpha * G_matrix
+        A -= self.k**2 * self.alpha * G_matrix
 
         # Solve for induced fields
         self.fields = np.linalg.solve(A, E0_vec)
@@ -271,7 +280,7 @@ class CoupledDipoleSimulator:
             )
             G = (1j / 4) * hankel1(0, self.k * delta_r)
             G[delta_r == 0] = 0.0  # Avoid singularity
-            E_total += self.k ** 2 * self.alpha * self.fields[n] * G
+            E_total += self.k**2 * self.alpha * self.fields[n] * G
 
         self.E_total = E_total
         return self.E_total
@@ -310,7 +319,7 @@ class CoupledDipoleSimulator:
             # Vectorized computation
             delta_z = z_L - r_n[0]  # Scalar
             delta_x = x_points - r_n[1]  # Shape: (grid_points_x,)
-            distances = np.sqrt(delta_z ** 2 + delta_x ** 2)  # Shape: (grid_points_x,)
+            distances = np.sqrt(delta_z**2 + delta_x**2)  # Shape: (grid_points_x,)
 
             # Compute Green's function
             G = (1j / 4) * hankel1(0, self.k * distances)
@@ -318,7 +327,7 @@ class CoupledDipoleSimulator:
 
             # Scattered field contribution from scatterer n
             E_scatt = (
-                self.k ** 2 * self.alpha * self.fields[n] * G
+                self.k**2 * self.alpha * self.fields[n] * G
             )  # Shape: (grid_points_x,)
 
             # Add to total field
@@ -353,7 +362,7 @@ class CoupledDipoleSimulator:
         plt.tight_layout()
         plt.show()
 
-    def _visualize(self, display_function, title):
+    def _visualize(self, display_function, title, dpi=100, figsize=(10, 8)):
         """
         Helper function that applies `display_function` to the entire field
         before plotting it.
@@ -362,7 +371,7 @@ class CoupledDipoleSimulator:
         if self.E_total is None:
             self.compute_total_field()
 
-        plt.figure(figsize=(10, 8 * self.Lx / self.Lz))
+        plt.figure(figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi)
         plt.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
@@ -370,7 +379,7 @@ class CoupledDipoleSimulator:
             shading="auto",
             cmap="viridis",
         )
-        plt.colorbar(label=r"$|E|^2$")
+        plt.colorbar(label=r"$|E|^2$  (a.u.)")
         plt.scatter(
             self.scatterers[0, :] / self.lambda_0,
             self.scatterers[1, :] / self.lambda_0,
@@ -386,18 +395,18 @@ class CoupledDipoleSimulator:
         plt.tight_layout()
         plt.show()
 
-    def visualize_intensity(self):
+    def visualize_intensity(self, title="Custom Input State", dpi=100.0):
         """Visualizes the intensity distribution over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
-            title = "Custom Input State"
+            pass
         else:
             title = (
                 f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
             )
 
         self._visualize(
-            display_function=lambda field: np.abs(field) ** 2, title=title,
+            display_function=lambda field: np.abs(field) ** 2, title=title, dpi=dpi
         )
 
     def visualize_abs(self):
@@ -409,7 +418,8 @@ class CoupledDipoleSimulator:
             title = f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
         self._visualize(
-            display_function=np.abs, title=title,
+            display_function=np.abs,
+            title=title,
         )
 
     def visualize_real(self):
@@ -421,7 +431,8 @@ class CoupledDipoleSimulator:
             title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
         self._visualize(
-            display_function=np.real, title=title,
+            display_function=np.real,
+            title=title,
         )
 
     def visualize_output_field(
@@ -519,8 +530,9 @@ class CoupledDipoleSimulator:
         mp4_filename="figures/time_evolution.mp4",
         gif_filename="figures/time_evolution.gif",
         blit=False,
+        title=None,
+        **plt_kwargs,
     ):
-
         if self.E_total is None:
             self.compute_total_field()
 
@@ -532,10 +544,13 @@ class CoupledDipoleSimulator:
             self.E_total.real,
             shading="auto",
             cmap="RdBu_r",
+            **plt_kwargs,
         )
         ax.set_xlabel("z / λ")
         ax.set_ylabel("x / λ")
-        ax.set_title("Real Part of E over Full Slab")
+        if title is None:
+            title = "Real Part of E over Full Slab"
+        ax.set_title(title)
         cbar = fig.colorbar(pcm, ax=ax)
         cbar.set_label("Re(E)")
         # Plot scatterer positions (scatterers array: [z, x])
@@ -593,13 +608,13 @@ class CoupledDipoleSimulator:
         for n, th_deg in enumerate(angles_deg):
             th_rad = np.deg2rad(th_deg)
             kx = self.k * np.sin(th_rad)
-            if flux_normalize:
-                amp = _flux_amplitude_2d(self.k, kx)
-            else:
-                amp = 1.0
+            # if flux_normalize:
+            #     amp = _flux_amplitude_2d(self.k, kx)
+            # else:
+            #     amp = 1.0
 
             # set input
-            self.set_input_field_kx([kx], [amp])
+            self.set_input_field_kx([kx], [1.0], flux_normalize=flux_normalize)
             self.solve_fields()
             E_zL = self.compute_zL_fields_direct()
             S[:, n] = E_zL

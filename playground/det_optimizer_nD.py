@@ -1,13 +1,16 @@
-#%%
-import os
-from timeit import default_timer as timer
-
-import matplotlib.pyplot as plt
-import numpy as np
+# %%
 import torch
-#%%
-from evotorch.decorators import vectorized
+import numpy as np
+import os
+import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+from timeit import default_timer as timer
+import sys
+
+# sys.exit()
+
+# %%
+from evotorch.decorators import vectorized
 
 
 def make_F(dS):
@@ -59,7 +62,7 @@ def snapshot(v):
     return v.detach().cpu().numpy().copy()
 
 
-#%%
+# %%
 nparams = 3  # number of parameters
 nhilbert = 100  # number of dimensions for states
 r = 2.0  # 'radius' of eigenvalues: eigenvalues of dS will tend towards semicircular distribution with radius r
@@ -89,13 +92,13 @@ G = np.random.normal(loc=0, scale=r / np.sqrt(2 * nhilbert), size=(nhilbert, nhi
 
 F = make_F(dS)
 
-#%%
+# %%
 dS = np.load("../data/simulation_scatter_deriv/Quad_shiftX_shiftZ_rotation.npy")
 
 F = make_F(dS)
 nparams, _, nhilbert, _ = F.shape
 
-#%%
+# %%
 
 # debugging purposes
 
@@ -109,10 +112,10 @@ for i in range(2):
 # np.einsum('mnij,i,j', F, u, v)
 
 
-#%%
+# %%
 
 
-#%%
+# %%
 from torchswarm.swarmoptimizer import SwarmOptimizer
 
 v = torch.empty(nhilbert, requires_grad=True).cuda()
@@ -182,10 +185,10 @@ plt.yscale("log")
 plt.show()
 
 
-#%%
+# %%
 
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
 from torchswarm.swarmoptimizer import SwarmOptimizer
 
 # v = torch.empty(nhilbert, requires_grad=True).cuda()
@@ -253,7 +256,7 @@ plt.title("Swarm Optimization Performance vs. nswarm")
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.show()
 
-#%%
+# %%
 for nswarm in nswarm_values:
     print(f"Starting nswarm={nswarm}")
     optimizer = SwarmOptimizer(
@@ -298,7 +301,11 @@ plt.title("Swarm Optimization Performance vs. nswarm")
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.show()
 
-#%%
+# %%
+"""
+Normalization step vs unnormalization step
+"""
+
 v = torch.normal(
     0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
 )
@@ -337,6 +344,13 @@ loss_history_ADAM_norm = np.array(loss_history)
 best_loss_history_adam_norm = np.array(best_loss_history_adam)
 
 #####
+# now unnormalized
+
+loss_history = []
+best_loss_adam = np.inf
+best_loss_history_adam = []
+
+t1 = timer()
 
 v = torch.normal(
     0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
@@ -347,11 +361,7 @@ with torch.no_grad():
 
 optimizer = torch.optim.Adam([v], lr=0.001)
 
-loss_history = []
-best_loss_adam = np.inf
-best_loss_history_adam = []
 
-t1 = timer()
 for i in range(steps):
     with torch.no_grad():
         v /= torch.norm(v)
@@ -364,10 +374,115 @@ for i in range(steps):
     best_loss_history_adam.append(best_loss_adam)
 
 
+t2 = timer()
+print("Adam time:", t2 - t1)
+print("Learning rate:", optimizer.param_groups[0]["lr"])
+
 loss_history_ADAM = np.array(loss_history)
 best_loss_history_adam = np.array(best_loss_history_adam)
 
-#%%
+
+# %%
+
+"""
+Many Adams test
+"""
+
+Ft = torch.from_numpy(F.astype(np.complex128)).cuda()
+Ft.requires_grad = False
+
+loss_history = []
+best_loss_adam = np.inf
+best_v_adam = np.zeros(nhilbert, dtype=np.complex128)
+best_loss_history_adam = []
+best_v_history_adam = []
+best_loss_histories_adam = []
+best_v_histories_adam = []
+nadams = 100
+
+
+steps = 2000
+
+t1 = timer()
+
+for i in range(nadams):
+    print(f"\rTesting Adam {i + 1} / {nadams}", end="")
+    v = torch.normal(
+        0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
+    )
+    # torch.nn.init.normal_(v)
+    with torch.no_grad():
+        v /= torch.norm(v)
+
+    optimizer = torch.optim.Adam([v], lr=0.001)
+
+    best_loss_history_adam = []
+    best_loss_adam = np.inf
+
+    for i in range(steps):
+        with torch.no_grad():
+            v /= torch.norm(v)
+        optimizer.zero_grad()
+        loss = forward(Ft, v)
+        loss.backward()
+        optimizer.step()
+        # loss_history.append(loss.item())
+        cur_loss = loss.item()
+        if cur_loss < best_loss_adam:
+            best_loss_adam = cur_loss
+            best_v_adam = snapshot(v)
+        best_loss_history_adam.append(best_loss_adam)
+        best_v_history_adam.append(best_v_adam)
+
+    # loss_history_ADAM = np.array(loss_history)
+    # best_loss_history_adam = np.array(best_loss_history_adam)
+
+    best_loss_histories_adam.append(best_loss_history_adam)
+    best_v_histories_adam.append(best_v_history_adam)
+
+best_loss_histories_adam = np.array(best_loss_histories_adam)
+best_v_histories_adam = np.array(best_v_histories_adam)
+
+# %%
+skip = 100
+plt.figure()
+iterations = np.arange(skip, len(best_loss_histories_adam[0]))
+plt.plot(iterations, best_loss_histories_adam[:, skip:].T, c="tab:blue", alpha=0.2)
+# plt.ticklabel_format(style='plain', useOffset=False)
+plt.xlabel("Optimizer Steps")
+plt.ylabel("Determinant loss")
+plt.title("100 Adams - Loss")
+# plt.legend()
+plt.show()
+
+plt.figure(dpi=300)
+plt.imshow(np.abs(best_v_histories_adam[:, -1]))
+# plt.ylabel('')
+plt.title("100 Adams - Absolute Value of Final Vector")
+plt.show()
+
+plt.figure()
+plt.violinplot(best_loss_histories_adam[:, -1])
+plt.ticklabel_format(style="plain", useOffset=False)
+plt.xticks([])
+plt.ylabel("Determinant loss")
+plt.title("100 Adams - Final Loss")
+# plt.legend()
+plt.show()
+
+plt.figure()
+absv = np.real(best_v_histories_adam[:, -1])
+# absv -= np.mean(absv, axis=0)
+plt.scatter(np.arange(100), np.std(absv, axis=0))
+# plt.ticklabel_format(style='plain', useOffset=False)
+# plt.xticks([])
+plt.ylabel("STD of Real Part of Components")
+plt.ylim(-1e-10, 1e-10)
+plt.title("100 Adams - STD of Final Vector Components")
+# plt.legend()
+plt.show()
+
+# %%
 
 skip = 20
 plt.figure()
@@ -404,12 +519,12 @@ plt.ticklabel_format(style="plain", useOffset=False)
 plt.legend()
 plt.show()
 
-#%%
+# %%
 import evotorch
-import torch
 from evotorch import Problem
-from evotorch.algorithms import CMAES, SNES
-from evotorch.logging import PandasLogger, StdOutLogger
+from evotorch.algorithms import SNES, CMAES
+from evotorch.logging import StdOutLogger, PandasLogger
+import torch
 
 
 # Define a Problem instance wrapping the function
@@ -463,7 +578,7 @@ loss_history_CMA = logger_CMAES.to_dataframe()["best_eval"].to_numpy()
 loss_history_CMA_sep = logger_CMAES_sep.to_dataframe()["best_eval"].to_numpy()
 
 
-#%%
+# %%
 skip = -100
 if skip >= 0:
     step_range = np.arange(len(loss_history_SNES))
@@ -486,7 +601,7 @@ plt.legend()
 plt.show()
 
 
-#%%
+# %%
 bar_labels = ["Adam", "SNES", "CMA-ES", "CMAS-ES sep."]
 bar_values = [
     -best_loss_history_adam[-1],

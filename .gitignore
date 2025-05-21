@@ -1,8 +1,10 @@
-# Ignore all files in the data/ folder
+# Ignore all files in the data/ and figures/ folder
 data/*
+figures/*
 
 # Allow keeping the folder itself
 !data/.gitkeep
+!figures/.gitkeep
 
 
 # Ignore package metadata
@@ -23,3 +25,5 @@ dist/
 
 # submodule
 libraries/fourierfun
+
+.pre-commit-config.yaml
