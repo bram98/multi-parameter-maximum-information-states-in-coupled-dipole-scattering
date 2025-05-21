@@ -80,7 +80,7 @@ def calc_E0(sim, base_dipoles, frozen_dipoles):
 
 
 def calc_E_range_theta(sim, theta_range, base_dipoles, frozen_dipoles):
-    E_output = np.zeros((n_theta, 3, sim.grid_points_x), dtype=complex)
+    E_output = np.zeros((len(theta_range), 3, sim.grid_points_x), dtype=complex)
     for p in range(3):
         for i, dtheta in enumerate(theta_range):
             dtheta_vec = dtheta * np.eye(3)[p]
@@ -99,7 +99,8 @@ theta_range = 0.1
 theta_in = np.linspace(-theta_range, theta_range, num=n_theta)
 
 
-loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
+# loss_function = [lf for lf in loss_functions if lf.name == "det"][0]
+loss_function = loss_functions["det"]
 wavefront = loss_function.wavefront
 
 
@@ -178,37 +179,90 @@ To solve for theta:
 
 def best_estimate_simple(E, dE_dtheta, E0):
     """
-    Version with no numpy trickery for debugging and readability.
+    Version with no numpy trickery for debugging and readability. Can only do a
+    single parameter or estimate at the same time.
+
+    Parameters
+    ----------
+    E: numpy array of shape (nout,)
+        Array of complex output state.
+    dE_theta: numpy array of shape (nout,)
+        Partial derivative of E with respect to the parameters. Evaluated at
+        theta = theta0.
+    E0: numpy array of shape (nout,)
+        Array of complex output state evaluated at theta = theta0.
+
+    Returns
+    -------
+    theta_est: float
+        Estimate of theta
     """
     theta_est = (dE_dtheta.conj()) @ (E - E0) / (dE_dtheta.conj() @ dE_dtheta)
-    theta_est = np.real(theta_est)
-    return dtheta
-
-
-def best_estimate(E, dE_dtheta, E0):
-    """
-    Version with numpy trickery for faster computation.
-    """
-    theta_est = np.vecdot(dE_dtheta, E - E0) / np.vecdot(dE_dtheta, dE_dtheta)
-    # theta_est =  (E - E0[np.newaxis, :]) @ (dE_dtheta.conj()[:, np.newaxis])/ (dE_dtheta.conj() @ dE_dtheta)
     theta_est = np.real(theta_est)
     return theta_est
 
 
-dtheta = best_estimate(E_output, dE_dtheta, E0)
-for p in range(3):
-    i = 0
+def best_estimate(E, dE_dtheta, E0):
+    """
+    Version with numpy trickery for faster computation. Can do multiple
+    estimates and parameters at the same time. Here
+        ntheta = Number of estimates of theta. Can also be a more complex shape.
+        np = Number of parameters
+        nout = Size of output states
 
-    plt.figure()
-    plt.plot(theta_in, dtheta[:, p])
-    theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
-    plt.plot(theta_exact, theta_exact)
-    param = fishermatrix.param_names[p]
-    plt.xlabel(r"${}$".format(param))
-    plt.ylabel(r"predicted ${}$".format(param))
-    plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
-    # plt.ylim(np.min(dtheta), np.max(dtheta))
-    plt.show()
+    Parameters
+    ----------
+    E: numpy array of shape (ntheta, np, nout)
+        Array of complex output state.
+    dE_theta: numpy array of shape (np, nout)
+        Partial derivative of E with respect to the parameters. Evaluated at
+        theta = theta0.
+    E0: numpy array of shape (nout,)
+        Array of complex output state evaluated at theta = theta0.
+
+    Returns
+    -------
+    theta_est: numpy array of shape (ntheta, np)
+        Array of estimates
+
+    """
+    theta_est = np.vecdot(dE_dtheta, E - E0) / np.vecdot(dE_dtheta, dE_dtheta)
+    theta_est = np.real(theta_est)
+    return theta_est
+
+
+def best_estimate_multilinear_simple(E, dE_dtheta, E0):
+    H = dE_dtheta.T
+    Hdag = H.conj().T
+    print(f"E {E.shape}")
+    print(f"H {H.shape}")
+    print(f"Hdag {Hdag.shape}")
+    print(f"E0 {E0.shape}")
+    theta_est = np.real(np.linalg.inv(Hdag @ H)) @ np.real(Hdag @ (E - E0))
+    # theta_est = Hdag @ (E - E0)
+    # theta_est = (E - E0)
+    print(f"theta_est {theta_est.shape}")
+    return theta_est
+
+
+p = 2
+dtheta = best_estimate_simple(E_output[0, p], dE_dtheta[p], E0)
+dtheta = best_estimate(E_output, dE_dtheta, E0)
+dtheta = best_estimate_multilinear_simple(E_output[0, p], dE_dtheta, E0)
+
+# for p in range(3):
+#     i = 0
+
+#     plt.figure()
+#     plt.plot(theta_in, dtheta[:, p])
+#     theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
+#     plt.plot(theta_exact, theta_exact)
+#     param = fishermatrix.param_names[p]
+#     plt.xlabel(r"${}$".format(param))
+#     plt.ylabel(r"predicted ${}$".format(param))
+#     plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
+#     # plt.ylim(np.min(dtheta), np.max(dtheta))
+#     plt.show()
 
 
 # %%

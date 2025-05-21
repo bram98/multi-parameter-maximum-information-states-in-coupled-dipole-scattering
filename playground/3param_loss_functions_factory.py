@@ -213,7 +213,7 @@ def calc_results(
 
     """
     results = []
-    for loss_function in loss_functions:
+    for loss_function in loss_functions.values():
         J = optimizer.J_np(loss_function.wavefront)
         results.append((loss_function, metric_function(J)))
     return results
@@ -442,7 +442,7 @@ def pareto_plot(results, xmax=None, ymax=None, lowerisbetter=True, dpi=100):
 
 
 # calc_pareto_front(std_joint)
-pareto_plot(std_joint, xmax=5e-5, ymax=2.0e-5, dpi=300)
+# pareto_plot(std_joint, xmax=5e-5, ymax=2.0e-5, dpi=300)
 
 
 def saveobj(obj, name, folder):
@@ -635,7 +635,7 @@ for loss_function in loss_functions.values():
 """
 Visualize
 """
-for loss_function in loss_functions:
+for loss_function in loss_functions.values():
     loss_function.visualize(base_sim, kx_array)
 
 # %%
