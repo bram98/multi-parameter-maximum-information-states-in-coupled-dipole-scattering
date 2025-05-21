@@ -21,16 +21,18 @@ Demo:
 
 # %% Imports and functions
 
+import os
+
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import animation
-import os
 import numpy as np
 import torch
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
-from libraries import placedipoles
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
+from libraries.ScatteringSimulation import CoupledDipoleSimulator
+from matplotlib import animation
+
+from libraries import placedipoles
 
 # import sys
 # sys.exit() # Hack to reload modules and filepath without running whole script
@@ -45,13 +47,7 @@ frozen_dipoles = [[], []]
 Ns = len(base_dipoles[0]) + len(frozen_dipoles[0])
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
-    lambda_0=1.0,
-    Lz=8.0,
-    Lx=8.0,
-    Ns=Ns,
-    seed=123,
-    grid_points_x=300,
-    theta_inc_deg=0.0,
+    lambda_0=1.0, Lz=8.0, Lx=8.0, Ns=Ns, seed=123, grid_points_x=300, theta_inc_deg=0.0,
 )
 max_angle = 80
 angles_deg = np.linspace(-max_angle, max_angle, 100)

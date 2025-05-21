@@ -4,9 +4,9 @@ Created on Fri Feb 21 14:35:07 2025
 
 @author: 5914787
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 
 class Optimizer:

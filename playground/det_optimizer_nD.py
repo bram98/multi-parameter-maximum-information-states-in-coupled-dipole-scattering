@@ -1,16 +1,17 @@
 # %%
-import torch
-import numpy as np
 import os
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
-from timeit import default_timer as timer
 import sys
+from timeit import default_timer as timer
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+# %%
+from evotorch.decorators import vectorized
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
 # sys.exit()
 
-# %%
-from evotorch.decorators import vectorized
 
 
 def make_F(dS):
@@ -187,8 +188,8 @@ plt.show()
 
 # %%
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from torchswarm.swarmoptimizer import SwarmOptimizer
 
 # v = torch.empty(nhilbert, requires_grad=True).cuda()
@@ -521,10 +522,10 @@ plt.show()
 
 # %%
 import evotorch
-from evotorch import Problem
-from evotorch.algorithms import SNES, CMAES
-from evotorch.logging import StdOutLogger, PandasLogger
 import torch
+from evotorch import Problem
+from evotorch.algorithms import CMAES, SNES
+from evotorch.logging import PandasLogger, StdOutLogger
 
 
 # Define a Problem instance wrapping the function

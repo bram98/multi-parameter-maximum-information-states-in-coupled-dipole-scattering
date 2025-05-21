@@ -4,23 +4,23 @@ Created on Mon Mar 17 10:43:43 2025
 
 @author: 5914787
 """
-# %%
-import numpy as np
+import os
+import sys
+
 import matplotlib
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib import animation
-from scipy import stats
-import os
+# %%
 import numpy as np
 import torch
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
-from libraries import placedipoles
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
-from libraries.savestate import saveobj, loadobj
+from libraries.savestate import loadobj, saveobj
+from libraries.ScatteringSimulation import CoupledDipoleSimulator
+from matplotlib import animation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy import stats
 
-import sys
+from libraries import placedipoles
 
 sys.exit()
 

@@ -4,24 +4,24 @@ Created on Mon Mar 17 10:43:43 2025
 
 @author: 5914787
 """
-# %%
-import numpy as np
+import os
+import sys
+from pathlib import Path
+
+import dill  # saving objects to disk
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import animation
-import os
+# %%
 import numpy as np
-import torch
-import dill  # saving objects to disk
 import toposort
+import torch
 from adjustText import adjust_text
-from pathlib import Path
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
-from libraries import placedipoles
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
+from libraries.ScatteringSimulation import CoupledDipoleSimulator
+from matplotlib import animation
 
-import sys
+from libraries import placedipoles
 
 sys.exit()
 
@@ -479,13 +479,7 @@ if save_state:
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
-    lambda_0=1.0,
-    Lz=8.0,
-    Lx=8.0,
-    Ns=Ns,
-    seed=123,
-    grid_points_x=300,
-    theta_inc_deg=0.0,
+    lambda_0=1.0, Lz=8.0, Lx=8.0, Ns=Ns, seed=123, grid_points_x=300, theta_inc_deg=0.0,
 )
 max_angle = 80
 angles_deg = np.linspace(-max_angle, max_angle, 100)

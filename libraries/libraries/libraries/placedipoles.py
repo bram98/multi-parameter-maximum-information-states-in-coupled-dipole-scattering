@@ -4,10 +4,12 @@ Created on Tue Feb 25 13:29:22 2025
 
 @author: 5914787
 """
-import numpy as np
-import matplotlib.pyplot as plt
-from libraries import CoupledDipoleSimulator
 import traceback
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from libraries import CoupledDipoleSimulator
 
 
 def square_of_dipoles(center=(4.0, 0.0), side=1.0):
@@ -153,12 +155,7 @@ def simulate_dS(
 
 
 def simulate_dE(
-    sim_kwargs,
-    scatterers_plus,
-    scatterers_minus,
-    kx_array,
-    wavefront,
-    delta=1e-3,
+    sim_kwargs, scatterers_plus, scatterers_minus, kx_array, wavefront, delta=1e-3,
 ):
     """
     Calculates the partial derivative dE/dtheta for the field using

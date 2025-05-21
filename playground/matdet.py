@@ -4,15 +4,17 @@ Created on Thu Feb 27 11:50:19 2025
 
 @author: 5914787
 """
+from itertools import permutations
+
+import matplotlib.pyplot as plt
 # %%
 import numpy as np
-import matplotlib.pyplot as plt
-import torch
 import scipy
-from itertools import permutations
+import torch
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
+
 from libraries import placedipoles
 
 # import sys
