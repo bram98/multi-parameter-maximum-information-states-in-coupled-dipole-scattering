@@ -25,5 +25,3 @@ dist/
 
 # submodule
 libraries/fourierfun
-
-.pre-commit-config.yaml

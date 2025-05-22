@@ -1,0 +1,7 @@
+[tool.black]
+line-length = 79
+# target-version = ['py310'] # Optional: specify Python versions if needed
+
+[tool.isort]
+profile = "black"
+line_length = 79 # Should match black's line_length
