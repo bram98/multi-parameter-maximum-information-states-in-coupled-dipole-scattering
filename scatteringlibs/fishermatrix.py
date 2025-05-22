@@ -8,13 +8,15 @@ class FisherMatrix:
     A class to compute and manage multiparameter Fisher matrices from dS matrices.
     """
 
-    def __init__(self, dS=None, param_names=None, delta=None, seed=None):
+    def __init__(
+        self, dS=None, param_names=None, delta=None, seed=None, r_param=None
+    ):
         self._nparams = None
         self._nhilbert_in = None
         self._nhilbert_out = None
         self._F = None
         self._seed = seed
-        self._r = None
+        self._r_param = r_param
         self._delta = delta
         self._param_names = param_names
 
@@ -27,25 +29,22 @@ class FisherMatrix:
     def F_from_dS(dS):
         """
         Computes the Fisher matrix from dS.
-
-        Parameters
-        ----------
-        dS : array_like
-            dS of shape (nparams, nhilbert, nhilbert).
-
-        Returns
-        -------
-        ndarray
-            Fisher matrix of shape (nparams, nparams, nhilbert, nhilbert).
+        Assumes dS is shape (nparams, N_out, N_in).
+        The Fisher operator F[mu, nu] is (N_in, N_in).
+        F_munu = 0.5 * ( (dS/dmu)^dagger (dS/dnu) + (dS/dnu)^dagger (dS/dmu) )
         """
-        F = [
-            [
-                dS_dmu.conj().T @ dS_dnu + dS_dnu.conj().T @ dS_dmu
-                for dS_dmu in dS
-            ]
-            for dS_dnu in dS
-        ]
-        F = np.array(F)
+        nparams = dS.shape[0]
+        N_out, N_in = dS.shape[1], dS.shape[2]
+        F = np.zeros((nparams, nparams, N_in, N_in), dtype=complex)
+
+        for mu in range(nparams):
+            for nu in range(nparams):
+                dS_mu_dagger = dS[mu].conjugate().T  # Shape (N_in, N_out)
+                dS_nu_dagger = dS[nu].conjugate().T  # Shape (N_in, N_out)
+
+                term1 = dS_mu_dagger @ dS[nu]  # Shape (N_in, N_in)
+                term2 = dS_nu_dagger @ dS[mu]  # Shape (N_in, N_in)
+                F[mu, nu, :, :] = 0.5 * (term1 + term2)
         return F
 
     @property
@@ -56,7 +55,6 @@ class FisherMatrix:
         if self._F is None:
             if self._dS is None:
                 raise ValueError("dS is not defined")
-
             self._F = FisherMatrix.F_from_dS(self.dS)
         return self._F
 
@@ -68,38 +66,37 @@ class FisherMatrix:
         return self._dS
 
     @dS.setter
-    def dS(self, dS):
+    def dS(self, dS_val):
         """
         Setter for dS
         """
-        self._dS = dS
-        # assert dS.shape[1] == dS.shape[2]
-        self._nparams, self._nhilbert_out, self._nhilbert_in = dS.shape
+        self._dS = dS_val
+        self._nparams, self._nhilbert_out, self._nhilbert_in = self._dS.shape
         self._F = None
 
-    def set_dS(self, dS):
+    def set_dS(self, dS_val):
         """
         Sets the dS matrix and returns the instance.
 
         Parameters
         ----------
-        dS : ndarray
-            dS matrix of shape (nparams, nhilbert, nhilbert).
+        dS_val : ndarray
+            dS matrix of shape (nparams, N_out, N_in).
 
         Returns
         -------
         FisherMatrix
             The instance itself.
         """
-        self.dS = dS
+        self.dS = dS_val
         return self
 
     def random(
         self,
         nparams,
         nhilbert_in,
-        *nhilbert_out,
-        r=2.0,
+        nhilbert_out=None,  # Made nhilbert_out optional
+        r_param=2.0,  # Parameter for random generation
         seed=None,
         complexF=True,
     ):
@@ -110,12 +107,14 @@ class FisherMatrix:
         ----------
         nparams : int
             Number of parameters.
-        nhilbert : int
-            Hilbert space dimension.
-        r : float, optional
-            Radius of eigenvalues in complex plane. (default is 2.0).
+        nhilbert_in : int
+            Input Hilbert space dimension.
+        nhilbert_out : int, optional
+            Output Hilbert space dimension. If None, defaults to nhilbert_in.
+        r_param : float, optional
+            Radius of eigenvalues in complex plane for dS generation (default is 2.0).
         seed : int, optional
-            Random seed (default is 0).
+            Random seed (default is None, uses previous or current np state).
         complexF : bool, optional
             Whether to generate a complex dS matrix (default is True).
 
@@ -124,38 +123,39 @@ class FisherMatrix:
         FisherMatrix
             The instance itself with the newly assigned dS matrix.
         """
-        if len(nhilbert_out) == 1:
-            nhilbert_out = nhilbert_out[0]
-        else:
+        if nhilbert_out is None:
             nhilbert_out = nhilbert_in
 
         self._nhilbert_in = nhilbert_in
         self._nhilbert_out = nhilbert_out
         self._nparams = nparams
-        self._r = r
-        if not seed is None:
-            self._seed = seed
+        self.r_param = r_param
+        if seed is not None:
+            self.seed = seed
+            np.random.seed(self._seed)
 
         # The eigenvalues are not actually defined if nhilbert_in != nhilbert_out,
-        # so I choose nhilbert_in arbitrarily.
-        sigma = r / np.sqrt(2 * nhilbert_in)
+        # so I choose nhilbert_in arbitrarily for sigma scaling.
+        sigma = self._r_param / np.sqrt(
+            2 * nhilbert_in
+        )  # Access _r_param directly for calculation
 
         if complexF:
-            dS = np.random.normal(
+            new_dS = np.random.normal(
                 scale=sigma, size=(nparams, nhilbert_out, nhilbert_in)
             ) + 1j * np.random.normal(
                 scale=sigma, size=(nparams, nhilbert_out, nhilbert_in)
             )
         else:
-            dS = np.random.normal(
+            new_dS = np.random.normal(
                 scale=sigma, size=(nparams, nhilbert_out, nhilbert_in)
             )
-        self.dS = dS
+        self.dS = new_dS
         return self
 
     def load(self, filepath):
         """
-        Loads a dS matrix from a file.
+        Loads a dS matrix from a file. Expects a .npz file with a 'dS' array.
 
         Parameters
         ----------
@@ -175,7 +175,19 @@ class FisherMatrix:
         filepath = Path(filepath)
         if not filepath.exists():
             raise FileNotFoundError(f'File at "{filepath}" does not exist.')
-        self.dS = np.load(filepath)["dS"]
+        loaded_data = np.load(filepath)
+        if "dS" not in loaded_data:
+            raise ValueError(f"File {filepath} does not contain a 'dS' array.")
+        self.dS = loaded_data["dS"]  # Use the setter
+        if "param_names" in loaded_data:
+            self.param_names = loaded_data["param_names"].tolist()
+        if "delta" in loaded_data:
+            self.delta = loaded_data["delta"].item()
+        if "seed" in loaded_data:
+            self._seed = loaded_data["seed"].item()
+        if "r_param" in loaded_data:
+            self._r_param = loaded_data["r_param"].item()
+
         return self
 
     def filename(self, name="dS"):
@@ -192,55 +204,71 @@ class FisherMatrix:
         str
             Generated filename.
         """
-        filename = f"{name}"
-        if not self.param_names is None:
-            filename += "_" + ("-".join(self.param_names))
+        filename_parts = [name]
+        if self._param_names is not None:
+            filename_parts.append("-".join(self._param_names))
+        if self._nhilbert_out is not None and self._nhilbert_in is not None:
+            filename_parts.append(
+                f"No{self._nhilbert_out}Ni{self.nhilbert_in}"
+            )
+        if self.seed is not None:
+            filename_parts.append(f"seed{self.seed}")
+        if self.r_param is not None:
+            filename_parts.append(f"r{self.r_param:.2f}")  # Format r_param
 
-        if not self.seed is None:
-            filename += f"_seed-{self.seed}"
+        if (
+            self.dS is not None
+        ):  # Check complexity only if dS exists, use property
+            iscomplex = np.iscomplexobj(self.dS)
+            filename_parts.append("c" if iscomplex else "r")
 
-        if not self.r is None:
-            filename += f"_r-{self.r:.4f}"
+        return "_".join(filename_parts) + ".npz"
 
-        iscomplex = np.iscomplexobj(self.dS)
-        filename += f'_{"c" if iscomplex else "r"}'
-        filename += ".npz"
-
-        return filename
-
-    def save(self, filename=None, folder="", name="dS"):
+    def save(self, filename=None, folder=".", name="dS"):
         """
-        Saves a dS matrix to file.
+        Saves the dS matrix and other relevant metadata to a .npz file.
 
         Parameters
         ----------
-        folder : str or Path
-            Directory containing the file.
-        filename : str
-            Name of the file to save (default is FisherMatrix.filename()).
-        name: str
-            If filename is undefined, it generates a string with "name" as prefix.
+        folder : str or Path, optional
+            Directory to save the file. Defaults to current directory.
+        filename : str, optional
+            Name of the file to save. If None, generates using `self.filename()`.
+        name : str, optional
+            Prefix for filename generation if `filename` is None. Defaults to 'dS'.
 
         Returns
         -------
-        FisherMatrix
-            The instance itself with the loaded sensitivity matrix.
+        Path
+            The full path to the saved file.
 
         Raises
         ------
         ValueError
             If dS is not defined.
         """
-        if filename is None:
-            filename = self.filename(name)
-
-        if self._dS is None:
+        if self.dS is None:
             raise ValueError("Error saving to file: dS is not defined.")
 
-        filepath = Path(folder) / Path(filename)
+        if filename is None:
+            filename = self.filename(name=name)
 
-        np.savez(filepath, dS=self.dS)
+        save_path = Path(folder)
+        save_path.mkdir(parents=True, exist_ok=True)  # Ensure folder exists
+        filepath = save_path / filename
 
+        save_dict = {"dS": self.dS}  # Use property
+        if self.param_names is not None:  # Use property
+            save_dict["param_names"] = self.param_names
+        if self.delta is not None:  # Use property
+            save_dict["delta"] = self.delta
+        if self.seed is not None:  # Use property
+            save_dict["seed"] = self.seed
+        if self.r_param is not None:  # Use property
+            save_dict["r_param"] = self.r_param
+
+        np.savez(filepath, **save_dict)
+        print(f"Saved FisherMatrix data to {filepath}")
         return filepath
 
     @property
@@ -250,8 +278,7 @@ class FisherMatrix:
     @property
     def nhilbert(self):
         """
-        As far as F is concerned, nhilbert_out does not exist. That's why I
-        added this alias.
+        Input Hilbert space dimension. F acts on input states.
         """
         return self._nhilbert_in
 
@@ -268,31 +295,40 @@ class FisherMatrix:
         return self._seed
 
     @seed.setter
-    def seed(self, seed):
-        self._seed = seed
+    def seed(self, seed_val):
+        self._seed = seed_val
 
     @property
     def delta(self):
         return self._delta
 
     @delta.setter
-    def delta(self, delta):
-        self._delta = delta
+    def delta(self, delta_val):
+        self._delta = delta_val
 
     @property
-    def r(self):
-        return self._r
+    def r_param(self):
+        return self._r_param
+
+    @r_param.setter
+    def r_param(self, r_val):
+        self._r_param = r_val
 
     @property
     def param_names(self):
         return self._param_names
 
+    @param_names.setter
+    def param_names(self, names_list):
+        if not (isinstance(names_list, list) or names_list is None):
+            raise TypeError("param_names must be a list or None.")
+        self._param_names = names_list
+
 
 if __name__ == "__main__":
-    if False:
-        fm = FisherMatrix().random(3, 50, 100, seed=6)
-        print("dS shape:", fm.dS.shape)
-        print("F shape:", fm.F.shape)
-        filepath = fm.save(folder=".", name="test")
-        fmload = FisherMatrix().load(filepath)
+    fm = FisherMatrix().random(3, 50, 100, seed=6)
+    print("dS shape:", fm.dS.shape)
+    print("F shape:", fm.F.shape)
+    # filepath = fm.save(folder=".", name="test")
+    # fmload = FisherMatrix().load(filepath)
     # FisherMatrix().load()
