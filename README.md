@@ -4,9 +4,10 @@
 This project explores the application of maximum information states (MIS) in complex scattering environments using the coupled dipole method (CDM). The goal is to:
 1. Construct an S-matrix using the CDM framework as described in the paper "Influence of the Local Scattering Environment on the Localization Precision of Single Particles".
 2. Optimize the Fisher Information to identify MIS via eigenvalue decomposition.
-3. Extend the Fisher Information approach to multi-parameter estimation.
-4. Explore other optimal states via auto-grad optimization that are ideal for balanced multi-parameter estimation, or that become insensitive to nuisance parameters.
-5. (Future idea) Calculate and visualize Fisher Information flow.
+3. Extend the Fisher Information approach to multi-parameter estimation, specifically focusing on a 3-parameter system involving translations (e.g., x, z) and rotation.
+4. Explore various optimal input states via auto-grad optimization, targeting objectives such as maximizing the Fisher Information Matrix determinant (det(J)), minimizing Tr(J⁻¹), or minimizing the spectral radius of J⁻¹. This includes developing strategies to handle nuisance parameters, for instance, by optimizing objectives like `det(J_interest|nuisance)`, `Tr((J_interest|nuisance)⁻¹)`, or the smallest eigenvalue of `J_interest|nuisance`.
+5. Perform comprehensive comparisons of these optimal states by analyzing Cramer-Rao Lower Bounds (CRLBs) and visualizing Pareto frontiers to understand performance trade-offs in multi-parameter estimation.
+6. (Future idea) Calculate and visualize Fisher Information flow.
 
 ## Related Work
 - "Influence of the Local Scattering Environment on the Localization Precision of Single Particles"
