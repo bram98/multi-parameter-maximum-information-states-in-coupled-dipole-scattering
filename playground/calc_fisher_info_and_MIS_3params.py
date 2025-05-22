@@ -676,7 +676,7 @@ def compute_crlb_for_wavefront(wavefront, F_tensor):
 def compute_crlb_for_planewaves(
     sim_kwargs, base_dipoles, angles_deg, F_tensor, photon_budget, kx_array
 ):
-    from libraries.ScatteringSimulation import _flux_amplitude_2d
+    from scatteringlibs.scatteringsimulation import _flux_amplitude_2d
 
     all_crlbs = []
     k0 = 2 * np.pi / sim_kwargs["lambda_0"]
