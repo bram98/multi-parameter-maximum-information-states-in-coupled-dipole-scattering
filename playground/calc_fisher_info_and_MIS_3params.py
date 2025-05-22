@@ -44,7 +44,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
+
+from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 
 def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
