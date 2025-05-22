@@ -84,7 +84,9 @@ for i, j in ([0, 0], [1, 1], [2, 2]):
     plt.plot(np.abs(J_inv_history[:, i, j]), label=f"$|\,J_{{{i},{j}}}|$")
 
 for i, j in ([0, 1], [0, 2], [1, 2]):
-    plt.plot(np.abs(J_inv_history[:, i, j]), label=f"$|\,J_{{{i},{j}}}|$", ls="--")
+    plt.plot(
+        np.abs(J_inv_history[:, i, j]), label=f"$|\,J_{{{i},{j}}}|$", ls="--"
+    )
 
 plt.yscale("log")
 plt.legend(ncols=2)

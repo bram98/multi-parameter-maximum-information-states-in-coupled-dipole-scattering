@@ -16,11 +16,16 @@ of a chosen scatterer. The logic readily extends to other parameters, e.g. polar
 """
 
 import matplotlib.pyplot as plt
+
 # %% Imports
 import numpy as np
+
 # Likewise, we import the build_scattering_matrix_direct utility we wrote.
-from build_scattering_matrix import (build_scattering_matrix_direct,
-                                     flux_amplitude_2d)
+from build_scattering_matrix import (
+    build_scattering_matrix_direct,
+    flux_amplitude_2d,
+)
+
 # We reuse the CoupledDipoleSimulator from our local ScatteringSimulation script
 # (or wherever you store it). Adjust import to your local paths as needed.
 from ScatteringSimulation import CoupledDipoleSimulator
@@ -73,7 +78,9 @@ def partial_derivative_T_xscatter(
 
     # 3) We'll do Tplus: set x of that scatterer to x0 + x_shift
     scatterers_plus = scatterers0.copy()
-    scatterers_plus[1, scatterer_index] = scatterers_plus[1, scatterer_index] + x_shift
+    scatterers_plus[1, scatterer_index] = (
+        scatterers_plus[1, scatterer_index] + x_shift
+    )
 
     sim_plus = CoupledDipoleSimulator(**base_sim_kwargs)
     sim_plus.scatterers = scatterers_plus
@@ -103,7 +110,10 @@ dx = 1e-6  # finite difference shift in *x* coordinate
 
 # %% Step A) Build Tplus, Tminus
 T_plus, T_minus, x_cam = partial_derivative_T_xscatter(
-    angles_deg=angles, x_shift=dx, base_sim_kwargs=base_kwargs, scatterer_index=0
+    angles_deg=angles,
+    x_shift=dx,
+    base_sim_kwargs=base_kwargs,
+    scatterer_index=0,
 )
 
 # %% Step B) Estimate ∂T/∂x ~ [Tplus - Tminus] / (2*dx)
@@ -155,7 +165,9 @@ sim_base.set_input_field_kx(kx_array, E_in_MIS)
 sim_base.solve_fields()
 
 # visualize the cross-section at z=Lz
-sim_base.visualize_output_field(plot_intensity_only=False, direct_computation=True)
+sim_base.visualize_output_field(
+    plot_intensity_only=False, direct_computation=True
+)
 
 # visualize intensity in the slab
 sim_base.visualize_intensity()
@@ -194,7 +206,9 @@ sim_base.set_input_field_kx(kx_array, E_in_LIS)
 sim_base.solve_fields()
 
 # Visualize the cross-section at z=Lz for LIS
-sim_base.visualize_output_field(plot_intensity_only=False, direct_computation=True)
+sim_base.visualize_output_field(
+    plot_intensity_only=False, direct_computation=True
+)
 
 # Visualize intensity in the slab for LIS
 sim_base.visualize_intensity()
@@ -274,8 +288,12 @@ def discrete_derivatives(yvals, spacing):
 sim_base.reset()
 sim_base.set_input_field_kx(kx_array, v_max)
 sim_base.solve_fields()
-E_2d_MIS = sim_base.compute_total_field()  # shape: (grid_points_x, grid_points_z)
-x_vals_raw, slice_MIS = get_1D_cross_section(sim_base, E_2d_MIS, zslice_idx=None)
+E_2d_MIS = (
+    sim_base.compute_total_field()
+)  # shape: (grid_points_x, grid_points_z)
+x_vals_raw, slice_MIS = get_1D_cross_section(
+    sim_base, E_2d_MIS, zslice_idx=None
+)
 
 # Convert from simulator x-coords to x/lambda
 lambda_0 = sim_base.lambda_0
@@ -292,7 +310,9 @@ sim_base.reset()
 sim_base.set_input_field_kx(kx_array, v_min)
 sim_base.solve_fields()
 E_2d_LIS = sim_base.compute_total_field()
-x_vals_raw, slice_LIS = get_1D_cross_section(sim_base, E_2d_LIS, zslice_idx=None)
+x_vals_raw, slice_LIS = get_1D_cross_section(
+    sim_base, E_2d_LIS, zslice_idx=None
+)
 x_vals = x_vals_raw / lambda_0
 amplitude_LIS = np.abs(slice_LIS)
 d1_LIS, d2_LIS = discrete_derivatives(amplitude_LIS, dx_val)
@@ -356,7 +376,9 @@ if True:  # careful: relatively slow
         sim.reset()
         sim.set_input_field_kx(kx_array, wavefront)
         sim.solve_fields()
-        return sim.compute_total_field()  # shape: (grid_points_x, grid_points_z)
+        return (
+            sim.compute_total_field()
+        )  # shape: (grid_points_x, grid_points_z)
 
     def animate_field_time_evolution(E_2d, sim, frames=60, blit=False):
         """
@@ -378,7 +400,9 @@ if True:  # careful: relatively slow
         realE_0 = E_2d.real
 
         # pcolormesh to show Re(E)
-        im = ax.pcolormesh(z_vals, x_vals, realE_0, shading="auto", cmap="RdBu_r")
+        im = ax.pcolormesh(
+            z_vals, x_vals, realE_0, shading="auto", cmap="RdBu_r"
+        )
         ax.set_xlabel("z / λ")
         ax.set_ylabel("x / λ")
         ax.set_title("Real part of E (Time Evolution)")
@@ -421,7 +445,9 @@ if True:  # careful: relatively slow
     # 2) 'kx_array' is your input angle basis
     # 3) 'v_max' is the MIS wavefront in angle space
     E_2d_MIS = compute_complex_field(sim_base, kx_array, v_max)
-    anim = animate_field_time_evolution(E_2d_MIS, sim_base, frames=60, blit=False)
+    anim = animate_field_time_evolution(
+        E_2d_MIS, sim_base, frames=60, blit=False
+    )
 
     # Now, we can save both MP4 and GIF at 60 FPS
     # a) Save an MP4 using ffmpeg:

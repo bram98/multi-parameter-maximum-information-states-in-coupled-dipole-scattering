@@ -1,4 +1,4 @@
-#%%
+# %%
 import os
 
 import matplotlib.pyplot as plt
@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
-#%%
+# %%
 nparams = 3  # number of parameters
 nhilbert = 3  # number of dimensions for states
 r = 2.0  # 'radius' of eigenvalues: eigenvalues of dS will tend towards semicircular distribution with radius r
@@ -22,7 +22,9 @@ if os.path.isfile(filepath):
     dS = np.load(filepath)
 else:
     sigma = r / np.sqrt(2 * nhilbert)
-    dS = np.random.normal(loc=0.0, scale=sigma, size=(nparams, nhilbert, nhilbert))
+    dS = np.random.normal(
+        loc=0.0, scale=sigma, size=(nparams, nhilbert, nhilbert)
+    )
     np.save(filepath, dS)
 
 F = [
@@ -31,10 +33,12 @@ F = [
 ]
 F = np.array(F)
 
-G = np.random.normal(loc=0, scale=r / np.sqrt(2 * nhilbert), size=(nhilbert, nhilbert))
+G = np.random.normal(
+    loc=0, scale=r / np.sqrt(2 * nhilbert), size=(nhilbert, nhilbert)
+)
 
 
-#%%
+# %%
 def J_from_F(F, v, engine=torch):
     return engine.einsum("mnij, ...i, ...j -> ...mn", F, v, v)
 
@@ -61,7 +65,7 @@ def snapshot(v):
     return v.detach().cpu().numpy().copy()
 
 
-#%%
+# %%
 
 # debugging purposes
 
@@ -72,16 +76,21 @@ for i in range(2):
             for l in range(3):
                 F[i, j, k, l] = 1000 * i + 100 * j + 10 * k + l
 
+
 # np.einsum('mnij,i,j', F, u, v)
-#%%
+# %%
 def cartesian_from_spherical(phi, theta):
     return np.array(
-        [np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]
+        [
+            np.cos(phi) * np.sin(theta),
+            np.sin(phi) * np.sin(theta),
+            np.cos(theta),
+        ]
     )
 
 
 def spherical_from_cartesian(x, y, z):
-    r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+    r = np.sqrt(x**2 + y**2 + z**2)
     theta = np.arccos(z / r)
     phi = np.arctan2(y, x)
     return np.array([phi, theta])
@@ -100,7 +109,9 @@ def visualize_over_angles(func, F, ntheta=50, nphi=50):
 
     fig, ax = plt.subplots(layout="constrained")
     img = func(F, v, engine=np)
-    angle_plot = ax.imshow(img, extent=(0, 2 * np.pi, 0, np.pi), origin="lower")
+    angle_plot = ax.imshow(
+        img, extent=(0, 2 * np.pi, 0, np.pi), origin="lower"
+    )
 
     ax.set_xlabel(r"$\phi$")
     ax.set_ylabel(r"$\theta$")
@@ -115,7 +126,7 @@ visualize_over_angles(det_F, F, ntheta=200, nphi=200)
 # visualize_over_angles(rayleigh, G, ntheta=200, nphi=200)
 plt.show()
 
-#%%
+# %%
 v = torch.empty(3, requires_grad=True).cpu()
 torch.nn.init.normal_(v)
 Ft = torch.from_numpy(F.astype(np.float32)).cpu()
@@ -145,13 +156,19 @@ for i in range(100):
 
 fig, ax = visualize_over_angles(det_F, F, ntheta=200, nphi=200)
 ax.plot(phi_history, theta_history, "-r", label="Path")
-ax.plot(phi_history[-1], theta_history[-1], "*", c="tab:pink", label="Final solution")
+ax.plot(
+    phi_history[-1],
+    theta_history[-1],
+    "*",
+    c="tab:pink",
+    label="Final solution",
+)
 
 ax.set_title("Det(J) using Adam")
 
 plt.show()
 
-#%%
+# %%
 
 from torchswarm.swarmoptimizer import SwarmOptimizer
 

@@ -7,6 +7,7 @@ Created on Thu Feb 27 11:50:19 2025
 from itertools import permutations
 
 import matplotlib.pyplot as plt
+
 # %%
 import numpy as np
 import scipy
@@ -38,7 +39,16 @@ def matrixdet(F):
 
 def symprod3(A, B, C):
     return (
-        1 / 6 * (A @ B @ C + B @ C @ A + C @ A @ B + B @ A @ C + C @ B @ A + A @ C @ B)
+        1
+        / 6
+        * (
+            A @ B @ C
+            + B @ C @ A
+            + C @ A @ B
+            + B @ A @ C
+            + C @ B @ A
+            + A @ C @ B
+        )
     )
 
 
@@ -82,9 +92,15 @@ def diagprod(F):
     )
 
 
-eig_matdet, vec_matdet = optimizer.eig_optimize_F(matrixdet, maximize=True, num=None)
-eig_matdet3, vec_matdet3 = optimizer.eig_optimize_F(matrixdet3, maximize=True, num=None)
-eig_diagprod, vec_diagprod = optimizer.eig_optimize_F(diagprod, maximize=True, num=None)
+eig_matdet, vec_matdet = optimizer.eig_optimize_F(
+    matrixdet, maximize=True, num=None
+)
+eig_matdet3, vec_matdet3 = optimizer.eig_optimize_F(
+    matrixdet3, maximize=True, num=None
+)
+eig_diagprod, vec_diagprod = optimizer.eig_optimize_F(
+    diagprod, maximize=True, num=None
+)
 
 plt.plot(eig_matdet, label="matdet")
 plt.plot(eig_diagprod, label="diagprod")
@@ -148,7 +164,11 @@ def visualize_multi_param_fisher_comparison(
         diag_vals = [J_mat[0, 0], J_mat[1, 1], J_mat[2, 2]]
         trace_val = np.trace(J_mat)
         det_val = np.linalg.det(J_mat)
-        results[wname] = {"diag": diag_vals, "trace": trace_val, "det": det_val}
+        results[wname] = {
+            "diag": diag_vals,
+            "trace": trace_val,
+            "det": det_val,
+        }
 
     # print(results['a'])
 
@@ -214,7 +234,9 @@ def visualize_multi_param_fisher_comparison(
     ax_tr.set_ylabel("Trace(J)")
     ax_det.set_ylabel("Det(J)")
     ax_tr.tick_params(axis="y", labelcolor=tr_color)
-    ax_tr.ticklabel_format(axis="y", style="sci", useOffset=False, scilimits=(0, 1))
+    ax_tr.ticklabel_format(
+        axis="y", style="sci", useOffset=False, scilimits=(0, 1)
+    )
     ax_det.tick_params(axis="y", labelcolor=det_color)
 
     plt.suptitle(figure_title)

@@ -9,6 +9,7 @@ import sys
 
 import matplotlib
 import matplotlib.pyplot as plt
+
 # %%
 import numpy as np
 import torch
@@ -80,7 +81,9 @@ def calc_E0(sim, base_dipoles, frozen_dipoles):
 
 
 def calc_E_range_theta(sim, theta_range, base_dipoles, frozen_dipoles):
-    E_output = np.zeros((len(theta_range), 3, sim.grid_points_x), dtype=complex)
+    E_output = np.zeros(
+        (len(theta_range), 3, sim.grid_points_x), dtype=complex
+    )
     for p in range(3):
         for i, dtheta in enumerate(theta_range):
             dtheta_vec = dtheta * np.eye(3)[p]
@@ -145,8 +148,15 @@ Plot E0 + dE/dtheta * theta - E(theta), how big is the linear region?
 for p in range(3):
     plt.figure()
     ims = plt.imshow(
-        np.abs(E0 + dE_dtheta[p] * theta_in[:, np.newaxis] - E_output[:, p, :]).T,
-        extent=[np.min(theta_in), np.max(theta_in), np.min(sim.z), np.max(sim.z)],
+        np.abs(
+            E0 + dE_dtheta[p] * theta_in[:, np.newaxis] - E_output[:, p, :]
+        ).T,
+        extent=[
+            np.min(theta_in),
+            np.max(theta_in),
+            np.min(sim.z),
+            np.max(sim.z),
+        ],
     )
     # ims = plt.imshow(
     #     # np.abs(theta_in[np.newaxis, :]),
@@ -161,7 +171,8 @@ for p in range(3):
     plt.xlabel(r"$\theta-\theta_0$")
     plt.ylabel(r"$x / \lambda$")
     plt.title(
-        r"$\left|E_{\mathrm{predict}}-E\right|$" + f" for {fishermatrix.param_names[p]}"
+        r"$\left|E_{\mathrm{predict}}-E\right|$"
+        + f" for {fishermatrix.param_names[p]}"
     )
     cax = divider.append_axes("right", size="4%", pad=0.1)
     plt.colorbar(ims, cax=cax)
@@ -332,12 +343,18 @@ def measure_heterodyne(E, integration_time, nsamples=None):
     E = np.array(E)
     E_real = E.view(E.real.dtype)  # convert complex array to real array
     if nsamples is None:
-        field_samples = stats.norm.rvs(loc=E_real, scale=1 / (2 * integration_time))
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=1 / (2 * integration_time)
+        )
     else:
         field_samples = stats.norm.rvs(
-            loc=E_real, scale=1 / (2 * integration_time), size=(nsamples, *E_real.shape)
+            loc=E_real,
+            scale=1 / (2 * integration_time),
+            size=(nsamples, *E_real.shape),
         )
-    field_samples = field_samples.view(E.dtype)  # convert back to complex array
+    field_samples = field_samples.view(
+        E.dtype
+    )  # convert back to complex array
     return field_samples
 
 
@@ -373,7 +390,9 @@ def measure_heterodyne2(E, integration_time, nsamples=None):
         field_samples = stats.norm.rvs(
             loc=E_real, scale=sigma, size=(nsamples, *E_real.shape)
         )
-    field_samples = field_samples.view(E.dtype)  # convert back to complex array
+    field_samples = field_samples.view(
+        E.dtype
+    )  # convert back to complex array
     return field_samples
 
 

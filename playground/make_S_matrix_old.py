@@ -1,4 +1,4 @@
-#%%
+# %%
 import sys
 
 import fourierfun as ff
@@ -8,10 +8,11 @@ import numpy as np
 sys.path.append("../libraries")
 
 from fourierfun import cplot
+
 # from fourierfun import cplot
 from libraries.ScatteringSimulation import CoupledDipoleSimulator
 
-#%%
+# %%
 
 Ntheta = 20
 
@@ -108,7 +109,7 @@ plt.imshow(np.abs(S_hr))
 plt.colorbar()
 plt.show()
 
-#%%
+# %%
 
 plt.title("high res")
 plt.plot(k_x_highres[:100], np.abs(E_k_highres)[:100])
@@ -123,7 +124,7 @@ plt.ylabel("$abs(E)$")
 plt.show()
 
 
-#%%
+# %%
 def sample_frequency(E, x, k, L):
     return np.trapezoid(np.exp(-1j * x * k) * E, x=x) / L
 
@@ -175,7 +176,9 @@ for i, theta_deg in enumerate(theta_degs):
     # cds.visualize_output_field()
     E_output = cds.compute_zL_fields_direct()
 
-    E_samples = [sample_frequency(E_output, x, k, fr.ymax) for k in k_x_samples]
+    E_samples = [
+        sample_frequency(E_output, x, k, fr.ymax) for k in k_x_samples
+    ]
 
     # k_x = cds.k * np.sin(cds.theta_inc)
     # # print(k_x)

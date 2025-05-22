@@ -20,7 +20,9 @@ alpha = 4j / (2 * np.pi / lambda_0) ** 2
 seed = 0
 
 # We define input angles symmetrically around 0 degrees. For example:
-theta_in_deg = np.linspace(-20, 20, num_incoming)  # center around normal incidence
+theta_in_deg = np.linspace(
+    -20, 20, num_incoming
+)  # center around normal incidence
 theta_in = np.deg2rad(theta_in_deg)
 
 # We'll also define the angles at which we want to measure the output channels:
@@ -40,6 +42,7 @@ sim = CoupledDipoleSimulator(
     grid_points_x=grid_points_x,
     seed=seed,
 )
+
 
 # We'll define a convenience function to convert angles to k_x:
 def theta2kx(theta_array, k0=2 * np.pi / lambda_0):
@@ -100,7 +103,12 @@ plt.imshow(
     np.abs(S_matrix),
     origin="lower",
     aspect="auto",
-    extent=[theta_in_deg[0], theta_in_deg[-1], theta_out_deg[0], theta_out_deg[-1]],
+    extent=[
+        theta_in_deg[0],
+        theta_in_deg[-1],
+        theta_out_deg[0],
+        theta_out_deg[-1],
+    ],
 )
 plt.colorbar(label="|S(out, in)|")
 plt.xlabel("Input angle (deg)")
@@ -114,7 +122,12 @@ plt.imshow(
     np.angle(S_matrix),
     origin="lower",
     aspect="auto",
-    extent=[theta_in_deg[0], theta_in_deg[-1], theta_out_deg[0], theta_out_deg[-1]],
+    extent=[
+        theta_in_deg[0],
+        theta_in_deg[-1],
+        theta_out_deg[0],
+        theta_out_deg[-1],
+    ],
     cmap="twilight",
 )
 plt.colorbar(label="Arg[S(out, in)]")

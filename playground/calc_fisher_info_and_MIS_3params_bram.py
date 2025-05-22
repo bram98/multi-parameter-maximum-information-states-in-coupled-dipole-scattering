@@ -41,7 +41,9 @@ def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
     We'll interpret: scatterers[i] = (z_i, x_i).
     """
     half = side / 2
-    corners = np.array([(-half, -half), (-half, +half), (+half, -half), (+half, +half)])
+    corners = np.array(
+        [(-half, -half), (-half, +half), (+half, -half), (+half, +half)]
+    )
     corners[:, 0] += center[0]
     corners[:, 1] += center[1]
     return corners.T  # shape(2,4)
@@ -109,7 +111,9 @@ def partial_derivative_3params(
     )
     sim_minus = CoupledDipoleSimulator(**sim_kwargs)
     sim_minus.scatterers = scatterers_minus
-    S_minus, x_cam = sim_minus.build_scattering_matrix(angles_deg, flux_normalize=True)
+    S_minus, x_cam = sim_minus.build_scattering_matrix(
+        angles_deg, flux_normalize=True
+    )
 
     # T_plus
     scatterers_plus = shift_and_rotate_dipoles(
@@ -117,7 +121,9 @@ def partial_derivative_3params(
     )
     sim_plus = CoupledDipoleSimulator(**sim_kwargs)
     sim_plus.scatterers = scatterers_plus
-    S_plus, _ = sim_plus.build_scattering_matrix(angles_deg, flux_normalize=True)
+    S_plus, _ = sim_plus.build_scattering_matrix(
+        angles_deg, flux_normalize=True
+    )
 
     return S_plus, S_minus, x_cam
 
@@ -135,7 +141,9 @@ def partial_derivative_field_3params(
     We'll do a CoupledDipoleSimulator with Ns=... and custom scatterers for each +/- shift.
     """
     # E_minus
-    scatterers_minus = shift_and_rotate_dipoles(base_dipoles, -dx, -dz, -dtheta)
+    scatterers_minus = shift_and_rotate_dipoles(
+        base_dipoles, -dx, -dz, -dtheta
+    )
     sim_minus = CoupledDipoleSimulator(**sim_kwargs)
     sim_minus.scatterers = scatterers_minus
     sim_minus.set_input_field_kx(kx_array, wavefront)
@@ -187,7 +195,9 @@ for i in range(3):
     )
     S_deriv = (S_plus - S_minus) / (2 * delta_param)
     dS.append(S_deriv)
-    print(f"Built derivative wrt {param_names[i]}, shape T_deriv = {S_deriv.shape}")
+    print(
+        f"Built derivative wrt {param_names[i]}, shape T_deriv = {S_deriv.shape}"
+    )
 
 dS = np.array(dS)
 name = "Quad_" + "_".join(param_names)
@@ -222,12 +232,15 @@ for i in range(3):
     lam_max = vals[idx_sort[0]]
     v_max = vecs[:, idx_sort[0]]
 
-    print(f"\nSingle-param MIS => {param_names[i]}, largest eigenvalue = {lam_max:.3g}")
+    print(
+        f"\nSingle-param MIS => {param_names[i]}, largest eigenvalue = {lam_max:.3g}"
+    )
     base_sim.reset()
     base_sim.set_input_field_kx(kx_array, v_max)
     base_sim.solve_fields()
     base_sim.visualize_intensity(
-        title=f"Single-Parameter Optimized Wavefront for {param_names[i]}", dpi=plot_dpi
+        title=f"Single-Parameter Optimized Wavefront for {param_names[i]}",
+        dpi=plot_dpi,
     )
 
     # Store them for final comparison
@@ -265,7 +278,9 @@ def fisher_3x3(E_vec, F_tensor):
     for mu in range(3):
         for nu in range(3):
             Fmn = F_tensor[mu, nu, :, :]
-            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
+            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[
+                0, 0
+            ]
             J_mat[mu, nu] = val.real
     return J_mat
 
@@ -274,7 +289,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= photon_budget ** 0.5 / norm_init
+        E_param *= photon_budget**0.5 / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_det_val = None
@@ -282,7 +297,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         det_val = torch.linalg.det(J)
         loss = -det_val
@@ -291,7 +306,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= photon_budget ** 0.5 / cur_norm
+            E_norm *= photon_budget**0.5 / cur_norm
 
         if best_det_val is None or det_val.item() > best_det_val:
             best_det_val = det_val.item()
@@ -323,7 +338,9 @@ plt.ylabel("-(best determinant) so far")
 plt.title("Determinant Optimization Loss")
 plt.show()
 
-base_sim.visualize_intensity(title=f"Determinant Optimized Wavefront", dpi=plot_dpi)
+base_sim.visualize_intensity(
+    title=f"Determinant Optimized Wavefront", dpi=plot_dpi
+)
 
 # %% 7b) Spectral Radius Optimization with torch (Minimize maximum eigenvalue of J⁻¹)
 losses_spec = []
@@ -338,7 +355,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget ** 0.5) / norm_init
+        E_param *= (photon_budget**0.5) / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_min_eig = None
@@ -346,7 +363,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         eigvals = torch.linalg.eigvalsh(J)
         min_eig = eigvals[0]  # smallest eigenvalue of J
@@ -356,7 +373,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= (photon_budget ** 0.5) / cur_norm
+            E_norm *= (photon_budget**0.5) / cur_norm
 
         if best_min_eig is None or min_eig.item() > best_min_eig:
             best_min_eig = min_eig.item()
@@ -437,13 +454,13 @@ def plot_field_and_poynting(
 
     mask = (Zs * 0).astype(bool)
     for pos in exclusion_pos:
-        mask |= (pos[0] - Zs) ** 2 + (pos[1] - Xs) ** 2 <= exclusion_radius ** 2
+        mask |= (pos[0] - Zs) ** 2 + (pos[1] - Xs) ** 2 <= exclusion_radius**2
 
     Sz[mask] = 0
     Sx[mask] = 0
 
     if arrow_rescaling:
-        Smax = np.max(np.sqrt(Sz ** 2 + Sx ** 2))
+        Smax = np.max(np.sqrt(Sz**2 + Sx**2))
         Sz /= Smax
         Sx /= Smax
     if not keep_fig:
@@ -459,7 +476,13 @@ def plot_field_and_poynting(
     plt.colorbar()
 
     arrow_plot = plt.quiver(
-        Z[skip], X[skip], Sz, Sx, angles="xy", scale=1 / arrow_scale, scale_units="xy"
+        Z[skip],
+        X[skip],
+        Sz,
+        Sx,
+        angles="xy",
+        scale=1 / arrow_scale,
+        scale_units="xy",
     )
 
     plt.title(title)
@@ -492,7 +515,13 @@ def animate_rotating_parameter(
         alpha = frame / nframes * np.pi
         dz, dx, dtheta = (delta * np.sin(alpha), delta * np.cos(alpha), 0.0)
         dE = partial_derivative_field_3params(
-            dz, dx, dtheta, sim_kwargs, kx_array, planewave, base_positions=base_dipoles
+            dz,
+            dx,
+            dtheta,
+            sim_kwargs,
+            kx_array,
+            planewave,
+            base_positions=base_dipoles,
         )
         Z = base_sim.Z_grid
         X = base_sim.X_grid
@@ -536,7 +565,12 @@ def animate_rotating_parameter(
     blit = True
 
     ani = animation.FuncAnimation(
-        fig, update, frames=nframes, interval=1000 / fps, blit=blit, repeat=False
+        fig,
+        update,
+        frames=nframes,
+        interval=1000 / fps,
+        blit=blit,
+        repeat=False,
     )
     print(filename + ".mp4")
     # plt.show()
@@ -657,7 +691,9 @@ def compute_fisher_matrix_for_wavefront(wavefront, F_tensor):
     for mu in range(3):
         for nu in range(3):
             Fmn = F_tensor[mu, nu, :, :]
-            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[0, 0]
+            val = (torch.conj(E_c).unsqueeze(0) @ (Fmn @ E_c.unsqueeze(1)))[
+                0, 0
+            ]
             J_mat_torch[mu, nu] = val.real
     return J_mat_torch.detach().cpu().numpy()
 
@@ -675,7 +711,11 @@ def visualize_multi_param_fisher_comparison(
         diag_vals = [J_mat[0, 0], J_mat[1, 1], J_mat[2, 2]]
         trace_val = np.trace(J_mat)
         det_val = np.linalg.det(J_mat)
-        results[wname] = {"diag": diag_vals, "trace": trace_val, "det": det_val}
+        results[wname] = {
+            "diag": diag_vals,
+            "trace": trace_val,
+            "det": det_val,
+        }
 
     n_wf = len(wave_names)
     diag_data = np.array([results[w]["diag"] for w in wave_names])
@@ -739,7 +779,9 @@ def visualize_multi_param_fisher_comparison(
     ax_tr.set_ylabel("Trace(J)")
     ax_det.set_ylabel("Det(J)")
     ax_tr.tick_params(axis="y", labelcolor=tr_color)
-    ax_tr.ticklabel_format(axis="y", style="sci", useOffset=False, scilimits=(0, 1))
+    ax_tr.ticklabel_format(
+        axis="y", style="sci", useOffset=False, scilimits=(0, 1)
+    )
     ax_det.tick_params(axis="y", labelcolor=det_color)
 
     plt.suptitle(figure_title)
@@ -768,7 +810,9 @@ wavefront_z_norm = normalize_wavefront(wavefront_z, photon_budget)
 wavefront_rot_norm = normalize_wavefront(wavefront_rot, photon_budget)
 v_sum_max_norm = normalize_wavefront(v_sum_max, photon_budget)
 E_opt_complex_norm = normalize_wavefront(E_opt_complex, photon_budget)
-E_opt_spec_complex_norm = normalize_wavefront(E_opt_spec_complex, photon_budget)
+E_opt_spec_complex_norm = normalize_wavefront(
+    E_opt_spec_complex, photon_budget
+)
 
 
 wavefronts_dict = {
@@ -780,7 +824,9 @@ wavefronts_dict = {
     "Spectral\nRadius": E_opt_spec_complex_norm,
 }
 visualize_multi_param_fisher_comparison(
-    wavefronts_dict, F_tensor_torch, figure_title="Comparison of all wavefronts"
+    wavefronts_dict,
+    F_tensor_torch,
+    figure_title="Comparison of all wavefronts",
 )
 
 
@@ -827,7 +873,9 @@ def visualize_crlb_comparison(
     width = 0.25
     for i in range(3):
         offset = (i - 1) * width
-        ax.bar(x_idx + offset, diag_data[:, i], width=width, label=param_labels[i])
+        ax.bar(
+            x_idx + offset, diag_data[:, i], width=width, label=param_labels[i]
+        )
     ax.set_title(figure_title)
     ax.set_xticks(x_idx)
     ax.set_xticklabels(wave_names, rotation=25)
@@ -859,7 +907,9 @@ def compute_std_for_wavefront(wavefront, F_tensor):
 
 
 def visualize_std_comparison(
-    wavefronts_dict, F_tensor_torch, figure_title="STD (sqrt(CRLB)) for each wavefront"
+    wavefronts_dict,
+    F_tensor_torch,
+    figure_title="STD (sqrt(CRLB)) for each wavefront",
 ):
     param_labels = ["STD x", "STD z", "STD theta"]
     wave_names = list(wavefronts_dict.keys())
@@ -891,5 +941,7 @@ def visualize_std_comparison(
 
 
 visualize_std_comparison(
-    wavefronts_dict, F_tensor_torch, figure_title="STD (sqrt(CRLB)) for each wavefront"
+    wavefronts_dict,
+    F_tensor_torch,
+    figure_title="STD (sqrt(CRLB)) for each wavefront",
 )

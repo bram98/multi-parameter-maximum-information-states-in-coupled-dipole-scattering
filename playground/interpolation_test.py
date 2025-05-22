@@ -7,11 +7,16 @@ Created on Tue Dec  3 15:28:51 2024
 
 import fourierfun as ff
 import matplotlib.pyplot as plt
+
 # %%
 import numpy as np
 import scipy
-from scipy.interpolate import (CubicHermiteSpline, barycentric_interpolate,
-                               krogh_interpolate, pchip_interpolate)
+from scipy.interpolate import (
+    CubicHermiteSpline,
+    barycentric_interpolate,
+    krogh_interpolate,
+    pchip_interpolate,
+)
 
 # %%
 """'
@@ -129,7 +134,9 @@ for dk in np.linspace(0, np.pi, num=50):
     plt.xlim(0, 10)
     plt.ylim(0, 1.1)
 
-    for name, window in zip(["gauss", "flat-top"], [gauss(x, 1.0), flat_top(x)]):
+    for name, window in zip(
+        ["gauss", "flat-top"], [gauss(x, 1.0), flat_top(x)]
+    ):
         yw = y * window
         yw = np.fft.ifftshift(yw)
         y_kw = np.fft.fft(yw, norm="forward")
@@ -154,7 +161,9 @@ n_interp = 500
 fr = ff.FourierRange(n=n, xmax=xmax)
 
 
-k = 2 * np.pi + np.pi / 2  # wavelength of source signal, start as worst case scenario
+k = (
+    2 * np.pi + np.pi / 2
+)  # wavelength of source signal, start as worst case scenario
 x = fr.xrange()  # range of x-values
 
 k_range = fr.krange()  # range of k-values

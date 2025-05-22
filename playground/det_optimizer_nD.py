@@ -6,6 +6,7 @@ from timeit import default_timer as timer
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
 # %%
 from evotorch.decorators import vectorized
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
@@ -82,18 +83,26 @@ else:
     if complex_F:
         dS = np.random.normal(
             scale=sigma, size=(nparams, nhilbert, nhilbert)
-        ) + 1j * np.random.normal(scale=sigma, size=(nparams, nhilbert, nhilbert))
+        ) + 1j * np.random.normal(
+            scale=sigma, size=(nparams, nhilbert, nhilbert)
+        )
     else:
-        dS = np.random.normal(loc=0.0, scale=sigma, size=(nparams, nhilbert, nhilbert))
+        dS = np.random.normal(
+            loc=0.0, scale=sigma, size=(nparams, nhilbert, nhilbert)
+        )
     np.save(filepath, dS)
 
 
-G = np.random.normal(loc=0, scale=r / np.sqrt(2 * nhilbert), size=(nhilbert, nhilbert))
+G = np.random.normal(
+    loc=0, scale=r / np.sqrt(2 * nhilbert), size=(nhilbert, nhilbert)
+)
 
 F = make_F(dS)
 
 # %%
-dS = np.load("../data/simulation_scatter_deriv/Quad_shiftX_shiftZ_rotation.npy")
+dS = np.load(
+    "../data/simulation_scatter_deriv/Quad_shiftX_shiftZ_rotation.npy"
+)
 
 F = make_F(dS)
 nparams, _, nhilbert, _ = F.shape
@@ -148,7 +157,11 @@ class DetFisher:
 # optimizer = torch.optim.Adam([v], lr=.1)
 nswarm = 100
 optimizer = SwarmOptimizer(
-    nhilbert, nswarm, swarm_optimizer_type="standard", max_iterations=1, bounds=[-1, 1]
+    nhilbert,
+    nswarm,
+    swarm_optimizer_type="standard",
+    max_iterations=1,
+    bounds=[-1, 1],
 )
 
 
@@ -307,7 +320,12 @@ Normalization step vs unnormalization step
 """
 
 v = torch.normal(
-    0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
+    0,
+    1,
+    (nhilbert,),
+    dtype=torch.complex128,
+    requires_grad=True,
+    device="cuda",
 )
 # torch.nn.init.normal_(v)
 with torch.no_grad():
@@ -353,7 +371,12 @@ best_loss_history_adam = []
 t1 = timer()
 
 v = torch.normal(
-    0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
+    0,
+    1,
+    (nhilbert,),
+    dtype=torch.complex128,
+    requires_grad=True,
+    device="cuda",
 )
 # torch.nn.init.normal_(v)
 with torch.no_grad():
@@ -408,7 +431,12 @@ t1 = timer()
 for i in range(nadams):
     print(f"\rTesting Adam {i + 1} / {nadams}", end="")
     v = torch.normal(
-        0, 1, (nhilbert,), dtype=torch.complex128, requires_grad=True, device="cuda"
+        0,
+        1,
+        (nhilbert,),
+        dtype=torch.complex128,
+        requires_grad=True,
+        device="cuda",
     )
     # torch.nn.init.normal_(v)
     with torch.no_grad():
@@ -447,7 +475,9 @@ best_v_histories_adam = np.array(best_v_histories_adam)
 skip = 100
 plt.figure()
 iterations = np.arange(skip, len(best_loss_histories_adam[0]))
-plt.plot(iterations, best_loss_histories_adam[:, skip:].T, c="tab:blue", alpha=0.2)
+plt.plot(
+    iterations, best_loss_histories_adam[:, skip:].T, c="tab:blue", alpha=0.2
+)
 # plt.ticklabel_format(style='plain', useOffset=False)
 plt.xlabel("Optimizer Steps")
 plt.ylabel("Determinant loss")
@@ -488,9 +518,14 @@ skip = 20
 plt.figure()
 plt.plot(loss_history_ADAM[skip:], c="tab:blue", label="Adam")
 plt.plot(
-    best_loss_history_adam[skip:], c="tab:blue", label="Adam (best)", linestyle="--"
+    best_loss_history_adam[skip:],
+    c="tab:blue",
+    label="Adam (best)",
+    linestyle="--",
 )
-plt.plot(loss_history_ADAM_norm[skip:], c="tab:orange", label="Adam normalized")
+plt.plot(
+    loss_history_ADAM_norm[skip:], c="tab:orange", label="Adam normalized"
+)
 plt.plot(
     best_loss_history_adam_norm[skip:],
     c="tab:orange",
@@ -506,9 +541,14 @@ skip = -100
 plt.figure()
 plt.plot(loss_history_ADAM[skip:], c="tab:blue", label="Adam")
 plt.plot(
-    best_loss_history_adam[skip:], c="tab:blue", label="Adam (best)", linestyle="--"
+    best_loss_history_adam[skip:],
+    c="tab:blue",
+    label="Adam (best)",
+    linestyle="--",
 )
-plt.plot(loss_history_ADAM_norm[skip:], c="tab:orange", label="Adam normalized")
+plt.plot(
+    loss_history_ADAM_norm[skip:], c="tab:orange", label="Adam normalized"
+)
 plt.plot(
     best_loss_history_adam_norm[skip:],
     c="tab:orange",
@@ -553,7 +593,9 @@ searcher_CMAES_sep = CMAES(problem.clone(), stdev_init=1, separable=True)
 # Create a logger
 logger_SNES = PandasLogger(searcher_SNES, interval=1, after_first_step=False)
 logger_CMAES = PandasLogger(searcher_CMAES, interval=1, after_first_step=False)
-logger_CMAES_sep = PandasLogger(searcher_CMAES_sep, interval=1, after_first_step=False)
+logger_CMAES_sep = PandasLogger(
+    searcher_CMAES_sep, interval=1, after_first_step=False
+)
 
 # steps = 2000
 

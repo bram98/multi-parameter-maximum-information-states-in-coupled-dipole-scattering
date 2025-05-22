@@ -11,6 +11,7 @@ from pathlib import Path
 import dill  # saving objects to disk
 import matplotlib
 import matplotlib.pyplot as plt
+
 # %%
 import numpy as np
 import toposort
@@ -100,7 +101,12 @@ class LossFunction:
         return wavefront * np.sqrt(LossFunction.photon_budget / norm_sq)
 
     def optimize(
-        self, optimizer: Optimizer, seed=None, steps=2000, num_eig=1, verbose=True
+        self,
+        optimizer: Optimizer,
+        seed=None,
+        steps=2000,
+        num_eig=1,
+        verbose=True,
     ):
         """
         Performs the optimization. If method == 'eig', the optimizer finds the
@@ -137,7 +143,9 @@ class LossFunction:
                 verbose=verbose,
                 seed=seed,
             )
-            self.wavefront = LossFunction.normalize_wavefront(result["bestvec"])
+            self.wavefront = LossFunction.normalize_wavefront(
+                result["bestvec"]
+            )
             self.bestval = result["bestval"]
             # print(result)
             self.loss_history = result["loss"]
@@ -145,7 +153,9 @@ class LossFunction:
         if verbose:
             print(f"Optimized {self.name: <30}loss: {self.bestval:.5g}")
 
-    def visualize(self, sim: CoupledDipoleSimulator, kx_array, title=None, dpi=100):
+    def visualize(
+        self, sim: CoupledDipoleSimulator, kx_array, title=None, dpi=100
+    ):
         """
         Plot wavefront and scatterers.
 
@@ -174,7 +184,9 @@ class LossFunction:
     @property
     def wavefront(self):
         if self._wavefront is None:
-            raise ValueError("Wavefront not defined. Please run optimizer first.")
+            raise ValueError(
+                "Wavefront not defined. Please run optimizer first."
+            )
 
         return self._wavefront
 
@@ -190,7 +202,9 @@ class LossFunction:
 
 
 def calc_results(
-    loss_functions: list[LossFunction], optimizer: Optimizer, metric_function: callable
+    loss_functions: list[LossFunction],
+    optimizer: Optimizer,
+    metric_function: callable,
 ):
     """
     Calculates the single parameter results using the loss_functions objects.
@@ -221,7 +235,9 @@ def calc_results(
 
 def calc_std_ideal(loss_functions, optimizer):
     return calc_results(
-        loss_functions, optimizer, lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2])
+        loss_functions,
+        optimizer,
+        lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2]),
     )
 
 
@@ -235,7 +251,13 @@ def calc_std_joint(loss_functions, optimizer):
 
 
 def _bar_plot_loss_functions_metrics(
-    results, metric_labels, ax=None, title=None, ylabel=None, dpi=100, **plot_kwargs
+    results,
+    metric_labels,
+    ax=None,
+    title=None,
+    ylabel=None,
+    dpi=100,
+    **plot_kwargs,
 ):
     newplot = ax is None
     if newplot:
@@ -257,7 +279,11 @@ def _bar_plot_loss_functions_metrics(
     for m in range(len(data[0])):
         offset = (m - 1) * width
         ax.bar(
-            x + offset, data[:, m], width=width, label=metric_labels[m], **plot_kwargs
+            x + offset,
+            data[:, m],
+            width=width,
+            label=metric_labels[m],
+            **plot_kwargs,
         )
 
     ax.set_title(title)
@@ -299,7 +325,11 @@ def bar_plot_STD_joint(results, title=None, ax=None, dpi=100, **plot_kwargs):
 
 
 def bar_plot_STD_ideal(results, title=None, ax=None, dpi=100, **plot_kwargs):
-    labels = (r"$1\,/\ J_{xx}$", r"$1\,/\ J_{zz}$", r"$1\,/\ J_{\theta\theta}$")
+    labels = (
+        r"$1\,/\ J_{xx}$",
+        r"$1\,/\ J_{zz}$",
+        r"$1\,/\ J_{\theta\theta}$",
+    )
 
     _bar_plot_loss_functions_metrics(
         results,
@@ -406,7 +436,9 @@ def pareto_plot(results, xmax=None, ymax=None, lowerisbetter=True, dpi=100):
             loss_function.shortname,
             (x, y),
             fontsize=11,
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="grey", alpha=1.0),
+            bbox=dict(
+                boxstyle="round,pad=0.3", fc="white", ec="grey", alpha=1.0
+            ),
             zorder=10,
         )
         points.append(point)
@@ -479,7 +511,13 @@ if save_state:
 
 # %% 2) simulator geometry and input space
 sim_kwargs = dict(
-    lambda_0=1.0, Lz=8.0, Lx=8.0, Ns=Ns, seed=123, grid_points_x=300, theta_inc_deg=0.0,
+    lambda_0=1.0,
+    Lz=8.0,
+    Lx=8.0,
+    Ns=Ns,
+    seed=123,
+    grid_points_x=300,
+    theta_inc_deg=0.0,
 )
 max_angle = 80
 angles_deg = np.linspace(-max_angle, max_angle, 100)
@@ -648,9 +686,15 @@ std_ideal = calc_std_ideal(loss_functions, optimizer)
 fig, ax = plt.subplots()
 
 bar_plot_STD_joint(
-    std_joint, dpi=75, title=r"Single Param. Performance (joint)", ax=ax, alpha=0.4
+    std_joint,
+    dpi=75,
+    title=r"Single Param. Performance (joint)",
+    ax=ax,
+    alpha=0.4,
 )
 
 plt.gca().set_prop_cycle(None)
-bar_plot_STD_ideal(std_ideal, dpi=75, title=r"Single Param. Performance (ideal)", ax=ax)
+bar_plot_STD_ideal(
+    std_ideal, dpi=75, title=r"Single Param. Performance (ideal)", ax=ax
+)
 plt.show()

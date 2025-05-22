@@ -39,7 +39,10 @@ class FisherMatrix:
             Fisher matrix of shape (nparams, nparams, nhilbert, nhilbert).
         """
         F = [
-            [dS_dmu.conj().T @ dS_dnu + dS_dnu.conj().T @ dS_dmu for dS_dmu in dS]
+            [
+                dS_dmu.conj().T @ dS_dnu + dS_dnu.conj().T @ dS_dmu
+                for dS_dmu in dS
+            ]
             for dS_dnu in dS
         ]
         F = np.array(F)
@@ -92,7 +95,13 @@ class FisherMatrix:
         return self
 
     def random(
-        self, nparams, nhilbert_in, *nhilbert_out, r=2.0, seed=None, complexF=True
+        self,
+        nparams,
+        nhilbert_in,
+        *nhilbert_out,
+        r=2.0,
+        seed=None,
+        complexF=True,
     ):
         """
         Generates a random dS matrix.

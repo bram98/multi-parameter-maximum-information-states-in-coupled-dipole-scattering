@@ -19,7 +19,9 @@ def square_of_dipoles(center=(4.0, 0.0), side=1.0):
     We'll interpret: scatterers[i] = (z_i, x_i).
     """
     half = side / 2
-    corners = np.array([(-half, -half), (-half, +half), (+half, -half), (+half, +half)])
+    corners = np.array(
+        [(-half, -half), (-half, +half), (+half, -half), (+half, +half)]
+    )
     corners[:, 0] += center[0]
     corners[:, 1] += center[1]
     return corners.T  # shape(2,4)
@@ -83,10 +85,18 @@ def shift_and_rotate_dipoles_3params(
     shifted_dipoles = []
     for dx_, dz_, dtheta_ in zip([dx, 0, 0], [0, dz, 0], [0, 0, dtheta]):
         dipoles_p = shift_and_rotate_dipoles(
-            original_positions, dx_, dz_, dtheta_, frozen_dipoles=frozen_dipoles
+            original_positions,
+            dx_,
+            dz_,
+            dtheta_,
+            frozen_dipoles=frozen_dipoles,
         )
         dipoles_m = shift_and_rotate_dipoles(
-            original_positions, -dx_, -dz_, -dtheta_, frozen_dipoles=frozen_dipoles
+            original_positions,
+            -dx_,
+            -dz_,
+            -dtheta_,
+            frozen_dipoles=frozen_dipoles,
         )
         shifted_dipoles.append([dipoles_p, dipoles_m])
 
@@ -155,7 +165,12 @@ def simulate_dS(
 
 
 def simulate_dE(
-    sim_kwargs, scatterers_plus, scatterers_minus, kx_array, wavefront, delta=1e-3,
+    sim_kwargs,
+    scatterers_plus,
+    scatterers_minus,
+    kx_array,
+    wavefront,
+    delta=1e-3,
 ):
     """
     Calculates the partial derivative dE/dtheta for the field using
@@ -239,7 +254,11 @@ def simulate_dS_3params(
         Partial derivative of the scattering matrix
     """
     shifted_dipoles = shift_and_rotate_dipoles_3params(
-        base_dipoles, dx=dx, dz=dz, dtheta=dtheta, frozen_dipoles=frozen_dipoles
+        base_dipoles,
+        dx=dx,
+        dz=dz,
+        dtheta=dtheta,
+        frozen_dipoles=frozen_dipoles,
     )
 
     dS = []

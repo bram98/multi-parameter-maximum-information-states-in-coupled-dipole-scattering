@@ -1,4 +1,4 @@
-#%%
+# %%
 import sys
 
 import fourierfun as ff
@@ -8,7 +8,7 @@ from libraries.ScatteringSimulation import CoupledDipoleSimulator
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import MaxNLocator, MultipleLocator
 
-#%%
+# %%
 
 
 class SMatrixCalculator:
@@ -18,7 +18,9 @@ class SMatrixCalculator:
 
     def __init__(self, N, input_states_l=None, input_states_r=None):
         self.N = N
-        self.input_states_l = None  # input states left (can be angles or vectors etc.)
+        self.input_states_l = (
+            None  # input states left (can be angles or vectors etc.)
+        )
         self.input_states_r = None  # input states right
         self.Tlr = None  # transmission left to right
         self.Trl = None  # transmission right to left

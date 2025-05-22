@@ -16,6 +16,7 @@ projection or normalization—just store the field samples at z=Lz.
 """
 
 import matplotlib.pyplot as plt
+
 # %% Imports
 import numpy as np
 from ScatteringSimulation import CoupledDipoleSimulator
@@ -30,7 +31,7 @@ def flux_amplitude_2d(k0, kx):
     factor if we want an orthonormal set, but for a small discrete set we usually
     just do sqrt(kz / k0).
     """
-    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)  # +0j to keep it in complex domain
+    kz = np.sqrt(k0**2 - kx**2 + 0j)  # +0j to keep it in complex domain
     return np.sqrt(kz / k0)  # kind of equivalent to normalize with sqrt(cos)
 
 
@@ -252,11 +253,18 @@ if __name__ == "__main__":
 
     # Quick plot to see if they match in magnitude
     plt.figure(figsize=(8, 4))
-    plt.plot(x_cam / sim.lambda_0, np.abs(E_test), "b-", label="|E_test| from sim")
     plt.plot(
-        x_cam / sim.lambda_0, np.abs(predicted), "r--", label="|predicted| from SVD"
+        x_cam / sim.lambda_0, np.abs(E_test), "b-", label="|E_test| from sim"
     )
-    plt.title("Check: Summed Input Coeff => output (compare to SVD prediction)")
+    plt.plot(
+        x_cam / sim.lambda_0,
+        np.abs(predicted),
+        "r--",
+        label="|predicted| from SVD",
+    )
+    plt.title(
+        "Check: Summed Input Coeff => output (compare to SVD prediction)"
+    )
     plt.xlabel("x / λ  (at z=Lz)")
     plt.ylabel("|E|")
     plt.legend()
@@ -269,12 +277,14 @@ if __name__ == "__main__":
 
     # %% 5) Test with a random input field
     # Generate a random input field
-    random_input = np.random.rand(len(angles)) + 1j * 2 * np.pi * np.random.rand(
+    random_input = np.random.rand(
         len(angles)
-    )
+    ) + 1j * 2 * np.pi * np.random.rand(len(angles))
 
     # Predict output using the scattering matrix
-    predicted_output_random = T_matrix @ random_input  # matrix-vector multiplication
+    predicted_output_random = (
+        T_matrix @ random_input
+    )  # matrix-vector multiplication
 
     # Simulate output for the same random input
     test_sim = CoupledDipoleSimulator(

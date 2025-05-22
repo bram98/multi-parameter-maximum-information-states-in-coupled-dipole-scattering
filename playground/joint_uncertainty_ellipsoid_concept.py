@@ -73,7 +73,9 @@ origin = np.array([0.0, 0.0, 0.0])
 axis_linewidth = 2.2
 
 # Longest Semi-Axis (E-optimality related) - The one E-optimality TRIES TO MINIMIZE
-longest_axis_vector_end = sorted_eigenvectors_J_inv[:, 0] * sorted_radii_ellipsoid[0]
+longest_axis_vector_end = (
+    sorted_eigenvectors_J_inv[:, 0] * sorted_radii_ellipsoid[0]
+)
 ax.plot(
     [0, longest_axis_vector_end[0]],
     [0, longest_axis_vector_end[1]],
@@ -113,7 +115,9 @@ ax.plot(
 )
 
 # Shortest Semi-Axis
-shortest_axis_vector_end = sorted_eigenvectors_J_inv[:, 2] * sorted_radii_ellipsoid[2]
+shortest_axis_vector_end = (
+    sorted_eigenvectors_J_inv[:, 2] * sorted_radii_ellipsoid[2]
+)
 ax.plot(
     [0, shortest_axis_vector_end[0]],
     [0, shortest_axis_vector_end[1]],
@@ -132,7 +136,9 @@ ax.plot(
 )
 
 # Annotations for Optimality Criteria (all stacked top-left)
-text_props = dict(boxstyle="round,pad=0.3", fc="lightgoldenrodyellow", alpha=0.85)
+text_props = dict(
+    boxstyle="round,pad=0.3", fc="lightgoldenrodyellow", alpha=0.85
+)
 v_offset = 0.98
 h_pos = 0.02
 
@@ -167,7 +173,8 @@ v_offset -= textbox_line_spacing_factor
 ax.text2D(
     h_pos,
     v_offset,
-    r"$\bf{E-Opt:}$ Min($\lambda_{max}(J^{-1})$)" "\n  (Shorten Longest Axis; red)",
+    r"$\bf{E-Opt:}$ Min($\lambda_{max}(J^{-1})$)"
+    "\n  (Shorten Longest Axis; red)",
     transform=ax.transAxes,
     fontsize=annotation_fontsize,
     verticalalignment="top",
@@ -177,10 +184,16 @@ ax.text2D(
 
 
 # Setting axis labels
-ax.set_xlabel("Uncertainty in $\Delta x$", fontsize=axis_label_fontsize, labelpad=10)
-ax.set_ylabel("Uncertainty in $\Delta z$", fontsize=axis_label_fontsize, labelpad=10)
+ax.set_xlabel(
+    "Uncertainty in $\Delta x$", fontsize=axis_label_fontsize, labelpad=10
+)
+ax.set_ylabel(
+    "Uncertainty in $\Delta z$", fontsize=axis_label_fontsize, labelpad=10
+)
 ax.set_zlabel(
-    "Uncertainty in $\Delta \\theta$", fontsize=axis_label_fontsize, labelpad=10
+    "Uncertainty in $\Delta \\theta$",
+    fontsize=axis_label_fontsize,
+    labelpad=10,
 )
 
 # Remove ticks and tick labels, and grid

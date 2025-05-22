@@ -73,7 +73,9 @@ class Optimizer:
         return self.eig_optimize(T, maximize=maximize, num=num)
 
     def J(self, E):
-        return torch.einsum("mnij, ...i, ...j -> ...mn", self.Ft, E.conj(), E).real
+        return torch.einsum(
+            "mnij, ...i, ...j -> ...mn", self.Ft, E.conj(), E
+        ).real
 
     def J_np(self, E):
         return np.einsum("mnij, ...i, ...j -> ...mn", self.F, E.conj(), E).real
@@ -109,7 +111,11 @@ class Optimizer:
             torch.manual_seed(seed)
 
         if self.Ft is None:
-            self.Ft = torch.from_numpy(self.F).to(torch.complex128).device(self.device)
+            self.Ft = (
+                torch.from_numpy(self.F)
+                .to(torch.complex128)
+                .device(self.device)
+            )
 
         loss_histories = []
 
@@ -118,7 +124,11 @@ class Optimizer:
 
         for i in range(runs):
             cur_val, cur_vec, loss = self.torch_optimize_loss(
-                loss_function, steps=steps, lr=lr, verbose=verbose, maximize=maximize
+                loss_function,
+                steps=steps,
+                lr=lr,
+                verbose=verbose,
+                maximize=maximize,
             ).values()
             if (
                 (cur_val < best_val)
@@ -131,7 +141,11 @@ class Optimizer:
 
             loss_histories.append(loss)
 
-        return {"bestval": best_val, "bestvec": best_vec, "loss": loss_histories}
+        return {
+            "bestval": best_val,
+            "bestvec": best_vec,
+            "loss": loss_histories,
+        }
 
     def torch_optimize_loss(
         self,
@@ -214,7 +228,11 @@ class Optimizer:
         if verbose:
             print()
 
-        result = {"bestval": best_val, "bestvec": best_vec, "loss": loss_history}
+        result = {
+            "bestval": best_val,
+            "bestvec": best_vec,
+            "loss": loss_history,
+        }
         if record_vec_history:
             result.update(vec_history=vec_history)
 
