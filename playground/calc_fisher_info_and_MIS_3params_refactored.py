@@ -90,7 +90,7 @@ optimizer = Optimizer(
 photon_budget = 1.0
 
 # Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 10
+multi_run_count = 5
 single_run_iterations = 3000
 
 # Globally store wavefronts and their J matrices
@@ -176,18 +176,16 @@ print("\n--- Section 7a: D-Optimality (Maximize det(J)) ---")
 from scatteringlibs.lossfunctions import determinant_of_J
 
 # Perform the optimization using the multi-run method
-# The optimizer.torch_optimize_loss_multirun will use the global settings
-# multi_run_count and single_run_iterations if we pass them.
 # We want to maximize the determinant of J.
 det_J_optimization_results = optimizer.torch_optimize_loss_multirun(
     loss_function_of_J=determinant_of_J,
-    runs=multi_run_count, # Use global setting
-    steps=single_run_iterations, # Use global setting
-    lr=1e-3, # Standard learning rate, can be tuned
-    verbose=True, # Show progress
-    maximize=True, # We want to maximize det(J)
-    photon_budget=photon_budget, # Use global setting
-    base_seed=42 # A base seed for reproducibility of multi-runs
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=1e-3,
+    verbose=True,
+    maximize=True,
+    photon_budget=photon_budget,
+    base_seed=42,
 )
 
 # Store the best wavefront and its Fisher matrix
@@ -200,27 +198,15 @@ if wavefront_detJ_opt is not None:
     fisher_matrices_for_wavefronts["DetJ_torch"] = J_for_detJ_opt
     print(f"Optimization complete. Best det(J) = {best_detJ_value:.3e}")
 
-    # Visualize the loss curve (e.g., from the best run or all runs)
-    # For simplicity, let's plot the loss history of the run that yielded the best result.
-    # Need to find which run was the best. The 'all_loss_histories' contains history for all runs.
-    # The 'bestval' is the single best value found across all runs.
-    # We can plot the first loss history as an example, or the one corresponding to the best run if identifiable.
-    # For now, let's use the main loss_history_torch attribute from the optimizer,
-    # which torch_optimize_loss_multirun updates internally after the best run.
-    # Or, more robustly, plot the last loss curve from all_loss_histories, assuming it's from the last call to torch_optimize_loss.
-    # The best way is to plot all of them if the plotting function supports it, or pick one.
-    # The `optimizer.plot_torch_loss` uses `self.loss_history_torch` which is set by the *last* call to `torch_optimize_loss`.
-    # In `torch_optimize_loss_multirun`, `torch_optimize_loss` is called multiple times.
-    # So, `optimizer.loss_history_torch` will reflect the *last run's* history, not necessarily the *best run's* history.
-
     # Let's plot all loss histories from the multirun
     plt.figure(figsize=(8, 5))
-    for i, history in enumerate(det_J_optimization_results["all_loss_histories"]):
-        # Since we maximized, the values in history are det(J)
-        # If Adam was minimizing -det(J), then history would be -det(J)
-        # The `maximize=True` in Adam means it treats the loss as the value to be maximized.
+    for i, history in enumerate(
+        det_J_optimization_results["all_loss_histories"]
+    ):
         plt.plot(history, label=f"Run {i+1}")
-    plt.title(f"D-Optimality: det(J) Maximization (All {multi_run_count} Runs)")
+    plt.title(
+        f"D-Optimality: det(J) Maximization (All {multi_run_count} Runs)"
+    )
     plt.xlabel("Iteration")
     plt.ylabel("det(J)")
     plt.legend()
@@ -250,17 +236,15 @@ from scatteringlibs.lossfunctions import maximize_min_eig_J
 
 # Perform the optimization
 # We want to maximize the smallest eigenvalue of J.
-# The loss function maximize_min_eig_J returns min_eig(J).
-# So we tell the optimizer to maximize this value.
 min_eig_J_optimization_results = optimizer.torch_optimize_loss_multirun(
     loss_function_of_J=maximize_min_eig_J,
     runs=multi_run_count,
     steps=single_run_iterations,
     lr=1e-3,
     verbose=True,
-    maximize=True, # We want to maximize the output of maximize_min_eig_J
+    maximize=True,
     photon_budget=photon_budget,
-    base_seed=43 # New base seed for this section
+    base_seed=42,
 )
 
 # Store the best wavefront and its Fisher matrix
@@ -268,17 +252,26 @@ wavefront_min_eig_J_opt = min_eig_J_optimization_results["bestvec"]
 best_min_eig_J_value = min_eig_J_optimization_results["bestval"]
 
 if wavefront_min_eig_J_opt is not None:
-    optimized_wavefronts["SpecJ_torch"] = wavefront_min_eig_J_opt # Key used in original script for spectral opt
-    J_for_min_eig_J_opt = optimizer.J_fisher_info_matrix(wavefront_min_eig_J_opt)
+    optimized_wavefronts["SpecJ_torch"] = (
+        wavefront_min_eig_J_opt  # Key used in original script for spectral opt
+    )
+    J_for_min_eig_J_opt = optimizer.J_fisher_info_matrix(
+        wavefront_min_eig_J_opt
+    )
     fisher_matrices_for_wavefronts["SpecJ_torch"] = J_for_min_eig_J_opt
-    print(f"Optimization complete. Best min eigenvalue(J) = {best_min_eig_J_value:.3e}")
+    print(
+        f"Optimization complete. Best min eigenvalue(J) = {best_min_eig_J_value:.3e}"
+    )
 
     # Plot all loss histories from the multirun
     plt.figure(figsize=(8, 5))
-    for i, history in enumerate(min_eig_J_optimization_results["all_loss_histories"]):
-        # history contains min_eig(J) values directly because maximize=True
+    for i, history in enumerate(
+        min_eig_J_optimization_results["all_loss_histories"]
+    ):
         plt.plot(history, label=f"Run {i+1}")
-    plt.title(f"E-Optimality: min eigenvalue(J) Maximization (All {multi_run_count} Runs)")
+    plt.title(
+        f"E-Optimality: min eigenvalue(J) Maximization (All {multi_run_count} Runs)"
+    )
     plt.xlabel("Iteration")
     plt.ylabel("min eigenvalue(J)")
     plt.legend()
@@ -295,7 +288,9 @@ if wavefront_min_eig_J_opt is not None:
         dpi=100,
     )
 else:
-    print("E-optimality (maximize min_eig(J)) optimization did not yield a valid wavefront.")
+    print(
+        "E-optimality (maximize min_eig(J)) optimization did not yield a valid wavefront."
+    )
 
 print("\nSection 7b (E-Optimality) complete.")
 
@@ -308,17 +303,15 @@ from scatteringlibs.lossfunctions import minimize_trace_of_J_inv
 
 # Perform the optimization
 # We want to minimize the trace of J_inverse.
-# The loss function minimize_trace_of_J_inv returns Tr(J^-1).
-# So we tell the optimizer to minimize this value (maximize=False).
 trace_J_inv_optimization_results = optimizer.torch_optimize_loss_multirun(
     loss_function_of_J=minimize_trace_of_J_inv,
     runs=multi_run_count,
     steps=single_run_iterations,
     lr=1e-3,
     verbose=True,
-    maximize=False, # We want to minimize the output of minimize_trace_of_J_inv
+    maximize=False,
     photon_budget=photon_budget,
-    base_seed=44 # New base seed for this section
+    base_seed=42,
 )
 
 # Store the best wavefront and its Fisher matrix
@@ -327,20 +320,25 @@ best_trace_J_inv_value = trace_J_inv_optimization_results["bestval"]
 
 if wavefront_trace_J_inv_opt is not None:
     optimized_wavefronts["TraceJinv_torch"] = wavefront_trace_J_inv_opt
-    J_for_trace_J_inv_opt = optimizer.J_fisher_info_matrix(wavefront_trace_J_inv_opt)
+    J_for_trace_J_inv_opt = optimizer.J_fisher_info_matrix(
+        wavefront_trace_J_inv_opt
+    )
     fisher_matrices_for_wavefronts["TraceJinv_torch"] = J_for_trace_J_inv_opt
-    print(f"Optimization complete. Best Tr(J^-1) = {best_trace_J_inv_value:.3e}")
+    print(
+        f"Optimization complete. Best Tr(J^-1) = {best_trace_J_inv_value:.3e}"
+    )
 
     # Plot all loss histories from the multirun
     plt.figure(figsize=(8, 5))
-    for i, history in enumerate(trace_J_inv_optimization_results["all_loss_histories"]):
-        # history contains Tr(J^-1) values directly because maximize=False
+    for i, history in enumerate(
+        trace_J_inv_optimization_results["all_loss_histories"]
+    ):
         plt.plot(history, label=f"Run {i+1}")
-    plt.title(f"A-Optimality: Tr(J^-1) Minimization (All {multi_run_count} Runs)")
+    plt.title(
+        f"A-Optimality: Tr(J^-1) Minimization (All {multi_run_count} Runs)"
+    )
     plt.xlabel("Iteration")
     plt.ylabel("Tr(J^-1)")
-    # Consider symlog scale if values are very small or vary widely
-    # plt.yscale('symlog', linthresh=1e-5) # Adjust linthresh as needed
     plt.legend()
     plt.grid(True, linestyle=":")
     plt.show()
@@ -355,6 +353,8 @@ if wavefront_trace_J_inv_opt is not None:
         dpi=100,
     )
 else:
-    print("A-optimality (minimize Tr(J^-1)) optimization did not yield a valid wavefront.")
+    print(
+        "A-optimality (minimize Tr(J^-1)) optimization did not yield a valid wavefront."
+    )
 
 print("\nSection 7c (A-Optimality) complete.")

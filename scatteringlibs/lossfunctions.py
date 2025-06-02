@@ -5,6 +5,7 @@ import torch
 # Basic Loss Functions / Objectives for the full J matrix
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
 def determinant_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     Calculates the determinant of the Fisher Information Matrix J.
@@ -16,6 +17,7 @@ def determinant_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     return torch.linalg.det(J_mat)
 
+
 def trace_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     Calculates the trace of the Fisher Information Matrix J.
@@ -26,6 +28,7 @@ def trace_of_J(J_mat: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The trace of J_mat.
     """
     return torch.trace(J_mat)
+
 
 def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
     """
@@ -45,6 +48,7 @@ def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
     J_inv = torch.linalg.inv(J_mat)
     return torch.trace(J_inv)
 
+
 def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     Calculates the smallest eigenvalue of the Fisher Information Matrix J.
@@ -57,14 +61,18 @@ def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     # eigvalsh returns eigenvalues in ascending order for Hermitian matrices.
     eigvals = torch.linalg.eigvalsh(J_mat)
-    return eigvals[0] # Smallest eigenvalue
+    return eigvals[0]  # Smallest eigenvalue
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Helper function for Nuisance Parameter Scenarios
 # (Ported from playground/calc_fisher_info_and_MIS_3params.py)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def compute_J_interest_given_nuisance(J_full: torch.Tensor, nuisance_param_index: int = 2) -> torch.Tensor:
+
+def compute_J_interest_given_nuisance(
+    J_full: torch.Tensor, nuisance_param_index: int = 2
+) -> torch.Tensor:
     """
     Computes the Fisher information matrix for parameters of interest,
     accounting for a single nuisance parameter using Schur complement.
@@ -80,31 +88,50 @@ def compute_J_interest_given_nuisance(J_full: torch.Tensor, nuisance_param_index
     Returns:
         torch.Tensor: The 2x2 FIM for the parameters of interest.
     """
-    if not (0 <= nuisance_param_index <= 2 and J_full.shape == (3,3)):
-        raise ValueError("J_full must be a 3x3 tensor and nuisance_param_index must be 0, 1, or 2.")
+    if not (0 <= nuisance_param_index <= 2 and J_full.shape == (3, 3)):
+        raise ValueError(
+            "J_full must be a 3x3 tensor and nuisance_param_index must be 0, 1, or 2."
+        )
 
     all_indices = [0, 1, 2]
     interest_indices = [i for i in all_indices if i != nuisance_param_index]
 
-    J11 = J_full[torch.tensor(interest_indices, device=J_full.device)[:, None], torch.tensor(interest_indices, device=J_full.device)]
-    J12 = J_full[torch.tensor(interest_indices, device=J_full.device), nuisance_param_index].unsqueeze(1)
-    J21 = J_full[nuisance_param_index, torch.tensor(interest_indices, device=J_full.device)].unsqueeze(0)
-    J22 = J_full[nuisance_param_index, nuisance_param_index].unsqueeze(0).unsqueeze(0) # Make it 1x1
+    J11 = J_full[
+        torch.tensor(interest_indices, device=J_full.device)[:, None],
+        torch.tensor(interest_indices, device=J_full.device),
+    ]
+    J12 = J_full[
+        torch.tensor(interest_indices, device=J_full.device),
+        nuisance_param_index,
+    ].unsqueeze(1)
+    J21 = J_full[
+        nuisance_param_index,
+        torch.tensor(interest_indices, device=J_full.device),
+    ].unsqueeze(0)
+    J22 = (
+        J_full[nuisance_param_index, nuisance_param_index]
+        .unsqueeze(0)
+        .unsqueeze(0)
+    )  # Make it 1x1
 
     # Regularize J22 inversion for numerical stability
     # Adding a small value to the diagonal of J22 before inversion
     # This is equivalent to Tikhonov regularization for J22
     # The value of eps might need tuning depending on the scale of J matrix elements
     eps = 1e-12
-    J22_inv = torch.linalg.inv(J22 + eps * torch.eye(J22.shape[0], device=J22.device, dtype=J22.dtype))
+    J22_inv = torch.linalg.inv(
+        J22 + eps * torch.eye(J22.shape[0], device=J22.device, dtype=J22.dtype)
+    )
 
     J_interest_nuisance = J11 - J12 @ J22_inv @ J21
     return J_interest_nuisance
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Loss Functions / Objectives for a given J_block (e.g., J_interest)
 # These can be used with the output of compute_J_interest_given_nuisance
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 def det_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
     """
@@ -116,6 +143,7 @@ def det_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The determinant of J_block.
     """
     return torch.linalg.det(J_block)
+
 
 def trace_of_J_block_inv(J_block: torch.Tensor) -> torch.Tensor:
     """
@@ -130,6 +158,7 @@ def trace_of_J_block_inv(J_block: torch.Tensor) -> torch.Tensor:
     J_block_inv = torch.linalg.inv(J_block)
     return torch.trace(J_block_inv)
 
+
 def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
     """
     Calculates the smallest eigenvalue of a given Fisher Information Matrix block.
@@ -143,6 +172,7 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
     eigvals = torch.linalg.eigvalsh(J_block)
     return eigvals[0]
 
+
 # __all__ can be defined here to specify the public API if desired
 # For example:
 # __all__ = [
@@ -150,6 +180,7 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
 #     "compute_J_interest_given_nuisance",
 #     "det_of_J_block", "trace_of_J_block_inv", "min_eigenvalue_of_J_block"
 # ]
+
 
 def maximize_min_eig_J(J_matrix):
     """
@@ -169,6 +200,7 @@ def maximize_min_eig_J(J_matrix):
     # eigvalsh returns eigenvalues in ascending order for Hermitian matrices
     eigvals = torch.linalg.eigvalsh(J_matrix)
     return eigvals[0]
+
 
 def minimize_trace_of_J_inv(J_matrix):
     """
@@ -192,22 +224,42 @@ def minimize_trace_of_J_inv(J_matrix):
         J_inv = torch.linalg.inv(J_matrix)
     except torch.linalg.LinAlgError as e:
         # If direct inversion fails, print a warning and use pseudoinverse
-        print(f"Warning: Direct inversion failed for J_matrix (shape {J_matrix.shape}, device {J_matrix.device}) with error: {e}. Using pseudoinverse.")
+        print(
+            f"Warning: Direct inversion failed for J_matrix (shape {J_matrix.shape}, device {J_matrix.device}) with error: {e}. Using pseudoinverse."
+        )
         # Before taking pseudoinverse, ensure J_matrix is float or complex.
         # If J_matrix might be int/bool, convert it. Assuming it's already float/complex from context.
-        if not (J_matrix.dtype == torch.float32 or J_matrix.dtype == torch.float64 or J_matrix.is_complex()):
-             print(f"Warning: J_matrix dtype is {J_matrix.dtype}. Converting to float64 for pinv.")
-             J_matrix_float = J_matrix.to(torch.float64) # or appropriate float type
-             J_inv = torch.linalg.pinv(J_matrix_float)
+        if not (
+            J_matrix.dtype == torch.float32
+            or J_matrix.dtype == torch.float64
+            or J_matrix.is_complex()
+        ):
+            print(
+                f"Warning: J_matrix dtype is {J_matrix.dtype}. Converting to float64 for pinv."
+            )
+            J_matrix_float = J_matrix.to(
+                torch.float64
+            )  # or appropriate float type
+            J_inv = torch.linalg.pinv(J_matrix_float)
         else:
-             J_inv = torch.linalg.pinv(J_matrix)
-        
+            J_inv = torch.linalg.pinv(J_matrix)
+
     trace_J_inv = torch.trace(J_inv)
-    
+
     # Check for NaN or Inf in the result, which can happen if pinv also struggles
     # or if J_matrix itself contained NaNs/Infs.
     if torch.isnan(trace_J_inv) or torch.isinf(trace_J_inv):
-        print(f"Warning: Trace of J_inv is NaN or Inf. J_matrix might have been problematic. Returning float('inf').")
-        return torch.tensor(float('inf'), device=J_matrix.device, dtype=J_matrix.dtype if J_matrix.is_floating_point() or J_matrix.is_complex() else torch.float64)
+        print(
+            f"Warning: Trace of J_inv is NaN or Inf. J_matrix might have been problematic. Returning float('inf')."
+        )
+        return torch.tensor(
+            float("inf"),
+            device=J_matrix.device,
+            dtype=(
+                J_matrix.dtype
+                if J_matrix.is_floating_point() or J_matrix.is_complex()
+                else torch.float64
+            ),
+        )
 
     return trace_J_inv
