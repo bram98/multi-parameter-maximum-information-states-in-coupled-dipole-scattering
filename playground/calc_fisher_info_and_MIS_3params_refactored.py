@@ -361,8 +361,12 @@ print("\nSection 7c (A-Optimality) complete.")
 
 
 # %% 8) Visualize Comparison of Fisher Information Matrix components for all optimized wavefronts
+# no need to refactor here because this block is just for inspection
 def visualize_multi_param_fisher_comparison(
-    wavefronts_dict, optimizer_instance, param_names_global, figure_title="Comparison of Wavefronts"
+    wavefronts_dict,
+    optimizer_instance,
+    param_names_global,
+    figure_title="Comparison of Wavefronts",
 ):
     """
     Visualizes and compares Fisher Information Matrix components (diagonal, trace, determinant)
@@ -384,7 +388,9 @@ def visualize_multi_param_fisher_comparison(
 
     for wname in wave_names:
         wf_cplx = wavefronts_dict[wname]
-        if isinstance(wf_cplx, torch.Tensor): # Ensure it's a NumPy array for J calculation
+        if isinstance(
+            wf_cplx, torch.Tensor
+        ):  # Ensure it's a NumPy array for J calculation
             wf_cplx = wf_cplx.cpu().numpy()
 
         J_mat = optimizer_instance.J_fisher_info_matrix(wf_cplx)
@@ -405,19 +411,22 @@ def visualize_multi_param_fisher_comparison(
             label = p_name.replace("shift", "").lower()
             plot_param_labels.append(f"{label}{label}")
         elif "rotation" in p_name.lower():
-            plot_param_labels.append(r"\theta\theta") # Special case for rotation
+            plot_param_labels.append(
+                r"\theta\theta"
+            )  # Special case for rotation
         else:
-            plot_param_labels.append(p_name.lower()*2)
+            plot_param_labels.append(p_name.lower() * 2)
 
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6)) # Adjusted figsize slightly
+    fig, axes = plt.subplots(
+        1, 2, figsize=(14, 6)
+    )  # Adjusted figsize slightly
 
     # First subplot: Diagonal elements
     x_idx = np.arange(len(wave_names))
     width = 0.25
 
-    for i in range(len(param_names_global)): # Should be 3 for this script
-        offset = (i - 1.0) * width # Centering the group of bars
+    for i in range(len(param_names_global)):  # Should be 3 for this script
+        offset = (i - 1.0) * width  # Centering the group of bars
         axes[0].bar(
             x_idx + offset,
             diag_data[:, i],
@@ -431,18 +440,17 @@ def visualize_multi_param_fisher_comparison(
     axes[0].legend(title="Parameters")
     axes[0].grid(True, linestyle=":", alpha=0.7)
     axes[0].set_ylabel("Value")
-    axes[0].set_yscale('log') # Diagonal elements can vary a lot
 
     # Second subplot: Trace and Determinant
     ax_tr = axes[1]
     ax_det = ax_tr.twinx()  # Share the same x-axis
 
-    bar_width_tr_det = 0.35 # Width for these bars
-    
+    bar_width_tr_det = 0.35  # Width for these bars
+
     # Plot Trace
     tr_color = "skyblue"
     ax_tr.bar(
-        x_idx - bar_width_tr_det / 2, # Offset to the left
+        x_idx - bar_width_tr_det / 2,  # Offset to the left
         trace_data,
         width=bar_width_tr_det,
         color=tr_color,
@@ -451,12 +459,11 @@ def visualize_multi_param_fisher_comparison(
     )
     ax_tr.set_ylabel("Trace(J)", color=tr_color, fontsize=12)
     ax_tr.tick_params(axis="y", labelcolor=tr_color)
-    ax_tr.set_yscale('log')
 
     # Plot Determinant
     det_color = "lightcoral"
     ax_det.bar(
-        x_idx + bar_width_tr_det / 2, # Offset to the right
+        x_idx + bar_width_tr_det / 2,  # Offset to the right
         det_data,
         width=bar_width_tr_det,
         color=det_color,
@@ -465,48 +472,41 @@ def visualize_multi_param_fisher_comparison(
     )
     ax_det.set_ylabel("det(J)", color=det_color, fontsize=12)
     ax_det.tick_params(axis="y", labelcolor=det_color)
-    # Optional: set yscale for det if values vary hugely, e.g., ax_det.set_yscale('log')
-    # Check if determinant values are non-negative before applying log scale
     if np.all(det_data >= 0):
-        ax_det.set_yscale('log')
+        ax_det.set_yscale("log")
     else:
-        print("Warning: Some determinant values are negative, using linear scale for det(J).")
-
+        print(
+            "Warning: Some determinant values are negative, using linear scale for det(J)."
+        )
 
     ax_tr.set_title("Trace and Determinant of Fisher Matrix (J)", fontsize=12)
     ax_tr.set_xticks(x_idx)
     ax_tr.set_xticklabels(wave_names, rotation=45, ha="right")
     ax_tr.grid(True, linestyle=":", alpha=0.5)
 
-    # Combined legend for Trace and Determinant
-    # Getting handles and labels from both axes
     handles_tr, labels_tr = ax_tr.get_legend_handles_labels()
     handles_det, labels_det = ax_det.get_legend_handles_labels()
-    ax_tr.legend(handles_tr + handles_det, labels_tr + labels_det, loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=2)
-
+    ax_tr.legend(
+        handles_tr + handles_det,
+        labels_tr + labels_det,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.25),
+        ncol=2,
+    )
 
     plt.suptitle(figure_title, fontsize=16)
-    plt.tight_layout(rect=[0, 0.05, 1, 0.96]) # Adjust rect to make space for suptitle and legend
+    plt.tight_layout(
+        rect=[0, 0.05, 1, 0.96]
+    )  # Adjust rect to make space for suptitle and legend
     plt.show()
 
-# Example of how this function might be called at the end of the script:
-# (This part is commented out as it's just an example and depends on script execution)
-# if __name__ == "__main__" and optimized_wavefronts:
-#     visualize_multi_param_fisher_comparison(
-#         wavefronts_dict=optimized_wavefronts,
-#         optimizer_instance=optimizer, # Make sure 'optimizer' is the correct instance
-#         param_names_global=param_names, # Make sure 'param_names' is defined globally
-#         figure_title="Comparison of Fisher Information for Optimized Wavefronts"
-#     )
 
-# %% 8) Compare and visualize wavefronts
-print("\n--- Section 8: Compare and Visualize Wavefronts ---")
-
+# Run and visualize comparison
 visualize_multi_param_fisher_comparison(
     optimized_wavefronts,
-    optimizer, # The optimizer instance, should be already defined
-    param_names, # The global param_names list, should be already defined
-    figure_title="Comparison of All Optimized Wavefronts"
+    optimizer,  # The optimizer instance, should be already defined
+    param_names,  # The global param_names list, should be already defined
+    figure_title="Comparison of All Optimized Wavefronts",
 )
 
 print("\nSection 8 (Wavefront Comparison Visualization) complete.")
