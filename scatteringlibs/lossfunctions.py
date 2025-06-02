@@ -150,3 +150,64 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
 #     "compute_J_interest_given_nuisance",
 #     "det_of_J_block", "trace_of_J_block_inv", "min_eigenvalue_of_J_block"
 # ]
+
+def maximize_min_eig_J(J_matrix):
+    """
+    Calculates the smallest eigenvalue of the Fisher Information Matrix J.
+    This is intended to be maximized by the optimizer.
+
+    Args:
+        J_matrix (torch.Tensor): The Fisher Information Matrix (nparams, nparams).
+
+    Returns:
+        torch.Tensor: The smallest eigenvalue of J.
+    """
+    if J_matrix.ndim != 2 or J_matrix.shape[0] != J_matrix.shape[1]:
+        raise ValueError(
+            f"J_matrix must be a 2D square matrix. Got {J_matrix.shape}"
+        )
+    # eigvalsh returns eigenvalues in ascending order for Hermitian matrices
+    eigvals = torch.linalg.eigvalsh(J_matrix)
+    return eigvals[0]
+
+def minimize_trace_of_J_inv(J_matrix):
+    """
+    Calculates the trace of the inverse of the Fisher Information Matrix J.
+    This is intended to be minimized by the optimizer.
+    Attempts direct inversion, falls back to pseudoinverse if direct inversion fails.
+
+    Args:
+        J_matrix (torch.Tensor): The Fisher Information Matrix (nparams, nparams).
+
+    Returns:
+        torch.Tensor: The trace of J_inv (or J_pinv).
+    """
+    if J_matrix.ndim != 2 or J_matrix.shape[0] != J_matrix.shape[1]:
+        raise ValueError(
+            f"J_matrix must be a 2D square matrix. Got {J_matrix.shape}"
+        )
+
+    try:
+        # Attempt direct inversion first
+        J_inv = torch.linalg.inv(J_matrix)
+    except torch.linalg.LinAlgError as e:
+        # If direct inversion fails, print a warning and use pseudoinverse
+        print(f"Warning: Direct inversion failed for J_matrix (shape {J_matrix.shape}, device {J_matrix.device}) with error: {e}. Using pseudoinverse.")
+        # Before taking pseudoinverse, ensure J_matrix is float or complex.
+        # If J_matrix might be int/bool, convert it. Assuming it's already float/complex from context.
+        if not (J_matrix.dtype == torch.float32 or J_matrix.dtype == torch.float64 or J_matrix.is_complex()):
+             print(f"Warning: J_matrix dtype is {J_matrix.dtype}. Converting to float64 for pinv.")
+             J_matrix_float = J_matrix.to(torch.float64) # or appropriate float type
+             J_inv = torch.linalg.pinv(J_matrix_float)
+        else:
+             J_inv = torch.linalg.pinv(J_matrix)
+        
+    trace_J_inv = torch.trace(J_inv)
+    
+    # Check for NaN or Inf in the result, which can happen if pinv also struggles
+    # or if J_matrix itself contained NaNs/Infs.
+    if torch.isnan(trace_J_inv) or torch.isinf(trace_J_inv):
+        print(f"Warning: Trace of J_inv is NaN or Inf. J_matrix might have been problematic. Returning float('inf').")
+        return torch.tensor(float('inf'), device=J_matrix.device, dtype=J_matrix.dtype if J_matrix.is_floating_point() or J_matrix.is_complex() else torch.float64)
+
+    return trace_J_inv
