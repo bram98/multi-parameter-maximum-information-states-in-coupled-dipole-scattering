@@ -167,3 +167,76 @@ base_sim_for_vis.visualize_intensity(
     title=f"Trace J Optimized Wavefront (Eigendecomposition of sum F_mumu)\nMax Eigenvalue = {trace_opt_eigval:.2e}",
     dpi=100,
 )
+
+# %% 7a) D-optimality: Maximize Determinant of J (via torch)
+
+print("\n--- Section 7a: D-Optimality (Maximize det(J)) ---")
+
+# Import the loss function
+from scatteringlibs.lossfunctions import determinant_of_J
+
+# Perform the optimization using the multi-run method
+# The optimizer.torch_optimize_loss_multirun will use the global settings
+# multi_run_count and single_run_iterations if we pass them.
+# We want to maximize the determinant of J.
+det_J_optimization_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=determinant_of_J,
+    runs=multi_run_count, # Use global setting
+    steps=single_run_iterations, # Use global setting
+    lr=1e-3, # Standard learning rate, can be tuned
+    verbose=True, # Show progress
+    maximize=True, # We want to maximize det(J)
+    photon_budget=photon_budget, # Use global setting
+    base_seed=42 # A base seed for reproducibility of multi-runs
+)
+
+# Store the best wavefront and its Fisher matrix
+wavefront_detJ_opt = det_J_optimization_results["bestvec"]
+best_detJ_value = det_J_optimization_results["bestval"]
+
+if wavefront_detJ_opt is not None:
+    optimized_wavefronts["DetJ_torch"] = wavefront_detJ_opt
+    J_for_detJ_opt = optimizer.J_fisher_info_matrix(wavefront_detJ_opt)
+    fisher_matrices_for_wavefronts["DetJ_torch"] = J_for_detJ_opt
+    print(f"Optimization complete. Best det(J) = {best_detJ_value:.3e}")
+
+    # Visualize the loss curve (e.g., from the best run or all runs)
+    # For simplicity, let's plot the loss history of the run that yielded the best result.
+    # Need to find which run was the best. The 'all_loss_histories' contains history for all runs.
+    # The 'bestval' is the single best value found across all runs.
+    # We can plot the first loss history as an example, or the one corresponding to the best run if identifiable.
+    # For now, let's use the main loss_history_torch attribute from the optimizer,
+    # which torch_optimize_loss_multirun updates internally after the best run.
+    # Or, more robustly, plot the last loss curve from all_loss_histories, assuming it's from the last call to torch_optimize_loss.
+    # The best way is to plot all of them if the plotting function supports it, or pick one.
+    # The `optimizer.plot_torch_loss` uses `self.loss_history_torch` which is set by the *last* call to `torch_optimize_loss`.
+    # In `torch_optimize_loss_multirun`, `torch_optimize_loss` is called multiple times.
+    # So, `optimizer.loss_history_torch` will reflect the *last run's* history, not necessarily the *best run's* history.
+
+    # Let's plot all loss histories from the multirun
+    plt.figure(figsize=(8, 5))
+    for i, history in enumerate(det_J_optimization_results["all_loss_histories"]):
+        # Since we maximized, the values in history are det(J)
+        # If Adam was minimizing -det(J), then history would be -det(J)
+        # The `maximize=True` in Adam means it treats the loss as the value to be maximized.
+        plt.plot(history, label=f"Run {i+1}")
+    plt.title(f"D-Optimality: det(J) Maximization (All {multi_run_count} Runs)")
+    plt.xlabel("Iteration")
+    plt.ylabel("det(J)")
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.show()
+
+    # Visualize the intensity pattern
+    print("Visualizing intensity for DetJ_torch...")
+    base_sim_for_vis.reset()
+    base_sim_for_vis.set_input_field_kx(kx_array, wavefront_detJ_opt)
+    base_sim_for_vis.solve_fields()
+    base_sim_for_vis.visualize_intensity(
+        title=f"D-Optimized Wavefront (Max det(J) = {best_detJ_value:.2e})",
+        dpi=100,
+    )
+else:
+    print("D-optimality optimization did not yield a valid wavefront.")
+
+print("\nSection 7a (D-Optimality) complete.")
