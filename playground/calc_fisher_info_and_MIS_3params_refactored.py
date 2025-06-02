@@ -54,8 +54,7 @@ dS_tensor = placedipoles.calculate_dS_for_3_parameters(
     flux_normalize=True,
 )
 print(f"Built dS tensor with shape: {dS_tensor.shape}")
-# %% 4) Build the full multi-parameter Fisher-operator array F[mu,nu,:,:]
-
+# %% 4) Build the Fisher-operator array and set global variables
 fisher_calc = FisherMatrix(
     dS=dS_tensor, param_names=param_names, delta=delta_param
 )
@@ -67,49 +66,45 @@ print(
     f" (should be 3,3,{len(angles_deg)},{len(angles_deg)})",
 )
 
-print("\nInitial refactoring steps complete. F_tensor_operator is ready.")
-print("You can now proceed with sections 5 onwards from your original script,")
-print("using `F_tensor_operator` and `kx_array` (or `angles_deg`).")
-print(
-    "Make sure to adjust imports for Optimizer and other utilities if they are also in scatteringlibs."
-)
-
 # placeholder for base_sim for visualization
-# sim_kwargs already contains the correct total_Ns_sim calculated earlier.
-# No need to modify sim_kwargs["Ns"] here.
 _sim_params_vis = sim_kwargs.copy()
 
 # Correctly combine frozen and movable dipoles for visualization.
-# The convention from placedipoles.shift_and_rotate_dipoles is frozen_first, then movable.
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
     _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
 else:
     # If there are no frozen dipoles, just use the movable ones.
     _scatterers_vis = movable_dipoles_line
 
-# Initialize the simulator for visualization with the correct total Ns (from sim_kwargs)
-# and set its scatterers to the combined array.
 base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
 base_sim_for_vis.scatterers = _scatterers_vis
+
+# Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
+optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device for Optimizer: {optimizer_device}")
+optimizer = Optimizer(
+    F_operator_tensor=F_tensor_operator, device=optimizer_device
+)
+
+# Photon budget for normalization (can be defined once, used across sections)
+photon_budget = 1.0
+
+# Global optimization run settings (e.g., 10x3000 iterations)
+multi_run_count = 10
+single_run_iterations = 3000
+
+# Globally store wavefronts and their J matrices
+optimized_wavefronts = {}
+fisher_matrices_for_wavefronts = {}
 
 # %% 5) Single-parameter MIS wavefronts and their Fisher Information Matrices
 
 print("\n--- Section 5: Single-Parameter MIS Wavefronts ---")
 
-# Initialize the Optimizer with the F_tensor_operator from Cell 4
-optimizer = Optimizer(F_operator_tensor=F_tensor_operator)
-
-# Photon budget for normalization
-photon_budget = 1.0
-
 # Get single-parameter MIS wavefronts
 single_mis_results = optimizer.get_single_parameter_mis(
     param_names=param_names, photon_budget=photon_budget
 )
-
-# Store wavefronts and their J matrices
-optimized_wavefronts = {}
-fisher_matrices_for_wavefronts = {}
 
 print(
     "\nCalculating and storing Fisher Information Matrix for each single-parameter MIS:"
@@ -133,7 +128,6 @@ for name, result in single_mis_results.items():
         title=f"MIS for {name} (Max Eigenvalue F_{name}{name} = {result['eigenvalue']:.2e})",
         dpi=100,
     )
-    plt.show()
 
 print("\nSingle-parameter MIS analysis complete.")
 
@@ -164,16 +158,8 @@ optimized_wavefronts["TraceJ_eig"] = trace_opt_wavefront_eig
 J_for_trace_opt_eig = optimizer.J_fisher_info_matrix(trace_opt_wavefront_eig)
 fisher_matrices_for_wavefronts["TraceJ_eig"] = J_for_trace_opt_eig
 
-print(f"Trace-Optimized Wavefront (from eig(sum F_mumu)):")
-print(f"  Eigenvalue of sum(F_mumu): {trace_opt_eigval:.3e}")
-# print(f"  Wavefront (first 5 coeffs): {trace_opt_wavefront_eig[:5]}")
-print(f"  Fisher Info Matrix J (for this wavefront):")
-for row in J_for_trace_opt_eig:
-    print(f"    [{row[0]:.2e}, {row[1]:.2e}, {row[2]:.2e}]")
-print(f"  Trace(J) = {np.trace(J_for_trace_opt_eig):.3e}")
 
-
-print(f"  Visualizing intensity for TraceJ_eig...")
+print(f"Visualizing intensity for TraceJ_eig...")
 base_sim_for_vis.reset()
 base_sim_for_vis.set_input_field_kx(kx_array, trace_opt_wavefront_eig)
 base_sim_for_vis.solve_fields()
@@ -181,10 +167,3 @@ base_sim_for_vis.visualize_intensity(
     title=f"Trace J Optimized Wavefront (Eigendecomposition of sum F_mumu)\nMax Eigenvalue = {trace_opt_eigval:.2e}",
     dpi=100,
 )
-plt.show()
-
-# For compatibility with monolith variable names, if needed later
-v_sum_max = trace_opt_wavefront_eig
-
-
-print("\nSections 5 and 6 refactoring complete.")
