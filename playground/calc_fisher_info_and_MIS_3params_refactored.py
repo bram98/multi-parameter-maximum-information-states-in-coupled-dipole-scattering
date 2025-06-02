@@ -358,3 +358,155 @@ else:
     )
 
 print("\nSection 7c (A-Optimality) complete.")
+
+
+# %% 8) Visualize Comparison of Fisher Information Matrix components for all optimized wavefronts
+# no need to refactor here because this block is just for inspection
+def visualize_multi_param_fisher_comparison(
+    wavefronts_dict,
+    optimizer_instance,
+    param_names_global,
+    figure_title="Comparison of Wavefronts",
+):
+    """
+    Visualizes and compares Fisher Information Matrix components (diagonal, trace, determinant)
+    for multiple wavefronts.
+
+    Args:
+        wavefronts_dict (dict): Dictionary where keys are wavefront names (str) and
+                                values are the wavefront vectors (np.ndarray or torch.Tensor).
+        optimizer_instance (Optimizer): An instance of the Optimizer class, already configured.
+        param_names_global (list): List of parameter names, e.g., ["shiftX", "shiftZ", "rotation"].
+        figure_title (str): Overall title for the figure.
+    """
+    results = {}
+    wave_names = list(wavefronts_dict.keys())
+
+    if not wave_names:
+        print("No wavefronts provided to visualize.")
+        return
+
+    for wname in wave_names:
+        wf_cplx = wavefronts_dict[wname]
+        if isinstance(
+            wf_cplx, torch.Tensor
+        ):  # Ensure it's a NumPy array for J calculation
+            wf_cplx = wf_cplx.cpu().numpy()
+
+        J_mat = optimizer_instance.J_fisher_info_matrix(wf_cplx)
+        results[wname] = {
+            "diag": [J_mat[0, 0], J_mat[1, 1], J_mat[2, 2]],
+            "trace": np.trace(J_mat),
+            "det": np.linalg.det(J_mat),
+        }
+
+    diag_data = np.array([results[w]["diag"] for w in wave_names])
+    trace_data = np.array([results[w]["trace"] for w in wave_names])
+    det_data = np.array([results[w]["det"] for w in wave_names])
+
+    # Prepare plot labels for parameters: J_xx, J_zz, J_θθ
+    plot_param_labels = []
+    for p_name in param_names_global:
+        if "shift" in p_name.lower():
+            label = p_name.replace("shift", "").lower()
+            plot_param_labels.append(f"{label}{label}")
+        elif "rotation" in p_name.lower():
+            plot_param_labels.append(
+                r"\theta\theta"
+            )  # Special case for rotation
+        else:
+            plot_param_labels.append(p_name.lower() * 2)
+
+    fig, axes = plt.subplots(
+        1, 2, figsize=(14, 6)
+    )  # Adjusted figsize slightly
+
+    # First subplot: Diagonal elements
+    x_idx = np.arange(len(wave_names))
+    width = 0.25
+
+    for i in range(len(param_names_global)):  # Should be 3 for this script
+        offset = (i - 1.0) * width  # Centering the group of bars
+        axes[0].bar(
+            x_idx + offset,
+            diag_data[:, i],
+            width=width,
+            label=f"$J_{{{plot_param_labels[i]}}}$",
+        )
+
+    axes[0].set_title("Diagonal Elements of Fisher Matrix (J)", fontsize=12)
+    axes[0].set_xticks(x_idx)
+    axes[0].set_xticklabels(wave_names, rotation=45, ha="right")
+    axes[0].legend(title="Parameters")
+    axes[0].grid(True, linestyle=":", alpha=0.7)
+    axes[0].set_ylabel("Value")
+
+    # Second subplot: Trace and Determinant
+    ax_tr = axes[1]
+    ax_det = ax_tr.twinx()  # Share the same x-axis
+
+    bar_width_tr_det = 0.35  # Width for these bars
+
+    # Plot Trace
+    tr_color = "skyblue"
+    ax_tr.bar(
+        x_idx - bar_width_tr_det / 2,  # Offset to the left
+        trace_data,
+        width=bar_width_tr_det,
+        color=tr_color,
+        label="Tr(J)",
+        alpha=0.8,
+    )
+    ax_tr.set_ylabel("Trace(J)", color=tr_color, fontsize=12)
+    ax_tr.tick_params(axis="y", labelcolor=tr_color)
+
+    # Plot Determinant
+    det_color = "lightcoral"
+    ax_det.bar(
+        x_idx + bar_width_tr_det / 2,  # Offset to the right
+        det_data,
+        width=bar_width_tr_det,
+        color=det_color,
+        label="det(J)",
+        alpha=0.8,
+    )
+    ax_det.set_ylabel("det(J)", color=det_color, fontsize=12)
+    ax_det.tick_params(axis="y", labelcolor=det_color)
+    if np.all(det_data >= 0):
+        ax_det.set_yscale("log")
+    else:
+        print(
+            "Warning: Some determinant values are negative, using linear scale for det(J)."
+        )
+
+    ax_tr.set_title("Trace and Determinant of Fisher Matrix (J)", fontsize=12)
+    ax_tr.set_xticks(x_idx)
+    ax_tr.set_xticklabels(wave_names, rotation=45, ha="right")
+    ax_tr.grid(True, linestyle=":", alpha=0.5)
+
+    handles_tr, labels_tr = ax_tr.get_legend_handles_labels()
+    handles_det, labels_det = ax_det.get_legend_handles_labels()
+    ax_tr.legend(
+        handles_tr + handles_det,
+        labels_tr + labels_det,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.25),
+        ncol=2,
+    )
+
+    plt.suptitle(figure_title, fontsize=16)
+    plt.tight_layout(
+        rect=[0, 0.05, 1, 0.96]
+    )  # Adjust rect to make space for suptitle and legend
+    plt.show()
+
+
+# Run and visualize comparison
+visualize_multi_param_fisher_comparison(
+    optimized_wavefronts,
+    optimizer,  # The optimizer instance, should be already defined
+    param_names,  # The global param_names list, should be already defined
+    figure_title="Comparison of All Optimized Wavefronts",
+)
+
+print("\nSection 8 (Wavefront Comparison Visualization) complete.")
