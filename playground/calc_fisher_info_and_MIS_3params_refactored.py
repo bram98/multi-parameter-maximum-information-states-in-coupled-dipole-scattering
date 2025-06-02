@@ -99,16 +99,20 @@ print(
 )
 
 # placeholder for base_sim for visualization
+# sim_kwargs already contains the correct total_Ns_sim calculated earlier.
+# No need to modify sim_kwargs["Ns"] here.
 _sim_params_vis = sim_kwargs.copy()
-if movable_dipoles_line is not None and movable_dipoles_line.size > 0:
-    _sim_params_vis["Ns"] = (
-        movable_dipoles_line.shape[1] + movable_dipoles_line.shape[1]
-    )
-    _scatterers_vis = np.hstack((movable_dipoles_line, movable_dipoles_line))
+
+# Correctly combine frozen and movable dipoles for visualization.
+# The convention from placedipoles.shift_and_rotate_dipoles is frozen_first, then movable.
+if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+    _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
 else:
-    _sim_params_vis["Ns"] = movable_dipoles_line.shape[1]
+    # If there are no frozen dipoles, just use the movable ones.
     _scatterers_vis = movable_dipoles_line
 
+# Initialize the simulator for visualization with the correct total Ns (from sim_kwargs)
+# and set its scatterers to the combined array.
 base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
 base_sim_for_vis.scatterers = _scatterers_vis
 
