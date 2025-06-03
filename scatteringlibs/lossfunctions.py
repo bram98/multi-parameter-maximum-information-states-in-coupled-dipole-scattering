@@ -187,7 +187,13 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
 # Loss Functions / Objectives for Nuisance Parameter Optimization
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def loglin_loss(J_full: torch.Tensor, nuisance_param_index: int, alpha: float, eps: float = 1e-12) -> torch.Tensor:
+
+def loglin_loss(
+    J_full: torch.Tensor,
+    nuisance_param_index: int,
+    alpha: float,
+    eps: float = 1e-12,
+) -> torch.Tensor:
     """
     Computes log(J_inv_interest[0,0]) + log(J_inv_interest[1,1]) - alpha * log(J_inv_nuisance).
     This corresponds to the "LogLin" strategy.
@@ -202,23 +208,34 @@ def loglin_loss(J_full: torch.Tensor, nuisance_param_index: int, alpha: float, e
     Returns:
         torch.Tensor: The computed loss value.
     """
-    J_interest = compute_J_interest_given_nuisance(J_full, nuisance_param_index)
+    J_interest = compute_J_interest_given_nuisance(
+        J_full, nuisance_param_index
+    )
 
     # Add epsilon to diagonal before inversion for stability
-    J_interest_stable = J_interest + eps * torch.eye(J_interest.shape[0], device=J_interest.device, dtype=J_interest.dtype)
+    J_interest_stable = J_interest + eps * torch.eye(
+        J_interest.shape[0], device=J_interest.device, dtype=J_interest.dtype
+    )
     J_inv_interest = torch.linalg.inv(J_interest_stable)
 
     J_nuisance_nuisance = J_full[nuisance_param_index, nuisance_param_index]
     # Add epsilon before inversion and log
     J_inv_nuisance = 1.0 / (J_nuisance_nuisance + eps)
 
-    loss = (torch.log(J_inv_interest[0, 0] + eps) +
-            torch.log(J_inv_interest[1, 1] + eps) -
-            alpha * torch.log(J_inv_nuisance + eps))
+    loss = (
+        torch.log(J_inv_interest[0, 0] + eps)
+        + torch.log(J_inv_interest[1, 1] + eps)
+        - alpha * torch.log(J_inv_nuisance + eps)
+    )
     return loss
 
 
-def offdiag_loss(J_full: torch.Tensor, nuisance_param_index: int, beta: float, eps: float = 1e-12) -> torch.Tensor:
+def offdiag_loss(
+    J_full: torch.Tensor,
+    nuisance_param_index: int,
+    beta: float,
+    eps: float = 1e-12,
+) -> torch.Tensor:
     """
     Computes (J_inv_interest[0,0] + J_inv_interest[1,1]) + beta * sum_of_squares_of_off_diagonal_elements_of_J_inv_full.
     This corresponds to the "OffDiag" strategy.
@@ -233,39 +250,55 @@ def offdiag_loss(J_full: torch.Tensor, nuisance_param_index: int, beta: float, e
     Returns:
         torch.Tensor: The computed loss value.
     """
-    J_interest = compute_J_interest_given_nuisance(J_full, nuisance_param_index)
+    J_interest = compute_J_interest_given_nuisance(
+        J_full, nuisance_param_index
+    )
 
     # Add epsilon to diagonal before inversion for stability
-    J_interest_stable = J_interest + eps * torch.eye(J_interest.shape[0], device=J_interest.device, dtype=J_interest.dtype)
+    J_interest_stable = J_interest + eps * torch.eye(
+        J_interest.shape[0], device=J_interest.device, dtype=J_interest.dtype
+    )
     J_inv_interest = torch.linalg.inv(J_interest_stable)
 
     # Add epsilon to diagonal before inversion for stability
-    J_full_stable = J_full + eps * torch.eye(J_full.shape[0], device=J_full.device, dtype=J_full.dtype)
+    J_full_stable = J_full + eps * torch.eye(
+        J_full.shape[0], device=J_full.device, dtype=J_full.dtype
+    )
     J_inv_full = torch.linalg.inv(J_full_stable)
 
     # Determine indices for off-diagonal elements based on nuisance_param_index
     # Assuming parameters of interest are always 0 and 1 if nuisance_param_index is 2
     # Or more generally, the two parameters not indexed by nuisance_param_index
-    param_indices = [i for i in range(J_full.shape[0]) if i != nuisance_param_index]
+    param_indices = [
+        i for i in range(J_full.shape[0]) if i != nuisance_param_index
+    ]
     if len(param_indices) != 2:
-        raise ValueError("This loss function currently assumes exactly two parameters of interest.")
+        raise ValueError(
+            "This loss function currently assumes exactly two parameters of interest."
+        )
 
     p_idx_0 = param_indices[0]
     p_idx_1 = param_indices[1]
 
     off_diag_1 = J_inv_full[p_idx_0, nuisance_param_index]
     off_diag_2 = J_inv_full[p_idx_1, nuisance_param_index]
-    off_diag_3 = J_inv_full[p_idx_0, p_idx_1] # Coupling between params of interest in the full inverse
+    off_diag_3 = J_inv_full[
+        p_idx_0, p_idx_1
+    ]  # Coupling between params of interest in the full inverse
 
     sum_sq_off_diag = off_diag_1**2 + off_diag_2**2 + off_diag_3**2
 
     # Ensure diagonal elements of J_inv_interest are positive before summing, though typically they are variances.
     # The problem asks for J_inv_interest[0,0] + J_inv_interest[1,1], which are variances and should be positive.
-    loss = (J_inv_interest[0, 0] + J_inv_interest[1, 1]) + beta * sum_sq_off_diag
+    loss = (
+        J_inv_interest[0, 0] + J_inv_interest[1, 1]
+    ) + beta * sum_sq_off_diag
     return loss
 
 
-def subdet_loss(J_full: torch.Tensor, nuisance_param_index: int, eps: float = 1e-12) -> torch.Tensor:
+def subdet_loss(
+    J_full: torch.Tensor, nuisance_param_index: int, eps: float = 1e-12
+) -> torch.Tensor:
     """
     Computes -log(det(J_interest)).
     This corresponds to the "SubDet" strategy.
@@ -279,7 +312,9 @@ def subdet_loss(J_full: torch.Tensor, nuisance_param_index: int, eps: float = 1e
     Returns:
         torch.Tensor: The computed loss value.
     """
-    J_interest = compute_J_interest_given_nuisance(J_full, nuisance_param_index)
+    J_interest = compute_J_interest_given_nuisance(
+        J_full, nuisance_param_index
+    )
     det_J_interest = torch.linalg.det(J_interest)
 
     # Add epsilon before log to ensure argument is positive
