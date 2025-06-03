@@ -9,7 +9,7 @@ import torch
 
 from scatteringlibs import placedipoles  # Import the whole module
 from scatteringlibs import crlbanalysis
-from scatteringlibs.crlbanalysis import plot_fisher_comparison
+from scatteringlibs.crlbanalysis import plot_fisher_comparison, plot_pareto_frontiers_individual
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import (
     determinant_of_J,
@@ -938,3 +938,85 @@ print("\nSection 9 (CRLB Comparison) complete.")
 # %% 15) skipped
 
 # %% 16) skipped
+
+# %% 17) Generate Pareto frontier plots
+print("\n--- Block 17: Generating Pareto frontier plots... ---")
+
+# 1. Create wavefront_categories dictionary
+wavefront_categories_map = {}
+for key in optimized_wavefronts.keys():
+    if key.startswith('MIS_'):
+        wavefront_categories_map[key] = 'MIS'
+    elif 'TraceJ_eig' == key:
+        wavefront_categories_map[key] = 'TraceJ_eig'
+    elif key in ['DetJ_torch', 'SpecJ_torch', 'TraceJinv_torch']:
+        wavefront_categories_map[key] = 'TorchFull'
+    elif key in ['LogLin_torch', 'OffDiag_torch', 'SubDet_torch']:
+        wavefront_categories_map[key] = 'NuisanceOriginal'
+    elif key.startswith('DetJ_marginal_') or \
+         key.startswith('TraceJinv_marginal_') or \
+         key.startswith('SpecJ_marginal_'):
+        wavefront_categories_map[key] = 'TorchMarginal'
+    else:
+        wavefront_categories_map[key] = 'Other'
+
+# 2. Create wavefront_labels_latex dictionary
+wavefront_labels_latex = {
+    'MIS_shiftX': r'MIS$_x$',
+    'MIS_shiftZ': r'MIS$_z$',
+    'MIS_rotation': r'MIS$_\theta$',
+    'TraceJ_eig': r'Max Tr($\mathcal{J}$)$_{eig}$',
+    'DetJ_torch': r'Max Det($\mathcal{J}$)',
+    'SpecJ_torch': r'Max MinEig($\mathcal{J}$)',
+    'TraceJinv_torch': r'Min Tr($\mathcal{J}^{-1}$)',
+    'LogLin_torch': r'LogLin',
+    'OffDiag_torch': r'OffDiag',
+    'SubDet_torch': r'SubDet',
+    'DetJ_marginal_n2_torch': r'Max Det($\mathcal{J}_{\psi|\phi}$)',
+    'TraceJinv_marginal_n2_torch': r'Min Tr($\mathcal{J}^{-1}_{\psi|\phi}$)',
+    'SpecJ_marginal_n2_torch': r'Max MinEig($\mathcal{J}_{\psi|\phi}$)',
+}
+# Add default labels for any missing keys
+for key in optimized_wavefronts.keys():
+    if key not in wavefront_labels_latex:
+        wavefront_labels_latex[key] = key.replace("_", " ").replace("torch", "")
+
+
+# 3. Define category_styles
+# The plot_pareto_frontiers_individual function expects wavefront_categories to be this style map.
+# So, we'll rename category_styles to wavefront_categories_styles_for_plot_func
+# and then build the final wavefront_categories for the function.
+
+# Let's define styles for the categories we identified:
+category_styles_def = {
+    'MIS': {'marker': 'x', 'color': 'purple', 'label': 'MIS (Single Param)'},
+    'TraceJ_eig': {'marker': '^', 'color': 'orange', 'label': 'Max Tr(J) (Eig)'},
+    'TorchFull': {'marker': 'o', 'color': 'blue', 'label': 'Full FIM Optim.'},
+    'NuisanceOriginal': {'marker': 's', 'color': 'green', 'label': 'Nuisance Optim. (Original)'},
+    'TorchMarginal': {'marker': 'P', 'color': 'red', 'label': 'Marginal FIM Optim.'},
+    'Other': {'marker': 'd', 'color': 'grey', 'label': 'Other'},
+    'default': {'marker': '*', 'color': 'black', 'label': 'Default'} # Fallback for the plotting function
+}
+
+# The plotting function's `wavefront_categories` argument is actually the style map.
+# The prompt was a bit ambiguous. The plotting function internally maps wf_name to a category (if needed)
+# and then uses the category to look up style in the dict passed as `wavefront_categories`.
+# So, category_styles_def is what we need to pass.
+
+# 4. Call plot_pareto_frontiers_individual
+if not optimized_wavefronts:
+    print("No optimized wavefronts available to generate Pareto plots.")
+else:
+    # Ensure F_op is numpy
+    F_op_numpy = optimizer.F_op.cpu().numpy() if isinstance(optimizer.F_op, torch.Tensor) else optimizer.F_op
+
+    plot_pareto_frontiers_individual(
+        optimized_wavefronts=optimized_wavefronts,
+        F_operator_tensor=F_op_numpy, # Should be optimizer.F_op as per instructions
+        photon_budget=photon_budget,   # Global variable
+        param_names=param_names,       # Global variable
+        wavefront_categories=category_styles_def, # This is the style map based on identified categories
+        wavefront_labels_latex=wavefront_labels_latex
+    )
+
+print("\nBlock 17 (Pareto Frontier Plots) complete.")

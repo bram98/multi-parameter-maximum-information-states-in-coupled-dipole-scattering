@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch  # For type hinting if F_op comes as torch tensor
+try:
+    from adjustText import adjust_text
+except ImportError:
+    adjust_text = None
 
 from scatteringlibs.scatteringsimulation import (  # If needed for plane waves
     _flux_amplitude_2d,
@@ -418,6 +422,199 @@ def visualize_crlb_comparison(
         ax.legend(handles=legend_handles, title="Parameters", fontsize=10)
     elif num_custom_wavefronts > 0:  # Legend from bar plot labels
         ax.legend(title="Parameters", fontsize=10)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_pareto_frontiers_individual(
+    optimized_wavefronts: dict,  # {name: wavefront_coeffs_np_array}
+    F_operator_tensor: np.ndarray,  # Fisher op tensor (nparams, nparams, N_in, N_in), numpy
+    photon_budget: float,
+    param_names: list,  # List of param names e.g. ["shiftX", "shiftZ", "rotation"]
+    wavefront_categories: dict,  # {wf_name_or_category: {'marker': 'o', 'color': 'r', 'category_label': 'Category A'}}
+    wavefront_labels_latex: dict,  # {wf_name: "latex_label_for_wf"}
+):
+    """
+    Plots two Pareto frontiers for optimized wavefronts:
+    1. (CRLB_x + CRLB_z) vs. CRLB_theta
+    2. CRLB_x vs. CRLB_z
+
+    Args:
+        optimized_wavefronts (dict): Dictionary of wavefronts {name: coefficients}.
+        F_operator_tensor (np.ndarray): Fisher operator tensor.
+        photon_budget (float): Photon budget for normalization.
+        param_names (list): List of parameter names.
+        wavefront_categories (dict): Styling for wavefronts based on name or category.
+                                     Example: {'SLM': {'marker': 's', 'color': 'blue', 'label': 'SLM WFs'},
+                                               'Optimized': {'marker': 'o', 'color': 'red', 'label': 'Optimized WFs'}}
+                                     Wavefront names in optimized_wavefronts should map to a key in this dict,
+                                     or this dict can contain direct styling for wf_names.
+                                     For simplicity, we'll assume wavefront_categories contains a key for each
+                                     wavefront name in optimized_wavefronts or a category it belongs to.
+        wavefront_labels_latex (dict): LaTeX labels for each wavefront point.
+    """
+    # Parameter indices - assuming standard order for x, z, theta from param_names
+    # This needs to be robust. Let's find indices based on names.
+    idx_x, idx_z, idx_theta = -1, -1, -1
+    for i, name in enumerate(param_names):
+        if "x" in name.lower(): # Assuming "shiftX" or similar
+            idx_x = i
+        elif "z" in name.lower(): # Assuming "shiftZ" or similar
+            idx_z = i
+        elif "theta" in name.lower() or "rotation" in name.lower(): # Assuming "rotation" or "theta"
+            idx_theta = i
+
+    if idx_x == -1 or idx_z == -1 or idx_theta == -1:
+        print(
+            "Warning: Could not reliably determine indices for x, z, or theta parameters "
+            "from param_names. Please check input. Using first three params if available."
+        )
+        # Fallback logic, might not be correct for all cases.
+        if len(param_names) >= 1: idx_x = 0
+        if len(param_names) >= 2: idx_z = 1
+        if len(param_names) >= 3: idx_theta = 2
+        if idx_x == -1 or idx_z == -1 or idx_theta == -1: # Still not found
+            raise ValueError("Parameter names for x, z, theta not found or insufficient parameters.")
+
+
+    all_crlbs = {}
+    for wf_name, wf_coeffs in optimized_wavefronts.items():
+        crlbs = compute_crlb_for_wavefront(
+            wf_coeffs, F_operator_tensor, photon_budget
+        )
+        all_crlbs[wf_name] = crlbs
+
+    # --- Plot 1: (CRLB_x + CRLB_z) vs CRLB_theta ---
+    plt.figure(figsize=(8, 6))
+    texts = []
+    plotted_categories = set() # For legend
+
+    for wf_name, crlbs_values in all_crlbs.items():
+        crlb_x = crlbs_values[idx_x]
+        crlb_z = crlbs_values[idx_z]
+        crlb_theta = crlbs_values[idx_theta]
+
+        # Determine category and style
+        # Assuming wavefront_categories has a key for each wf_name, or a 'default'
+        # Or, it could be that wf_name itself is a key in wavefront_categories,
+        # or wf_name belongs to a category which is a key in wavefront_categories.
+        # For now, let's assume wf_name can be directly used or there's a category mapping.
+        # This part might need refinement based on exact structure of wavefront_categories.
+        style = {}
+        category_label_for_legend = wf_name # Default legend label to wavefront name
+
+        # Attempt to find style:
+        # 1. Direct match for wf_name in wavefront_categories
+        if wf_name in wavefront_categories:
+            style = wavefront_categories[wf_name]
+            category_label_for_legend = style.get('label', wf_name) # Use provided label if exists
+        else: # 2. Check if any category key is part of the wf_name (e.g. wf_name="SLM_optimized_1", category_key="SLM")
+            found_category = False
+            for cat_key, cat_style in wavefront_categories.items():
+                if cat_key in wf_name:
+                    style = cat_style
+                    category_label_for_legend = style.get('label', cat_key)
+                    found_category = True
+                    break
+            if not found_category: # 3. Use a default style if no match
+                style = wavefront_categories.get('default', {'marker': 'o', 'color': 'gray', 'label': 'Other'})
+                category_label_for_legend = style.get('label', 'Other')
+
+
+        marker = style.get("marker", "o")
+        color = style.get("color", "k")
+
+        legend_label = None
+        if category_label_for_legend not in plotted_categories:
+            legend_label = category_label_for_legend
+            plotted_categories.add(category_label_for_legend)
+
+        plt.plot(
+            crlb_theta,
+            crlb_x + crlb_z,
+            marker=marker,
+            color=color,
+            linestyle="None",
+            markersize=8,
+            label=legend_label,
+        )
+        label = wavefront_labels_latex.get(wf_name, wf_name.replace("_", " "))
+        texts.append(plt.text(crlb_theta, crlb_x + crlb_z, label, color=color, fontsize=9))
+
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel(f"CRLB$_{{\\theta}}$ ({param_names[idx_theta].replace('rotation', 'θ').replace('shift', '')})")
+    plt.ylabel(
+        f"CRLB$_x$ ({param_names[idx_x].replace('shift', '')}) + "
+        f"CRLB$_z$ ({param_names[idx_z].replace('shift', '')})"
+    )
+    plt.title("Pareto Frontier: Combined Positional vs. Rotational Error")
+    plt.grid(True, which="both", linestyle="--", alpha=0.7)
+    plt.legend(title="Wavefront Types")
+
+    if adjust_text and texts:
+        adjust_text(texts, arrowprops=dict(arrowstyle="-", color="black", lw=0.5))
+
+    plt.tight_layout()
+    plt.show()
+
+    # --- Plot 2: CRLB_x vs CRLB_z ---
+    plt.figure(figsize=(8, 6))
+    texts_plot2 = []
+    plotted_categories_plot2 = set()
+
+    for wf_name, crlbs_values in all_crlbs.items():
+        crlb_x = crlbs_values[idx_x]
+        crlb_z = crlbs_values[idx_z]
+
+        style = {}
+        category_label_for_legend = wf_name
+        if wf_name in wavefront_categories:
+            style = wavefront_categories[wf_name]
+            category_label_for_legend = style.get('label', wf_name)
+        else:
+            found_category = False
+            for cat_key, cat_style in wavefront_categories.items():
+                if cat_key in wf_name:
+                    style = cat_style
+                    category_label_for_legend = style.get('label', cat_key)
+                    found_category = True
+                    break
+            if not found_category:
+                style = wavefront_categories.get('default', {'marker': 'o', 'color': 'gray', 'label': 'Other'})
+                category_label_for_legend = style.get('label', 'Other')
+
+        marker = style.get("marker", "o")
+        color = style.get("color", "k")
+
+        legend_label_plot2 = None
+        if category_label_for_legend not in plotted_categories_plot2:
+            legend_label_plot2 = category_label_for_legend
+            plotted_categories_plot2.add(category_label_for_legend)
+
+        plt.plot(
+            crlb_z, # X-axis for this plot
+            crlb_x, # Y-axis for this plot
+            marker=marker,
+            color=color,
+            linestyle="None",
+            markersize=8,
+            label=legend_label_plot2,
+        )
+        label = wavefront_labels_latex.get(wf_name, wf_name.replace("_", " "))
+        texts_plot2.append(plt.text(crlb_z, crlb_x, label, color=color, fontsize=9))
+
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel(f"CRLB$_z$ ({param_names[idx_z].replace('shift', '')})")
+    plt.ylabel(f"CRLB$_x$ ({param_names[idx_x].replace('shift', '')})")
+    plt.title("Pareto Frontier: Positional Error X vs. Z")
+    plt.grid(True, which="both", linestyle="--", alpha=0.7)
+    plt.legend(title="Wavefront Types")
+
+    if adjust_text and texts_plot2:
+        adjust_text(texts_plot2, arrowprops=dict(arrowstyle="-", color="black", lw=0.5))
 
     plt.tight_layout()
     plt.show()
