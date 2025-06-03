@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from scatteringlibs import placedipoles  # Import the whole module
+from scatteringlibs import crlbanalysis
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
@@ -510,3 +511,23 @@ visualize_multi_param_fisher_comparison(
 )
 
 print("\nSection 8 (Wavefront Comparison Visualization) complete.")
+
+# %% 9) Compare CRLB, with optional plane wave or random wavefront comparison
+
+print("\n--- Section 9: CRLB Comparison ---")
+
+crlbanalysis.visualize_crlb_comparison(
+    optimized_wavefronts=optimized_wavefronts,
+    F_operator_tensor=optimizer.F_op,
+    photon_budget=photon_budget,
+    param_names=param_names,
+    sim_kwargs=sim_kwargs,
+    angles_deg=angles_deg,
+    kx_array=kx_array,
+    figure_title="CRLB Comparison for different types of Maximum Information States",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+    num_random_samples=1000,
+)
+
+print("\nSection 9 (CRLB Comparison) complete.")
