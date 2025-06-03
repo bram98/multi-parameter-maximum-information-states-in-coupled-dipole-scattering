@@ -39,12 +39,6 @@ def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The trace of J_mat_inv.
     """
-    # Add a small epsilon to the diagonal for numerical stability if J_mat is singular.
-    # This helps prevent NaN gradients if J_mat is ill-conditioned during optimization.
-    # A very small epsilon might be needed depending on typical J_mat scales.
-    # Consider making epsilon a parameter or handling higher up if issues persist.
-    # For now, direct inversion is attempted, optimizer should ideally avoid singularity.
-    # J_inv = torch.linalg.inv(J_mat + 1e-12 * torch.eye(J_mat.shape[0], device=J_mat.device, dtype=J_mat.dtype))
     J_inv = torch.linalg.inv(J_mat)
     return torch.trace(J_inv)
 
@@ -114,15 +108,7 @@ def compute_J_interest_given_nuisance(
         .unsqueeze(0)
     )  # Make it 1x1
 
-    # Regularize J22 inversion for numerical stability
-    # Adding a small value to the diagonal of J22 before inversion
-    # This is equivalent to Tikhonov regularization for J22
-    # The value of eps might need tuning depending on the scale of J matrix elements
-    eps = 1e-12
-    J22_inv = torch.linalg.inv(
-        J22 + eps * torch.eye(J22.shape[0], device=J22.device, dtype=J22.dtype)
-    )
-
+    J22_inv = torch.linalg.inv(J22)
     J_interest_nuisance = J11 - J12 @ J22_inv @ J21
     return J_interest_nuisance
 
@@ -154,7 +140,6 @@ def trace_of_J_block_inv(J_block: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The trace of J_block_inv.
     """
-    # J_block_inv = torch.linalg.inv(J_block + 1e-12 * torch.eye(J_block.shape[0], device=J_block.device, dtype=J_block.dtype))
     J_block_inv = torch.linalg.inv(J_block)
     return torch.trace(J_block_inv)
 
@@ -178,6 +163,7 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
 # These functions expect a 2x2 PyTorch tensor marginal_J_torch.
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
 def determinant_of_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
     """
     Calculates the determinant of the 2x2 marginal Fisher Information Matrix.
@@ -188,11 +174,15 @@ def determinant_of_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The determinant of marginal_J_torch.
     """
     if marginal_J_torch.shape != (2, 2):
-        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+        raise ValueError(
+            f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}"
+        )
     return torch.linalg.det(marginal_J_torch)
 
 
-def minimize_trace_of_marginal_J_inv(marginal_J_torch: torch.Tensor) -> torch.Tensor:
+def minimize_trace_of_marginal_J_inv(
+    marginal_J_torch: torch.Tensor,
+) -> torch.Tensor:
     """
     Calculates the trace of the inverse of the 2x2 marginal Fisher Information Matrix.
     To be minimized for A-optimality.
@@ -203,25 +193,27 @@ def minimize_trace_of_marginal_J_inv(marginal_J_torch: torch.Tensor) -> torch.Te
         torch.Tensor: The trace of the regularized inverse of marginal_J_torch.
     """
     if marginal_J_torch.shape != (2, 2):
-        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+        raise ValueError(
+            f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}"
+        )
 
-    # Add epsilon for numerical stability
-    epsilon = 1e-12 * torch.eye(
-        marginal_J_torch.shape[0], device=marginal_J_torch.device, dtype=marginal_J_torch.dtype
-    )
-    J_reg = marginal_J_torch + epsilon
+    J_reg = marginal_J_torch
 
     try:
         J_inv = torch.linalg.inv(J_reg)
     except torch.linalg.LinAlgError as e:
         # Fallback to pseudo-inverse if regularized version is still problematic
-        print(f"Warning: Direct inversion of regularized marginal_J failed: {e}. Using pseudo-inverse.")
+        print(
+            f"Warning: Direct inversion of regularized marginal_J failed: {e}. Using pseudo-inverse."
+        )
         J_inv = torch.linalg.pinv(J_reg)
 
     return torch.trace(J_inv)
 
 
-def maximize_min_eig_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
+def maximize_min_eig_marginal_J(
+    marginal_J_torch: torch.Tensor,
+) -> torch.Tensor:
     """
     Calculates the smallest eigenvalue of the 2x2 marginal Fisher Information Matrix.
     To be maximized for E-optimality.
@@ -232,20 +224,12 @@ def maximize_min_eig_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The smallest eigenvalue of marginal_J_torch.
     """
     if marginal_J_torch.shape != (2, 2):
-        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+        raise ValueError(
+            f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}"
+        )
     # eigvalsh returns eigenvalues in ascending order for Hermitian matrices.
     eigvals = torch.linalg.eigvalsh(marginal_J_torch)
     return eigvals[0]
-
-
-# __all__ can be defined here to specify the public API if desired
-# For example:
-# __all__ = [
-#     "determinant_of_J", "trace_of_J", "trace_of_J_inv", "min_eigenvalue_of_J",
-#     "compute_J_interest_given_nuisance",
-#     "det_of_J_block", "trace_of_J_block_inv", "min_eigenvalue_of_J_block",
-#     "loglin_loss", "offdiag_loss", "subdet_loss"
-# ]
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -450,21 +434,4 @@ def minimize_trace_of_J_inv(J_matrix):
             J_inv = torch.linalg.pinv(J_matrix)
 
     trace_J_inv = torch.trace(J_inv)
-
-    # Check for NaN or Inf in the result, which can happen if pinv also struggles
-    # or if J_matrix itself contained NaNs/Infs.
-    if torch.isnan(trace_J_inv) or torch.isinf(trace_J_inv):
-        print(
-            f"Warning: Trace of J_inv is NaN or Inf. J_matrix might have been problematic. Returning float('inf')."
-        )
-        return torch.tensor(
-            float("inf"),
-            device=J_matrix.device,
-            dtype=(
-                J_matrix.dtype
-                if J_matrix.is_floating_point() or J_matrix.is_complex()
-                else torch.float64
-            ),
-        )
-
     return trace_J_inv
