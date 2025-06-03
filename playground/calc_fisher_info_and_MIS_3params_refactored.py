@@ -613,3 +613,97 @@ plot_fisher_comparison(
 )
 
 print("\nSection 10b (J, J^-1, Condition Number Visualization) complete.")
+
+# %% 11) Multi-objective optimization considering nuisance parameters
+print("\n--- Section 11: Nuisance Parameter Optimization Strategies ---")
+
+from scatteringlibs.lossfunctions import loglin_loss, offdiag_loss, subdet_loss
+
+block11_loss_histories = {}
+nuisance_param_index = 2  # Corresponds to rotation
+
+strategies = {
+    "LogLin": {
+        "loss_fn_constructor": lambda: (
+            lambda J_mat: loglin_loss(
+                J_mat, nuisance_param_index=nuisance_param_index, alpha=0.1
+            )
+        ),
+        "params": {"alpha": 0.1},
+    },
+    "OffDiag": {
+        "loss_fn_constructor": lambda: (
+            lambda J_mat: offdiag_loss(
+                J_mat, nuisance_param_index=nuisance_param_index, beta=1.0
+            )
+        ),
+        "params": {"beta": 1.0},
+    },
+    "SubDet": {
+        "loss_fn_constructor": lambda: (
+            lambda J_mat: subdet_loss(
+                J_mat, nuisance_param_index=nuisance_param_index
+            )
+        ),
+        "params": {},
+    },
+}
+
+for strategy_name, config in strategies.items():
+    print(f"\n--- Optimizing for Strategy: {strategy_name} ---")
+
+    loss_fn = config["loss_fn_constructor"]()
+
+    optimization_results = optimizer.torch_optimize_loss_multirun(
+        loss_function_of_J=loss_fn,
+        runs=multi_run_count,
+        steps=single_run_iterations,
+        lr=1e-3,
+        verbose=True,
+        maximize=False,  # All these are minimization problems
+        photon_budget=photon_budget,
+        base_seed=42,
+    )
+
+    block11_loss_histories[strategy_name] = optimization_results[
+        "all_loss_histories"
+    ]
+    bestvec = optimization_results["bestvec"]
+    bestval = optimization_results["bestval"]
+
+    wavefront_key = f"{strategy_name}_torch"
+
+    if bestvec is not None:
+        optimized_wavefronts[wavefront_key] = bestvec
+        J_for_strategy = optimizer.J_fisher_info_matrix(bestvec)
+        fisher_matrices_for_wavefronts[wavefront_key] = J_for_strategy
+        print(
+            f"Optimization for {strategy_name} complete. Best loss value = {bestval:.3e}"
+        )
+
+        # Plot all loss histories from the multirun
+        plt.figure(figsize=(8, 5))
+        for i, history in enumerate(
+            optimization_results["all_loss_histories"]
+        ):
+            plt.plot(history, label=f"Run {i+1}")
+        plt.title(f"{strategy_name} Optimization (All {multi_run_count} Runs)")
+        plt.xlabel("Iteration")
+        plt.ylabel(f"{strategy_name} Loss")
+        plt.legend()
+        plt.grid(True, linestyle=":")
+        plt.show()
+
+        # Visualize the intensity pattern
+        print(f"Visualizing intensity for {wavefront_key}...")
+        base_sim_for_vis.reset()
+        base_sim_for_vis.set_input_field_kx(kx_array, bestvec)
+        base_sim_for_vis.solve_fields()
+        base_sim_for_vis.visualize_intensity(
+            title=f"{strategy_name}-Optimized Wavefront (Loss = {bestval:.2e})",
+            dpi=100,
+        )
+    else:
+        print(f"{strategy_name} optimization did not yield a valid wavefront.")
+
+print("\nSection 11 (Nuisance Parameter Optimization) complete.")
