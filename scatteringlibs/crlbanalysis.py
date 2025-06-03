@@ -427,19 +427,29 @@ def visualize_crlb_comparison(
 # -- Newly added functions for Fisher Matrix and Condition Number Visualization --
 # ------------------------------------------------------------------------------------
 
+
 def _get_plot_param_labels(param_names_list):
     """Helper to generate short labels for plot ticks from full parameter names."""
     plot_labels = []
     for p_name in param_names_list:
-        if "shiftx" in p_name.lower(): plot_labels.append("x")
-        elif "shiftz" in p_name.lower(): plot_labels.append("z")
-        elif "rotation" in p_name.lower(): plot_labels.append(r"$\theta$")
-        else: plot_labels.append(p_name[:3]) # Fallback to first 3 chars
+        if "shiftx" in p_name.lower():
+            plot_labels.append("x")
+        elif "shiftz" in p_name.lower():
+            plot_labels.append("z")
+        elif "rotation" in p_name.lower():
+            plot_labels.append(r"$\theta$")
+        else:
+            plot_labels.append(p_name[:3])  # Fallback to first 3 chars
     return plot_labels
 
+
 def plot_fisher_comparison(
-    Js_map, J_invs_map, cond_nums_map, param_names_global,
-    wavefronts_to_show=None, figure_title="Fisher Matrices, Inverses, and Condition Numbers"
+    Js_map,
+    J_invs_map,
+    cond_nums_map,
+    param_names_global,
+    wavefronts_to_show=None,
+    figure_title="Fisher Matrices, Inverses, and Condition Numbers",
 ):
     """
     Visualizes Fisher Information matrices (J), their inverses (J^-1), and condition numbers
@@ -453,7 +463,9 @@ def plot_fisher_comparison(
         wavefronts_to_plot = [wf for wf in wavefronts_to_show if wf in Js_map]
 
     if not wavefronts_to_plot:
-        print("No valid wavefronts selected or available to plot in plot_fisher_comparison.")
+        print(
+            "No valid wavefronts selected or available to plot in plot_fisher_comparison."
+        )
         return
 
     n_wave = len(wavefronts_to_plot)
@@ -461,27 +473,35 @@ def plot_fisher_comparison(
     n_params = len(param_names_global)
 
     # --- Figure 1: J and J^-1 matrices ---
-    fig_matrices = plt.figure(figsize=(10, 3 * n_wave + 0.5)) # +0.5 for title space
+    fig_matrices = plt.figure(
+        figsize=(10, 3 * n_wave + 0.5)
+    )  # +0.5 for title space
 
     try:
         import matplotlib.gridspec as gridspec
     except ImportError:
-        print("matplotlib.gridspec not found. Please ensure matplotlib is installed correctly.")
+        print(
+            "matplotlib.gridspec not found. Please ensure matplotlib is installed correctly."
+        )
         return
 
-    gs_main = gridspec.GridSpec(n_wave, 1, figure=fig_matrices, hspace=0.5 if n_wave > 1 else 0.3)
+    gs_main = gridspec.GridSpec(
+        n_wave, 1, figure=fig_matrices, hspace=0.5 if n_wave > 1 else 0.3
+    )
 
     for i, wf_name in enumerate(wavefronts_to_plot):
         J_mat = Js_map.get(wf_name)
         inv_mat = J_invs_map.get(wf_name)
-        cond_num_val = cond_nums_map.get(wf_name, float('nan'))
+        cond_num_val = cond_nums_map.get(wf_name, float("nan"))
 
-        row_gs = gs_main[i].subgridspec(1, 2, width_ratios=[1,1], wspace=0.4)
+        row_gs = gs_main[i].subgridspec(1, 2, width_ratios=[1, 1], wspace=0.4)
 
         # Plot J
         axJ = fig_matrices.add_subplot(row_gs[0])
         if J_mat is not None and not np.all(np.isnan(J_mat)):
-            imJ = axJ.imshow(J_mat, cmap='viridis', aspect='equal', vmin=None, vmax=None)
+            imJ = axJ.imshow(
+                J_mat, cmap="viridis", aspect="equal", vmin=None, vmax=None
+            )
             axJ.set_xticks(np.arange(n_params))
             axJ.set_yticks(np.arange(n_params))
             axJ.set_xticklabels(plot_param_labels, fontsize=8)
@@ -492,7 +512,15 @@ def plot_fisher_comparison(
             cbJ.ax.tick_params(labelsize=8)
             cbJ.update_ticks()
         else:
-            axJ.text(0.5, 0.5, 'J N/A', ha='center', va='center', transform=axJ.transAxes, fontsize=9)
+            axJ.text(
+                0.5,
+                0.5,
+                "J N/A",
+                ha="center",
+                va="center",
+                transform=axJ.transAxes,
+                fontsize=9,
+            )
             axJ.set_xticks([])
             axJ.set_yticks([])
             axJ.set_title(f"J: {wf_name} (N/A)", fontsize=10)
@@ -500,26 +528,36 @@ def plot_fisher_comparison(
         # Plot J^-1
         axInv = fig_matrices.add_subplot(row_gs[1])
         if inv_mat is not None and not np.all(np.isnan(inv_mat)):
-            imInv = axInv.imshow(inv_mat, cmap='magma', aspect='equal', vmin=None, vmax=None)
+            imInv = axInv.imshow(
+                inv_mat, cmap="magma", aspect="equal", vmin=None, vmax=None
+            )
             axInv.set_xticks(np.arange(n_params))
             axInv.set_yticks(np.arange(n_params))
             axInv.set_xticklabels(plot_param_labels, fontsize=8)
             axInv.set_yticklabels(plot_param_labels, fontsize=8)
             title_str = f"$J^{{-1}}$: {wf_name}"
             if not np.isnan(cond_num_val):
-                 title_str += f"\nCond: {cond_num_val:.1e}"
+                title_str += f"\nCond: {cond_num_val:.1e}"
             axInv.set_title(title_str, fontsize=10)
             cbInv = plt.colorbar(imInv, ax=axInv, fraction=0.046, pad=0.04)
             cbInv.formatter.set_powerlimits((-2, 2))
             cbInv.ax.tick_params(labelsize=8)
             cbInv.update_ticks()
         else:
-            axInv.text(0.5, 0.5, '$J^{-1}$ N/A', ha='center', va='center', transform=axInv.transAxes, fontsize=9)
+            axInv.text(
+                0.5,
+                0.5,
+                "$J^{-1}$ N/A",
+                ha="center",
+                va="center",
+                transform=axInv.transAxes,
+                fontsize=9,
+            )
             axInv.set_xticks([])
             axInv.set_yticks([])
             title_str = f"$J^{{-1}}$: {wf_name} (N/A)"
-            if not np.isnan(cond_num_val) and np.isinf(cond_num_val) :
-                 title_str += f"\nCond: $\infty$"
+            if not np.isnan(cond_num_val) and np.isinf(cond_num_val):
+                title_str += f"\nCond: $\infty$"
             axInv.set_title(title_str, fontsize=10)
 
     if figure_title:
@@ -536,7 +574,9 @@ def plot_fisher_comparison(
         cond_val = cond_nums_map.get(wf_name)
         if cond_val is not None and not np.isnan(cond_val):
             if np.isinf(cond_val):
-                cond_values_to_plot.append(1e18) # Placeholder for Inf on log scale
+                cond_values_to_plot.append(
+                    1e18
+                )  # Placeholder for Inf on log scale
             else:
                 cond_values_to_plot.append(cond_val)
             valid_wf_names_for_cond.append(wf_name)
@@ -545,33 +585,64 @@ def plot_fisher_comparison(
             valid_wf_names_for_cond.append(wf_name + " (N/A)")
 
     x_pos = np.arange(len(valid_wf_names_for_cond))
-    finite_cond_indices = [idx for idx, val in enumerate(cond_values_to_plot) if np.isfinite(val) and val > 0]
+    finite_cond_indices = [
+        idx
+        for idx, val in enumerate(cond_values_to_plot)
+        if np.isfinite(val) and val > 0
+    ]
 
     if not finite_cond_indices:
-        ax_cond.text(0.5, 0.5, 'No valid finite condition numbers to plot.', ha='center', va='center', transform=ax_cond.transAxes)
+        ax_cond.text(
+            0.5,
+            0.5,
+            "No valid finite condition numbers to plot.",
+            ha="center",
+            va="center",
+            transform=ax_cond.transAxes,
+        )
         ax_cond.set_title("Condition Numbers (No Data)")
     else:
         plot_x_pos = np.array(x_pos)[finite_cond_indices]
         plot_cond_values = np.array(cond_values_to_plot)[finite_cond_indices]
         plot_names = np.array(valid_wf_names_for_cond)[finite_cond_indices]
 
-        bars = ax_cond.bar(plot_x_pos, plot_cond_values, color='teal', width=0.6)
+        bars = ax_cond.bar(
+            plot_x_pos, plot_cond_values, color="teal", width=0.6
+        )
         ax_cond.set_xticks(plot_x_pos)
-        ax_cond.set_xticklabels(plot_names, rotation=45, ha="right", fontsize=9)
+        ax_cond.set_xticklabels(
+            plot_names, rotation=45, ha="right", fontsize=9
+        )
         ax_cond.set_ylabel("Condition Number of J (log scale)")
         ax_cond.set_title("Condition Numbers of Fisher Matrices")
         try:
-            ax_cond.set_yscale('log')
+            ax_cond.set_yscale("log")
             for bar_idx, bar_val in enumerate(plot_cond_values):
-                ax_cond.text(plot_x_pos[bar_idx], bar_val * 1.1, f'{bar_val:.1e}',
-                             ha='center', va='bottom', fontsize=8, rotation=0)
+                ax_cond.text(
+                    plot_x_pos[bar_idx],
+                    bar_val * 1.1,
+                    f"{bar_val:.1e}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    rotation=0,
+                )
         except ValueError as e:
-            ax_cond.set_yscale('linear')
+            ax_cond.set_yscale("linear")
             ax_cond.set_ylabel("Condition Number of J (linear scale)")
-            print(f"Warning: Could not use log scale for condition numbers due to data values (e.g. zeros/NaNs not fully filtered): {e}. Using linear scale.")
+            print(
+                f"Warning: Could not use log scale for condition numbers due to data values (e.g. zeros/NaNs not fully filtered): {e}. Using linear scale."
+            )
             for bar_idx, bar_val in enumerate(plot_cond_values):
-                 ax_cond.text(plot_x_pos[bar_idx], bar_val, f'{bar_val:.1e}',
-                              ha='center', va='bottom', fontsize=8, rotation=0)
+                ax_cond.text(
+                    plot_x_pos[bar_idx],
+                    bar_val,
+                    f"{bar_val:.1e}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    rotation=0,
+                )
 
     ax_cond.grid(True, which="both", ls=":", alpha=0.7)
     fig_cond.tight_layout()

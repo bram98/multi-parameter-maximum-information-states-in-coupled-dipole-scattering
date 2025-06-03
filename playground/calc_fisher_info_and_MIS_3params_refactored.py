@@ -533,15 +533,12 @@ crlbanalysis.visualize_crlb_comparison(
 
 print("\nSection 9 (CRLB Comparison) complete.")
 
-# %% 10) Fisher and Covariance Matrix Visualization Data
+# %% 10) Fisher and Covariance Matrix Visualization Data & condition numbers
 print("\n--- Section 10: Fisher and Covariance Matrix Visualization ---")
 
 Js_for_visualization = {}
 J_invs_for_visualization = {}
 cond_nums_for_visualization = {}
-
-# The optimized_wavefronts dictionary should be populated by previous sections.
-# The optimizer object should also be defined.
 
 for wf_name, wf_cplx_tensor in optimized_wavefronts.items():
     # Ensure wavefront is a NumPy array for J calculation
@@ -559,27 +556,41 @@ for wf_name, wf_cplx_tensor in optimized_wavefronts.items():
             inv_mat = np.linalg.inv(J_mat)
             # Re-calculate cond_num after successful inversion if desired, or use the one from check
             cond_num = np.linalg.cond(J_mat)
-        else: # Matrix is singular or ill-conditioned
-            print(f"Warning: Fisher matrix for '{wf_name}' is singular or ill-conditioned. Condition number: {np.linalg.cond(J_mat)}")
-            inv_mat = np.full_like(J_mat, np.nan) # Store NaN matrix
-            cond_num = np.inf # Store infinity for condition number
+        else:  # Matrix is singular or ill-conditioned
+            print(
+                f"Warning: Fisher matrix for '{wf_name}' is singular or ill-conditioned. Condition number: {np.linalg.cond(J_mat)}"
+            )
+            inv_mat = np.full_like(J_mat, np.nan)  # Store NaN matrix
+            cond_num = np.inf  # Store infinity for condition number
 
     except np.linalg.LinAlgError as e:
-        print(f"Error calculating inverse or condition number for '{wf_name}': {e}")
+        print(
+            f"Error calculating inverse or condition number for '{wf_name}': {e}"
+        )
         # Attempt to get J_mat again if it wasn't calculated before the error, or if it's needed.
         # This line assumes J_fisher_info_matrix itself doesn't raise LinAlgError for non-invertible matrices,
         # which is typical as J can be calculated even if singular.
-        if 'J_mat' not in locals() or J_mat is None: # Ensure J_mat exists
-             J_mat = optimizer.J_fisher_info_matrix(wf_cplx) # Recalculate if necessary
+        if "J_mat" not in locals() or J_mat is None:  # Ensure J_mat exists
+            J_mat = optimizer.J_fisher_info_matrix(
+                wf_cplx
+            )  # Recalculate if necessary
 
-        inv_mat = np.full_like(J_mat, np.nan)  # Store NaN matrix if inversion fails
-        cond_num = np.inf  # Store infinity or a very large number for condition number
+        inv_mat = np.full_like(
+            J_mat, np.nan
+        )  # Store NaN matrix if inversion fails
+        cond_num = (
+            np.inf
+        )  # Store infinity or a very large number for condition number
 
-    except Exception as e: # Catch any other unexpected errors during J calculation or processing
-        print(f"An unexpected error occurred for '{wf_name}' during Fisher matrix processing: {e}")
+    except (
+        Exception
+    ) as e:  # Catch any other unexpected errors during J calculation or processing
+        print(
+            f"An unexpected error occurred for '{wf_name}' during Fisher matrix processing: {e}"
+        )
         # Define nparams based on typical optimizer structure if available, otherwise use a default like 3
-        num_params = optimizer.nparams if hasattr(optimizer, 'nparams') else 3
-        J_mat = np.full((num_params, num_params), np.nan) # Store NaN matrix
+        num_params = optimizer.nparams if hasattr(optimizer, "nparams") else 3
+        J_mat = np.full((num_params, num_params), np.nan)  # Store NaN matrix
         inv_mat = np.full((num_params, num_params), np.nan)
         cond_num = np.nan
 
@@ -587,13 +598,10 @@ for wf_name, wf_cplx_tensor in optimized_wavefronts.items():
     J_invs_for_visualization[wf_name] = inv_mat
     cond_nums_for_visualization[wf_name] = cond_num
 
-print("\nCalculated J, J^-1, and condition numbers for all wavefronts for visualization.")
+print(
+    "\nCalculated J, J^-1, and condition numbers for all wavefronts for visualization."
+)
 print("Section 10 (Fisher and Covariance Matrix Visualization Data) complete.")
-
-# %% 10b) Visualization Function for J, J^-1, and Condition Numbers
-# The visualization functions _get_plot_param_labels and visualize_J_and_inverse_refactored
-# have been moved to scatteringlibs.crlbanalysis and renamed to plot_fisher_comparison.
-# We now call the imported function.
 
 # Call the visualization function (now imported from crlbanalysis)
 plot_fisher_comparison(
@@ -601,7 +609,7 @@ plot_fisher_comparison(
     J_invs_map=J_invs_for_visualization,
     cond_nums_map=cond_nums_for_visualization,
     param_names_global=param_names,  # param_names should be globally defined earlier in the script
-    figure_title="Comparison of J, $J^{-1}$, and Condition Numbers for Optimized Wavefronts"
+    figure_title="Comparison of J, $J^{-1}$, and Condition Numbers for Optimized Wavefronts",
 )
 
 print("\nSection 10b (J, J^-1, Condition Number Visualization) complete.")
