@@ -36,6 +36,106 @@ class Optimizer:
             None  # For storing loss from torch_optimize_loss
         )
 
+    def _compute_marginal_fisher_info_matrix(self, full_J_torch, nuisance_param_index):
+        """
+        Computes the marginal Fisher Information Matrix (FIM) for parameters of interest,
+        excluding a single nuisance parameter.
+
+        The formula used is J_marginal = J11 - J12 @ torch.linalg.inv(J22) @ J21.
+
+        Args:
+            full_J_torch (torch.Tensor): The full FIM (e.g., 3x3 for 3 parameters).
+            nuisance_param_index (int): The index (0, 1, or 2) of the nuisance parameter.
+
+        Returns:
+            torch.Tensor: The marginal FIM (2x2) for the parameters of interest.
+        """
+        if not (0 <= nuisance_param_index < full_J_torch.shape[0]):
+            raise ValueError(
+                f"nuisance_param_index must be between 0 and {full_J_torch.shape[0] - 1}"
+            )
+        if full_J_torch.shape[0] != 3 or full_J_torch.shape[1] != 3:
+            # This specific implementation is for a 3x3 matrix
+            # For generalization, the index selection logic would need to be more complex.
+            raise ValueError(
+                f"full_J_torch must be a 3x3 matrix for this implementation. Got {full_J_torch.shape}"
+            )
+
+        all_indices = list(range(full_J_torch.shape[0]))
+        params_of_interest_indices = [
+            i for i in all_indices if i != nuisance_param_index
+        ]
+
+        J11 = full_J_torch[
+            torch.tensor(params_of_interest_indices)[:, None],
+            torch.tensor(params_of_interest_indices),
+        ]
+        J12 = full_J_torch[
+            torch.tensor(params_of_interest_indices)[:, None],
+            torch.tensor([nuisance_param_index]),
+        ]
+        J21 = full_J_torch[
+            torch.tensor([nuisance_param_index])[:, None],
+            torch.tensor(params_of_interest_indices),
+        ]
+        # J22 is a submatrix for nuisance parameters. If one nuisance param, it's a 1x1 matrix.
+        J22_scalar = full_J_torch[nuisance_param_index, nuisance_param_index]
+        J22 = J22_scalar.reshape(1, 1) # Ensure J22 is a 2D tensor for linalg.inv
+
+        # Add epsilon for numerical stability, similar to what might be done elsewhere
+        epsilon = 1e-12 * torch.eye(
+            J22.shape[0], device=J22.device, dtype=J22.dtype
+        )
+        J22_reg = J22 + epsilon
+
+        try:
+            inv_J22 = torch.linalg.inv(J22_reg)
+        except RuntimeError as e:
+            # Handle cases where J22_reg might still be singular or near-singular
+            # This could happen if J22 was exactly zero and epsilon is too small
+            # Or if J22 is extremely ill-conditioned.
+            # For a 1x1 matrix, inv(X) = 1/X. If X is near zero, 1/X is huge.
+            # A more robust solution might involve pseudo-inverse or checking condition number.
+            print(f"Warning: Inversion of J22 failed: {e}. J22 was: {J22.item()}, J22_reg was: {J22_reg.item()}") # noqa
+            # Fallback: if J22 is ~0, then J12 @ inv(J22) @ J21 might be problematic.
+            # If J22 is very small, its inverse will be very large.
+            # Depending on the physics, if J22 is zero, it might mean the nuisance parameter
+            # is not coupled, or the measurement provides no info on it.
+            # For now, re-raise or return an error matrix.
+            # Or, if J22 is effectively zero, the term J12 @ inv(J22) @ J21 might be considered zero
+            # if J12 or J21 are also zero, or if the problem implies decoupling.
+            # This is a simplification; true handling depends on context.
+            # For a 1x1 J22, if J22 is very small, inv_J22 will be very large.
+            if torch.abs(J22_reg.item()) < 1e-20: # If J22 is effectively zero
+                 # The term J12 @ inv_J22 @ J21 becomes ill-defined or blows up.
+                 # If J22 is truly zero, it implies the nuisance parameter has no variance
+                 # or no information content on its own.
+                 # In such a case, the marginal might not be well-defined by this formula without context.
+                 # One approach: treat the term as zero if J22 is zero, assuming decoupling.
+                 # This is a strong assumption.
+                 # For now, let's return J11, implying the nuisance part contributed nothing or was ill-defined.
+                 # Or, raise an error, as a very large correction term might not be meaningful.
+                 print(f"Warning: J22_reg is very close to zero ({J22_reg.item()}). The term J12 @ inv(J22) @ J21 might be ill-defined.") # noqa
+                 # Fallback to J11 if J22 is near zero, effectively ignoring the Schur complement term.
+                 # This is a pragmatic choice but may need domain-specific justification.
+                 # A large penalty might be another option: J_marginal = J11 - very_large_number
+                 # Or, if J12 or J21 are also zero, the term is zero.
+                 if torch.all(torch.abs(J12) < 1e-20) or torch.all(torch.abs(J21) < 1e-20):
+                     inv_J22_times_J21 = torch.zeros_like(J21, dtype=full_J_torch.dtype)
+                 else:
+                     # If J22 is near zero but J12/J21 are not, this term explodes.
+                     # This indicates a problem with the FIM or the parameterization.
+                     # Returning J11 is a way to say "we can't properly marginalize".
+                     print("Warning: J22 near zero but J12/J21 non-zero. Marginal FIM may be unstable. Returning J11.") # noqa
+                     return J11 # Or raise an error
+            else:
+                # If not near zero but still failed, re-raise
+                raise e
+
+
+        J_marginal = J11 - J12 @ inv_J22 @ J21
+        return J_marginal
+
     @staticmethod
     def normalize_wavefront(
         wavefront_coeffs: np.ndarray, photon_budget: float = 1.0

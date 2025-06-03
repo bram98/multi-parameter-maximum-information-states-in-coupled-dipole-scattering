@@ -13,6 +13,11 @@ from scatteringlibs.crlbanalysis import plot_fisher_comparison
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
+from scatteringlibs.lossfunctions import determinant_of_J, maximize_min_eig_J, minimize_trace_of_J_inv, \
+                                         loglin_loss, offdiag_loss, subdet_loss, \
+                                         determinant_of_marginal_J, minimize_trace_of_marginal_J_inv, \
+                                         maximize_min_eig_marginal_J
+
 
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_line_of_dipoles(
@@ -233,8 +238,8 @@ print("\nSection 7a (D-Optimality) complete.")
 
 print("\n--- Section 7b: E-Optimality (Maximize min eigenvalue of J) ---")
 
-# Import the new loss function
-from scatteringlibs.lossfunctions import maximize_min_eig_J
+# Loss function already imported at the top
+# from scatteringlibs.lossfunctions import maximize_min_eig_J
 
 # Perform the optimization
 # We want to maximize the smallest eigenvalue of J.
@@ -300,8 +305,8 @@ print("\nSection 7b (E-Optimality) complete.")
 
 print("\n--- Section 7c: A-Optimality (Minimize Tr(J^-1)) ---")
 
-# Import the new loss function
-from scatteringlibs.lossfunctions import minimize_trace_of_J_inv
+# Loss function already imported at the top
+# from scatteringlibs.lossfunctions import minimize_trace_of_J_inv
 
 # Perform the optimization
 # We want to minimize the trace of J_inverse.
@@ -709,3 +714,241 @@ for strategy_name, config in strategies.items():
 print("\nSection 11 (Nuisance Parameter Optimization) complete.")
 
 # %% 12) skipped
+
+# %% 13) Marginal FIM Optimality (D, A, E)
+# Optimization based on the 2x2 marginal Fisher Information Matrix,
+# treating one parameter as a nuisance parameter.
+
+# Define the nuisance parameter index (e.g., 2 for rotation)
+# This index is used by the loss functions to compute the marginal FIM.
+nuisance_param_index_for_marginal = 2 # Rotation
+lr_marginal = 1e-3  # Learning rate for these optimizations
+base_seed_marginal = 142 # Different seed for this block
+
+print(f"\n--- Starting Marginal FIM Optimizations (Nuisance Param Index: {nuisance_param_index_for_marginal}) ---")
+
+# %% 13a) D-Optimality for Marginal FIM (Maximize det(J_marginal))
+print("\n--- Section 13a: D-Optimality (Maximize det(J_marginal)) ---")
+
+loss_fn_det_marginal = lambda J_full_torch: determinant_of_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, nuisance_param_index_for_marginal)
+)
+
+det_J_marginal_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=loss_fn_det_marginal,
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=lr_marginal,
+    verbose=True,
+    maximize=True,
+    photon_budget=photon_budget,
+    base_seed=base_seed_marginal
+)
+
+wavefront_detJ_marginal_opt = det_J_marginal_results["bestvec"]
+best_detJ_marginal_value = det_J_marginal_results["bestval"]
+opt_key_13a = f"DetJ_marginal_n{nuisance_param_index_for_marginal}_torch"
+
+if wavefront_detJ_marginal_opt is not None:
+    optimized_wavefronts[opt_key_13a] = wavefront_detJ_marginal_opt
+    J_full_for_detJ_marginal = optimizer.J_fisher_info_matrix(wavefront_detJ_marginal_opt)
+    fisher_matrices_for_wavefronts[opt_key_13a] = J_full_for_detJ_marginal
+    # Also store the marginal J itself for potential direct comparison later
+    # marginal_J_det_opt = optimizer._compute_marginal_fisher_info_matrix(torch.from_numpy(J_full_for_detJ_marginal).to(optimizer.device), nuisance_param_index_for_marginal).cpu().numpy()
+    # You might want to store this in a new dictionary if needed: marginal_fisher_matrices_for_wavefronts
+    print(f"Optimization complete. Best det(J_marginal) = {best_detJ_marginal_value:.3e}")
+
+    plt.figure(figsize=(8, 5))
+    for i, history in enumerate(det_J_marginal_results["all_loss_histories"]):
+        plt.plot(history, label=f"Run {i+1}")
+    plt.title(f"D-Optimality for Marginal FIM (det(J_marginal)) (All {multi_run_count} Runs)")
+    plt.xlabel("Iteration")
+    plt.ylabel("det(J_marginal)")
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.show()
+
+    base_sim_for_vis.reset()
+    base_sim_for_vis.set_input_field_kx(kx_array, wavefront_detJ_marginal_opt)
+    base_sim_for_vis.solve_fields()
+    base_sim_for_vis.visualize_intensity(
+        title=f"D-Optimized Wavefront for Marginal FIM\nMax det(J_marginal) = {best_detJ_marginal_value:.2e}",
+        dpi=100,
+    )
+else:
+    print(f"D-optimality for marginal FIM (det(J_marginal)) did not yield a valid wavefront for {opt_key_13a}.")
+
+print("\nSection 13a (D-Optimality for Marginal FIM) complete.")
+
+
+# %% 13b) A-Optimality for Marginal FIM (Minimize Tr(J_marginal^-1))
+print("\n--- Section 13b: A-Optimality (Minimize Tr(J_marginal^-1)) ---")
+
+loss_fn_trace_inv_marginal = lambda J_full_torch: minimize_trace_of_marginal_J_inv(
+    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, nuisance_param_index_for_marginal)
+)
+
+trace_J_inv_marginal_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=loss_fn_trace_inv_marginal,
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=lr_marginal,
+    verbose=True,
+    maximize=False, # Minimization problem
+    photon_budget=photon_budget,
+    base_seed=base_seed_marginal + 1 # Vary seed slightly
+)
+
+wavefront_traceJinv_marginal_opt = trace_J_inv_marginal_results["bestvec"]
+best_traceJinv_marginal_value = trace_J_inv_marginal_results["bestval"]
+opt_key_13b = f"TraceJinv_marginal_n{nuisance_param_index_for_marginal}_torch"
+
+if wavefront_traceJinv_marginal_opt is not None:
+    optimized_wavefronts[opt_key_13b] = wavefront_traceJinv_marginal_opt
+    J_full_for_traceJinv_marginal = optimizer.J_fisher_info_matrix(wavefront_traceJinv_marginal_opt)
+    fisher_matrices_for_wavefronts[opt_key_13b] = J_full_for_traceJinv_marginal
+    print(f"Optimization complete. Best Tr(J_marginal^-1) = {best_traceJinv_marginal_value:.3e}")
+
+    plt.figure(figsize=(8, 5))
+    for i, history in enumerate(trace_J_inv_marginal_results["all_loss_histories"]):
+        plt.plot(history, label=f"Run {i+1}")
+    plt.title(f"A-Optimality for Marginal FIM (Tr(J_marginal^-1)) (All {multi_run_count} Runs)")
+    plt.xlabel("Iteration")
+    plt.ylabel("Tr(J_marginal^-1)")
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.show()
+
+    base_sim_for_vis.reset()
+    base_sim_for_vis.set_input_field_kx(kx_array, wavefront_traceJinv_marginal_opt)
+    base_sim_for_vis.solve_fields()
+    base_sim_for_vis.visualize_intensity(
+        title=f"A-Optimized Wavefront for Marginal FIM\nMin Tr(J_marginal^-1) = {best_traceJinv_marginal_value:.2e}",
+        dpi=100,
+    )
+else:
+    print(f"A-optimality for marginal FIM (Tr(J_marginal^-1)) did not yield a valid wavefront for {opt_key_13b}.")
+
+print("\nSection 13b (A-Optimality for Marginal FIM) complete.")
+
+
+# %% 13c) E-Optimality for Marginal FIM (Maximize min_eig(J_marginal))
+print("\n--- Section 13c: E-Optimality (Maximize min_eig(J_marginal)) ---")
+
+loss_fn_min_eig_marginal = lambda J_full_torch: maximize_min_eig_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, nuisance_param_index_for_marginal)
+)
+
+min_eig_J_marginal_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=loss_fn_min_eig_marginal,
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=lr_marginal,
+    verbose=True,
+    maximize=True,
+    photon_budget=photon_budget,
+    base_seed=base_seed_marginal + 2 # Vary seed slightly
+)
+
+wavefront_mineigJ_marginal_opt = min_eig_J_marginal_results["bestvec"]
+best_mineigJ_marginal_value = min_eig_J_marginal_results["bestval"]
+opt_key_13c = f"SpecJ_marginal_n{nuisance_param_index_for_marginal}_torch"
+
+if wavefront_mineigJ_marginal_opt is not None:
+    optimized_wavefronts[opt_key_13c] = wavefront_mineigJ_marginal_opt
+    J_full_for_mineigJ_marginal = optimizer.J_fisher_info_matrix(wavefront_mineigJ_marginal_opt)
+    fisher_matrices_for_wavefronts[opt_key_13c] = J_full_for_mineigJ_marginal
+    print(f"Optimization complete. Best min_eig(J_marginal) = {best_mineigJ_marginal_value:.3e}")
+
+    plt.figure(figsize=(8, 5))
+    for i, history in enumerate(min_eig_J_marginal_results["all_loss_histories"]):
+        plt.plot(history, label=f"Run {i+1}")
+    plt.title(f"E-Optimality for Marginal FIM (min_eig(J_marginal)) (All {multi_run_count} Runs)")
+    plt.xlabel("Iteration")
+    plt.ylabel("min_eig(J_marginal)")
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.show()
+
+    base_sim_for_vis.reset()
+    base_sim_for_vis.set_input_field_kx(kx_array, wavefront_mineigJ_marginal_opt)
+    base_sim_for_vis.solve_fields()
+    base_sim_for_vis.visualize_intensity(
+        title=f"E-Optimized Wavefront for Marginal FIM\nMax min_eig(J_marginal) = {best_mineigJ_marginal_value:.2e}",
+        dpi=100,
+    )
+else:
+    print(f"E-optimality for marginal FIM (min_eig(J_marginal)) did not yield a valid wavefront for {opt_key_13c}.")
+
+print("\nSection 13c (E-Optimality for Marginal FIM) complete.")
+
+print("\nAll Marginal FIM Optimizations (Sections 13a, 13b, 13c) complete.")
+
+# %% Re-run Visualizations if they should include these new results
+# It's good practice to re-run summary visualizations if new data points are added.
+# For example, Section 8, 9, 10 might be relevant.
+# If these are time-consuming or generate too many plots for an intermediate step,
+# they can be left to the end of the script or run selectively.
+
+# Example: Re-running Section 8 after adding new wavefronts from Section 13
+print("\n--- Re-running Section 8 (Wavefront Comparison Visualization with Marginal Opts) ---")
+visualize_multi_param_fisher_comparison(
+    optimized_wavefronts,
+    optimizer,
+    param_names,
+    figure_title="Comparison of All Optimized Wavefronts (incl. Marginal)",
+)
+print("\nRe-run of Section 8 complete.")
+
+# Example: Re-running Section 10b after adding new wavefronts from Section 13
+print("\n--- Re-running Section 10b (J, J^-1, Condition Number Visualization with Marginal Opts) ---")
+# First, re-calculate J, J_inv, cond_nums for ALL wavefronts in optimized_wavefronts
+# This is important because Section 10's data (Js_for_visualization, etc.) was calculated
+# before Section 13 results were added.
+
+Js_for_visualization_updated = {}
+J_invs_for_visualization_updated = {}
+cond_nums_for_visualization_updated = {}
+
+for wf_name, wf_cplx_tensor in optimized_wavefronts.items():
+    if isinstance(wf_cplx_tensor, torch.Tensor):
+        wf_cplx = wf_cplx_tensor.cpu().numpy()
+    else:
+        wf_cplx = wf_cplx_tensor
+    try:
+        J_mat = optimizer.J_fisher_info_matrix(wf_cplx)
+        if np.linalg.cond(J_mat) < 1 / np.finfo(J_mat.dtype).eps:
+            inv_mat = np.linalg.inv(J_mat)
+            cond_num = np.linalg.cond(J_mat)
+        else:
+            print(f"Warning (Re-run): Fisher matrix for '{wf_name}' is singular. Cond: {np.linalg.cond(J_mat)}")
+            inv_mat = np.full_like(J_mat, np.nan)
+            cond_num = np.inf
+    except np.linalg.LinAlgError as e:
+        print(f"Error (Re-run) for '{wf_name}': {e}")
+        J_mat = optimizer.J_fisher_info_matrix(wf_cplx) # ensure J_mat is available
+        inv_mat = np.full_like(J_mat, np.nan)
+        cond_num = np.inf
+    except Exception as e:
+        print(f"Unexpected error (Re-run) for '{wf_name}': {e}")
+        num_params = optimizer.nparams if hasattr(optimizer, "nparams") else 3
+        J_mat = np.full((num_params, num_params), np.nan)
+        inv_mat = np.full((num_params, num_params), np.nan)
+        cond_num = np.nan
+
+    Js_for_visualization_updated[wf_name] = J_mat
+    J_invs_for_visualization_updated[wf_name] = inv_mat
+    cond_nums_for_visualization_updated[wf_name] = cond_num
+
+plot_fisher_comparison(
+    Js_map=Js_for_visualization_updated,
+    J_invs_map=J_invs_for_visualization_updated,
+    cond_nums_map=cond_nums_for_visualization_updated,
+    param_names_global=param_names,
+    figure_title="Comparison of J, $J^{-1}$, Cond Nums (incl. Marginal)",
+)
+print("\nRe-run of Section 10b complete.")
+
+
+# %% END OF SCRIPT (or further analysis)
+# Any final analysis or summary plots would go here.

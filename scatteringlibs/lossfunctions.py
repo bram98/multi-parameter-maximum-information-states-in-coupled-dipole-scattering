@@ -173,6 +173,71 @@ def min_eigenvalue_of_J_block(J_block: torch.Tensor) -> torch.Tensor:
     return eigvals[0]
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Loss Functions for 2x2 Marginal Fisher Information Matrix
+# These functions expect a 2x2 PyTorch tensor marginal_J_torch.
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def determinant_of_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates the determinant of the 2x2 marginal Fisher Information Matrix.
+    To be maximized for D-optimality.
+    Args:
+        marginal_J_torch (torch.Tensor): The 2x2 marginal Fisher Information Matrix.
+    Returns:
+        torch.Tensor: The determinant of marginal_J_torch.
+    """
+    if marginal_J_torch.shape != (2, 2):
+        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+    return torch.linalg.det(marginal_J_torch)
+
+
+def minimize_trace_of_marginal_J_inv(marginal_J_torch: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates the trace of the inverse of the 2x2 marginal Fisher Information Matrix.
+    To be minimized for A-optimality.
+    A small regularization term is added before inversion for stability.
+    Args:
+        marginal_J_torch (torch.Tensor): The 2x2 marginal Fisher Information Matrix.
+    Returns:
+        torch.Tensor: The trace of the regularized inverse of marginal_J_torch.
+    """
+    if marginal_J_torch.shape != (2, 2):
+        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+
+    # Add epsilon for numerical stability
+    epsilon = 1e-12 * torch.eye(
+        marginal_J_torch.shape[0], device=marginal_J_torch.device, dtype=marginal_J_torch.dtype
+    )
+    J_reg = marginal_J_torch + epsilon
+
+    try:
+        J_inv = torch.linalg.inv(J_reg)
+    except torch.linalg.LinAlgError as e:
+        # Fallback to pseudo-inverse if regularized version is still problematic
+        print(f"Warning: Direct inversion of regularized marginal_J failed: {e}. Using pseudo-inverse.")
+        J_inv = torch.linalg.pinv(J_reg)
+
+    return torch.trace(J_inv)
+
+
+def maximize_min_eig_marginal_J(marginal_J_torch: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates the smallest eigenvalue of the 2x2 marginal Fisher Information Matrix.
+    To be maximized for E-optimality.
+    Args:
+        marginal_J_torch (torch.Tensor): The 2x2 marginal Fisher Information Matrix.
+                                         Must be Hermitian (real symmetric).
+    Returns:
+        torch.Tensor: The smallest eigenvalue of marginal_J_torch.
+    """
+    if marginal_J_torch.shape != (2, 2):
+        raise ValueError(f"marginal_J_torch must be a 2x2 tensor. Got {marginal_J_torch.shape}")
+    # eigvalsh returns eigenvalues in ascending order for Hermitian matrices.
+    eigvals = torch.linalg.eigvalsh(marginal_J_torch)
+    return eigvals[0]
+
+
 # __all__ can be defined here to specify the public API if desired
 # For example:
 # __all__ = [
