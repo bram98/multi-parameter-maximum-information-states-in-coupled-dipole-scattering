@@ -531,3 +531,333 @@ crlbanalysis.visualize_crlb_comparison(
 )
 
 print("\nSection 9 (CRLB Comparison) complete.")
+
+# %% 10) Save results (optional)
+# Storable.save_results(
+#     data_to_save={
+#         "optimized_wavefronts": optimized_wavefronts,
+#         "fisher_matrices_for_wavefronts": fisher_matrices_for_wavefronts,
+#         # Add other relevant data like loss histories if needed
+#     },
+#     filename_prefix="3params_optimization_results",
+#     save_dir="data" # Make sure this directory exists or is created
+# )
+# print("\nSection 10 (Save Results) complete.")
+
+
+# %% 11) Multi-objective optimization considering nuisance parameters
+print("\n--- Section 11: Nuisance Parameter Optimization Strategies ---")
+
+from scatteringlibs.lossfunctions import loglin_loss, offdiag_loss, subdet_loss
+
+block11_loss_histories = {}
+nuisance_param_index = 2 # Corresponds to rotation
+
+strategies = {
+    "LogLin": {
+        "loss_fn_constructor": lambda: (lambda J_mat: loglin_loss(J_mat, nuisance_param_index=nuisance_param_index, alpha=0.1)),
+        "params": {"alpha": 0.1}
+    },
+    "OffDiag": {
+        "loss_fn_constructor": lambda: (lambda J_mat: offdiag_loss(J_mat, nuisance_param_index=nuisance_param_index, beta=1.0)),
+        "params": {"beta": 1.0}
+    },
+    "SubDet": {
+        "loss_fn_constructor": lambda: (lambda J_mat: subdet_loss(J_mat, nuisance_param_index=nuisance_param_index)),
+        "params": {}
+    }
+}
+
+for strategy_name, config in strategies.items():
+    print(f"\n--- Optimizing for Strategy: {strategy_name} ---")
+
+    loss_fn = config["loss_fn_constructor"]()
+
+    optimization_results = optimizer.torch_optimize_loss_multirun(
+        loss_function_of_J=loss_fn,
+        runs=multi_run_count,
+        steps=single_run_iterations,
+        lr=1e-3,
+        verbose=True,
+        maximize=False, # All these are minimization problems
+        photon_budget=photon_budget,
+        base_seed=42
+    )
+
+    block11_loss_histories[strategy_name] = optimization_results["all_loss_histories"]
+    bestvec = optimization_results["bestvec"]
+    bestval = optimization_results["bestval"]
+
+    wavefront_key = f"{strategy_name}_torch"
+
+    if bestvec is not None:
+        optimized_wavefronts[wavefront_key] = bestvec
+        J_for_strategy = optimizer.J_fisher_info_matrix(bestvec)
+        fisher_matrices_for_wavefronts[wavefront_key] = J_for_strategy
+        print(f"Optimization for {strategy_name} complete. Best loss value = {bestval:.3e}")
+
+        # Plot all loss histories from the multirun
+        plt.figure(figsize=(8, 5))
+        for i, history in enumerate(optimization_results["all_loss_histories"]):
+            plt.plot(history, label=f"Run {i+1}")
+        plt.title(f"{strategy_name} Optimization (All {multi_run_count} Runs)")
+        plt.xlabel("Iteration")
+        plt.ylabel(f"{strategy_name} Loss")
+        plt.legend()
+        plt.grid(True, linestyle=":")
+        plt.show()
+
+        # Visualize the intensity pattern
+        print(f"Visualizing intensity for {wavefront_key}...")
+        base_sim_for_vis.reset()
+        base_sim_for_vis.set_input_field_kx(kx_array, bestvec)
+        base_sim_for_vis.solve_fields()
+        base_sim_for_vis.visualize_intensity(
+            title=f"{strategy_name}-Optimized Wavefront (Loss = {bestval:.2e})",
+            dpi=100,
+        )
+    else:
+        print(f"{strategy_name} optimization did not yield a valid wavefront.")
+
+print("\nSection 11 (Nuisance Parameter Optimization) complete.")
+# Note: You might want to update the comparison plots in sections 8 and 9
+# to include these new wavefronts if desired, by re-running those cells
+# or by appending to the optimized_wavefronts dict before they run.
+# For now, this script adds them, and they would be included if sections 8/9 are run after this.
+
+
+# %% 11.1) Plotting "OffDiag" Multi-Run Loss Curves
+if "OffDiag" in block11_loss_histories:
+    plt.figure(figsize=(10, 6))
+    offdiag_losses = block11_loss_histories["OffDiag"]
+    num_runs = len(offdiag_losses)
+    colors = plt.cm.winter(np.linspace(0, 1, num_runs))
+    for i, history in enumerate(offdiag_losses):
+        plt.plot(history, label=f"Run {i+1}", color=colors[i])
+    plt.title("OffDiag Strategy: All Loss Curves (Multi-Run)")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss (OffDiag)")
+    plt.yscale("symlog", linthresh=1e-3, linscale=1) # Match original script's scaling if appropriate
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.tight_layout()
+    plt.show()
+else:
+    print("OffDiag loss histories not found in block11_loss_histories.")
+
+# %% 11.2) Plotting Normalized Loss Curves for All Strategies
+plt.figure(figsize=(10, 6))
+strategies_to_plot = ["LogLin", "OffDiag", "SubDet"]
+for strategy_name in strategies_to_plot:
+    if strategy_name in block11_loss_histories:
+        # Assuming each history is a list/array of loss values for one run.
+        # We'll use the history of the best run if available, or the first run.
+        # For simplicity, let's take the first run's history or average history.
+        # The prompt implies plotting one curve per strategy from "all_loss_histories"
+        # which typically stores multiple runs. Let's use the first run for simplicity.
+        loss_history_runs = block11_loss_histories[strategy_name]
+        if loss_history_runs: # Check if not empty
+            loss_history = np.array(loss_history_runs[0]) # Taking the first run
+
+            min_loss = np.min(loss_history)
+            max_loss = np.max(loss_history)
+
+            if max_loss == min_loss:
+                normalized_loss = np.zeros_like(loss_history)
+            else:
+                normalized_loss = (loss_history - min_loss) / (max_loss - min_loss)
+
+            plt.plot(normalized_loss, label=strategy_name)
+        else:
+            print(f"No loss histories found for strategy: {strategy_name}")
+
+    else:
+        print(f"Strategy {strategy_name} not found in block11_loss_histories.")
+
+plt.title("Normalized Loss Curves for Nuisance Parameter Strategies (First Run)")
+plt.xlabel("Iteration")
+plt.ylabel("Normalized Loss (0 to 1)")
+plt.legend()
+plt.grid(True, linestyle=":")
+plt.tight_layout()
+plt.show()
+
+# %% 11.3) Condition Number Comparison
+block11_strategy_keys = ["LogLin_torch", "OffDiag_torch", "SubDet_torch"]
+plot_keys = []
+condition_numbers = []
+
+# Optionally include DetJ_torch
+if "DetJ_torch" in fisher_matrices_for_wavefronts:
+    plot_keys.append("DetJ_torch")
+
+plot_keys.extend(block11_strategy_keys)
+
+for key in plot_keys:
+    if key in fisher_matrices_for_wavefronts:
+        J_matrix = fisher_matrices_for_wavefronts[key]
+        if isinstance(J_matrix, torch.Tensor):
+            J_matrix = J_matrix.cpu().numpy()
+
+        # Ensure matrix is finite and not all zeros before cond
+        if np.all(np.isfinite(J_matrix)) and not np.all(J_matrix == 0):
+            cond_num = np.linalg.cond(J_matrix)
+            condition_numbers.append(cond_num)
+        else:
+            print(f"Warning: Fisher matrix for {key} is not suitable for condition number calculation (e.g. contains NaNs, Infs, or is zero). Assigning NaN.")
+            condition_numbers.append(np.nan) # Or skip
+    else:
+        print(f"Fisher matrix for {key} not found. Skipping for condition number plot.")
+
+# Filter out keys for which we couldn't get a condition number if NaNs were appended
+valid_plot_keys = [key for i, key in enumerate(plot_keys) if i < len(condition_numbers) and not np.isnan(condition_numbers[i])]
+valid_condition_numbers = [cn for cn in condition_numbers if not np.isnan(cn)]
+
+
+if valid_plot_keys:
+    plt.figure(figsize=(10, 6))
+    plt.bar(valid_plot_keys, valid_condition_numbers)
+    plt.title("Condition Number of J for Different Strategies")
+    plt.ylabel("Condition Number (log scale)")
+    plt.xticks(rotation=45, ha="right")
+    plt.yscale("log") # Condition numbers can vary wildly
+    plt.grid(True, axis='y', linestyle=":")
+    plt.tight_layout()
+    plt.show()
+else:
+    print("No valid condition numbers to plot.")
+
+
+# %% 12) Updated Comprehensive Visualizations (including Block 11 results)
+print("\n--- Section 12: Updated Comprehensive Visualizations ---")
+
+# 12.1) Updated Comparison of Fisher Matrix components
+print("\nRegenerating Fisher components plot including Block 11 strategies...")
+visualize_multi_param_fisher_comparison(
+    optimized_wavefronts,
+    optimizer,
+    param_names,
+    figure_title="Updated Comparison of All Optimized Wavefronts (incl. Block 11)"
+)
+plt.show() # Ensure plot is displayed
+
+# 12.2) Updated CRLB Comparison (Ellipses, etc.)
+print("\nRegenerating CRLB comparison plot including Block 11 strategies...")
+crlbanalysis.visualize_crlb_comparison(
+    optimized_wavefronts=optimized_wavefronts,
+    F_operator_tensor=optimizer.F_op, # Assuming F_op is the correct attribute in Optimizer for F_tensor_operator
+    photon_budget=photon_budget,
+    param_names=param_names,
+    sim_kwargs=sim_kwargs,
+    angles_deg=angles_deg,
+    kx_array=kx_array,
+    figure_title="Updated CRLB Comparison (incl. Block 11)",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+    num_random_samples=1000 # Match earlier call
+)
+plt.show() # Ensure plot is displayed
+
+# 12.3) Pareto Frontier Plots (adapted from original script's Block 11, sub-point 7)
+print("\nGenerating Pareto frontier plots for CRLBs (incl. Block 11 strategies)...")
+
+# Define parameter pairs for CRLB plots
+# param_names = ["shiftX", "shiftZ", "rotation"]
+param_pairs_indices = [(0, 1), (0, 2), (1, 2)] # (X,Z), (X,Rot), (Z,Rot)
+param_pair_labels = [
+    (f"$\\sigma$({param_names[p1]})", f"$\\sigma$({param_names[p2]})")
+    for p1, p2 in param_pairs_indices
+]
+
+num_pairs = len(param_pairs_indices)
+fig_pareto, axes_pareto = plt.subplots(1, num_pairs, figsize=(5 * num_pairs, 5))
+if num_pairs == 1: # Ensure axes_pareto is always an array
+    axes_pareto = [axes_pareto]
+
+# Use a consistent set of markers for wavefront types
+# This map can be expanded based on keys in optimized_wavefronts
+marker_map = {
+    "MIS_": "o",  # MIS for individual params
+    "TraceJ_eig": "s",  # Trace J via eigendecomposition
+    "DetJ_torch": "D",  # D-optimality
+    "SpecJ_torch": "^",  # E-optimality (min_eig_J)
+    "TraceJinv_torch": "v",  # A-optimality (trace_J_inv)
+    "LogLin_torch": "p",  # LogLin strategy
+    "OffDiag_torch": "*",  # OffDiag strategy
+    "SubDet_torch": "X",  # SubDet strategy
+    "PlaneWave": ".",     # Plane waves
+    "Random": ","         # Random wavefronts
+}
+color_map = plt.cm.get_cmap("tab10", len(optimized_wavefronts))
+
+# Collect CRLBs for all wavefronts
+crlb_data_for_pareto = {}
+
+for i_wf, (wf_name, wf_vec) in enumerate(optimized_wavefronts.items()):
+    if wf_name not in fisher_matrices_for_wavefronts:
+        print(f"Fisher matrix for {wf_name} not found, trying to compute.")
+        J_mat_np = optimizer.J_fisher_info_matrix(wf_vec, photon_budget=photon_budget) # ensure using correct photon budget
+        if isinstance(J_mat_np, torch.Tensor):
+            J_mat_np = J_mat_np.cpu().numpy()
+    else:
+        J_mat_np = fisher_matrices_for_wavefronts[wf_name]
+        if isinstance(J_mat_np, torch.Tensor):
+            J_mat_np = J_mat_np.cpu().numpy()
+
+    try:
+        # Add small identity matrix for stability before inversion, if J is singular or ill-conditioned
+        J_inv = np.linalg.inv(J_mat_np + 1e-9 * np.eye(J_mat_np.shape[0]))
+        # CRLBs are the diagonal elements of J_inv, scaled by 1/photon_budget if J was not already scaled
+        # optimizer.J_fisher_info_matrix already handles photon budget scaling if photon_budget is passed.
+        # If J_fisher_info_matrix does not scale by photon_budget, then J_inv should be scaled.
+        # Assuming J from fisher_matrices_for_wavefronts is correctly scaled.
+        crlbs_diag = np.diag(J_inv)
+        # Variances are directly these diagonal elements. Sigmas are sqrt of these.
+        sigmas = np.sqrt(crlbs_diag)
+        crlb_data_for_pareto[wf_name] = sigmas
+    except np.linalg.LinAlgError:
+        print(f"Could not invert J for wavefront {wf_name}. Skipping in Pareto plot.")
+        crlb_data_for_pareto[wf_name] = np.full(len(param_names), np.nan)
+
+# Plotting
+for ax_idx, (p_indices, p_labels) in enumerate(zip(param_pairs_indices, param_pair_labels)):
+    ax = axes_pareto[ax_idx]
+    for i_wf, (wf_name, sigmas) in enumerate(crlb_data_for_pareto.items()):
+        if not np.any(np.isnan(sigmas)):
+            # Determine marker (can be more sophisticated)
+            marker_style = "o" # default
+            for prefix, m_style in marker_map.items():
+                if wf_name.startswith(prefix):
+                    marker_style = m_style
+                    break
+
+            ax.loglog(
+                sigmas[p_indices[0]],
+                sigmas[p_indices[1]],
+                marker=marker_style,
+                linestyle="None", # No lines connecting points for a scatter plot
+                label=wf_name if ax_idx == 0 else None,  # Label only on the first subplot
+                color=color_map(i_wf % color_map.N) # Cycle through colors
+            )
+
+    ax.set_xlabel(p_labels[0])
+    ax.set_ylabel(p_labels[1])
+    ax.grid(True, which="both", linestyle=":")
+    ax.set_aspect('equal', adjustable='box') # Make axes equal for better visual comparison
+
+fig_pareto.suptitle("Pareto Frontiers: CRLB Trade-offs (Updated incl. Block 11)", fontsize=16)
+# Place legend outside, adjust layout
+handles, labels = [], []
+for ax in axes_pareto:
+    h, l = ax.get_legend_handles_labels()
+    handles.extend(h)
+    labels.extend(l)
+
+# Create a single legend for the whole figure if labels were only added to the first plot
+if num_pairs > 0 and any(axes_pareto[0].get_legend_handles_labels()[1]):
+    fig_pareto.legend(axes_pareto[0].get_legend_handles_labels()[0], axes_pareto[0].get_legend_handles_labels()[1], loc='center right', bbox_to_anchor=(1.15, 0.5))
+
+plt.tight_layout(rect=[0, 0, 0.85, 0.95]) # Adjust rect for suptitle and legend if outside
+plt.show()
+
+print("\nSection 12 (Updated Visualizations) complete.")
