@@ -167,6 +167,33 @@ def compute_crlb_for_random_wavefronts(
     return np.array(all_crlbs)
 
 
+def get_crlb_data(
+    optimized_wavefronts: dict,
+    F_operator_tensor: np.ndarray,
+    photon_budget: float,
+    param_names: list,  # Though not directly used in this function, it's good for consistency
+) -> dict:
+    """
+    Computes CRLB values for a dictionary of optimized wavefronts.
+
+    Args:
+        optimized_wavefronts (dict): Dictionary of {wavefront_name: wavefront_coeffs_np_array}.
+        F_operator_tensor (np.ndarray): Fisher operator tensor (nparams, nparams, N_in, N_in), numpy format.
+        photon_budget (float): Photon budget for normalization.
+        param_names (list): List of parameter names (for API consistency, not used in current logic).
+
+    Returns:
+        dict: Dictionary of {wavefront_name: crlb_values_np_array}.
+    """
+    all_crlbs = {}
+    for wf_name, wf_coeffs in optimized_wavefronts.items():
+        crlbs = compute_crlb_for_wavefront(
+            wf_coeffs, F_operator_tensor, photon_budget
+        )
+        all_crlbs[wf_name] = crlbs
+    return all_crlbs
+
+
 def visualize_crlb_comparison(
     optimized_wavefronts: dict,  # Dict of {name: wavefront_coeffs}
     F_operator_tensor: np.ndarray,  # The (nparams, nparams, N_in, N_in) Fisher op tensor (numpy)
@@ -422,6 +449,176 @@ def visualize_crlb_comparison(
 
     plt.tight_layout()
     plt.show()
+
+
+def _plot_single_pareto_frontier(
+    ax,
+    crlb_data_dict: dict,
+    param_idx1: int,
+    param_idx2: int,
+    param_names_list: list,
+    wavefront_categories_style: dict,
+    wavefront_labels_latex_map: dict,
+    plot_title: str,
+    xlabel: str,
+    ylabel: str,
+):
+    """Helper function to plot a single CRLB vs CRLB Pareto-like frontier."""
+    texts = []
+    plotted_categories = set()
+
+    for wf_name, crlbs_values in crlb_data_dict.items():
+        val1 = crlbs_values[param_idx1]
+        val2 = crlbs_values[param_idx2]
+
+        # Determine style and category label for legend (similar to plot_pareto_frontiers_individual)
+        style_info = {}
+        legend_label_for_category = wf_name  # Default
+
+        if wf_name in wavefront_categories_style:
+            style_info = wavefront_categories_style[wf_name]
+            legend_label_for_category = style_info.get("label", wf_name)
+        else:
+            found_category = False
+            for cat_key, cat_style_info in wavefront_categories_style.items():
+                if cat_key in wf_name:  # e.g., "SLM" is in "SLM_Optimized_Mode1"
+                    style_info = cat_style_info
+                    legend_label_for_category = style_info.get("label", cat_key)
+                    found_category = True
+                    break
+            if not found_category:
+                style_info = wavefront_categories_style.get(
+                    "default", {"marker": "x", "color": "grey", "label": "Other"}
+                )
+                legend_label_for_category = style_info.get("label", "Other")
+
+        marker = style_info.get("marker", "o")
+        color = style_info.get("color", "k")
+
+        current_legend_label = None
+        if legend_label_for_category not in plotted_categories:
+            current_legend_label = legend_label_for_category
+            plotted_categories.add(legend_label_for_category)
+
+        ax.plot(
+            val2,  # X-axis (param_idx2)
+            val1,  # Y-axis (param_idx1)
+            marker=marker,
+            color=color,
+            linestyle="None",
+            markersize=8,
+            label=current_legend_label,
+        )
+        label_text = wavefront_labels_latex_map.get(
+            wf_name, wf_name.replace("_", " ")
+        )
+        texts.append(ax.text(val2, val1, label_text, color=color, fontsize=9))
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(plot_title)
+    ax.grid(True, which="both", linestyle="--", alpha=0.7)
+    if plotted_categories: # Only show legend if there's something to label
+        ax.legend(title="Wavefront Types")
+
+    # Ensure adjust_text is available (imported at the top of the file)
+    if "adjust_text" in globals() and callable(globals()["adjust_text"]) and texts:
+        adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", color="black", lw=0.5))
+    elif not texts:
+        pass # No text to adjust
+    else:
+        print("Warning: adjust_text function not available for text label adjustment.")
+
+
+def plot_crlb_vs_crlb(
+    crlb_data_dict: dict,
+    param_idx1: int,
+    param_idx2: int,
+    param_names_list: list,
+    wavefront_categories_style: dict,
+    wavefront_labels_latex_map: dict,
+    figure_title_prefix: str = "",
+):
+    """
+    Plots one CRLB parameter against another for a set of wavefronts.
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    p1_name_full = param_names_list[param_idx1]
+    p2_name_full = param_names_list[param_idx2]
+
+    # Create short names for title and labels, e.g., "x" from "shiftX", "θ" from "rotation"
+    p1_name_short = p1_name_full.replace("shift", "").replace("rotation", "θ")
+    p2_name_short = p2_name_full.replace("shift", "").replace("rotation", "θ")
+
+    # Construct title and labels
+    title = f"{figure_title_prefix}CRLB$_{{{p1_name_short}}}$ vs CRLB$_{{{p2_name_short}}}$"
+    ylabel_text = f"CRLB$_{{{p1_name_short}}}$ ({p1_name_full})"
+    xlabel_text = f"CRLB$_{{{p2_name_short}}}$ ({p2_name_full})"
+
+    _plot_single_pareto_frontier(
+        ax,
+        crlb_data_dict,
+        param_idx1,
+        param_idx2,
+        param_names_list,  # Pass along for potential future use in _plot_single_pareto_frontier
+        wavefront_categories_style,
+        wavefront_labels_latex_map,
+        title,
+        xlabel_text,
+        ylabel_text,
+    )
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_pareto_frontiers(
+    optimized_wavefronts_dict: dict,
+    F_operator_tensor_np: np.ndarray,
+    photon_budget_val: float,
+    param_names_list: list,
+    params_to_plot_indices: list,
+    wavefront_categories_style: dict,
+    wavefront_labels_latex_map: dict,
+):
+    """
+    Calculates CRLBs and plots a specific Pareto frontier based on two selected parameter indices.
+
+    Args:
+        optimized_wavefronts_dict (dict): Wavefronts {name: coeffs}.
+        F_operator_tensor_np (np.ndarray): Fisher operator tensor.
+        photon_budget_val (float): Photon budget.
+        param_names_list (list): List of all parameter names.
+        params_to_plot_indices (list): List containing exactly two indices of the parameters to plot.
+        wavefront_categories_style (dict): Styling info for wavefront categories.
+        wavefront_labels_latex_map (dict): LaTeX labels for wavefront points.
+    """
+    if len(params_to_plot_indices) != 2:
+        raise ValueError("params_to_plot_indices must contain exactly two indices.")
+
+    idx1, idx2 = params_to_plot_indices[0], params_to_plot_indices[1]
+
+    # Calculate CRLBs for all wavefronts
+    all_crlbs = get_crlb_data(
+        optimized_wavefronts_dict,
+        F_operator_tensor_np,
+        photon_budget_val,
+        param_names_list,
+    )
+
+    # Plot the specified CRLB vs CRLB graph
+    plot_crlb_vs_crlb(
+        all_crlbs,
+        idx1,
+        idx2,
+        param_names_list,
+        wavefront_categories_style,
+        wavefront_labels_latex_map,
+        figure_title_prefix="Pareto: ", # Standard prefix for these plots
+    )
 
 
 def plot_pareto_frontiers_individual(
