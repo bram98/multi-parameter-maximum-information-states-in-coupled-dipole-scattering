@@ -707,3 +707,5 @@ for strategy_name, config in strategies.items():
         print(f"{strategy_name} optimization did not yield a valid wavefront.")
 
 print("\nSection 11 (Nuisance Parameter Optimization) complete.")
+
+# %% 12) skipped
