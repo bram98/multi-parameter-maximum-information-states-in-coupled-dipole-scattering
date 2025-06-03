@@ -7,12 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from scatteringlibs import placedipoles  # Import the whole module
-from scatteringlibs import crlbanalysis
+from scatteringlibs import crlbanalysis, placedipoles
 from scatteringlibs.crlbanalysis import (
     plot_fisher_comparison,
-    plot_pareto_frontiers_individual, # This should remain
-    plot_pareto_frontiers # Add this
+    plot_pareto_frontiers,
+    plot_pareto_frontiers_individual,
 )
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import (
@@ -1039,79 +1038,45 @@ else:
 
 print("\nBlock 17 (Pareto Frontier Plots) complete.")
 
-# %% BLOCK 18) Generate individual Pareto frontier plots (2D CRLB vs CRLB)
-print("\n--- Block 18: Generating individual Pareto frontier plots (2D CRLB vs CRLB)... ---")
+# %% 18) Generate individual Pareto frontier plots (2D CRLB vs CRLB)
+print(
+    "\n--- Block 18: Generating individual Pareto frontier plots (2D CRLB vs CRLB)... ---"
+)
 
-if not optimized_wavefronts:
-    print("No optimized wavefronts available to generate Pareto plots for Block 18.")
-else:
-    # Ensure param_names is defined (it should be from earlier blocks)
-    if 'param_names' not in locals() or not param_names:
-        print("Error: param_names not defined for Block 18.")
-        # Optionally, define it here if it's static, or raise an error
-        # param_names = ["shiftX", "shiftZ", "rotation"] # Example if it's fixed
-        raise NameError("param_names not found for BLOCK 18 plots.")
+# Call 1: CRLB_x vs CRLB_z
+print("\nPlotting CRLB_x vs CRLB_z...")
+plot_pareto_frontiers(
+    optimized_wavefronts_dict=optimized_wavefronts,
+    F_operator_tensor_np=optimizer.F_op,
+    photon_budget_val=photon_budget,
+    param_names_list=param_names,
+    params_to_plot_indices=[0, 1],
+    wavefront_categories_style=category_styles_def,
+    wavefront_labels_latex_map=wavefront_labels_latex,
+)
 
-    try:
-        idx_x = param_names.index("shiftX")
-        idx_z = param_names.index("shiftZ")
-        idx_theta = param_names.index("rotation")
-    except ValueError as e:
-        print(f"Error: One or more standard parameter names (shiftX, shiftZ, rotation) not found in param_names: {param_names}. Error: {e}")
-        raise e
+# Call 2: CRLB_x vs CRLB_theta
+print("\nPlotting CRLB_x vs CRLB_theta...")
+plot_pareto_frontiers(
+    optimized_wavefronts_dict=optimized_wavefronts,
+    F_operator_tensor_np=optimizer.F_op,
+    photon_budget_val=photon_budget,
+    param_names_list=param_names,
+    params_to_plot_indices=[0, 2],
+    wavefront_categories_style=category_styles_def,
+    wavefront_labels_latex_map=wavefront_labels_latex,
+)
 
-    # Ensure F_op is numpy for the plotting function
-    # This reuses F_op_numpy if already defined in Block 17, or re-calculates it
-    if 'optimizer' in locals() and hasattr(optimizer, 'F_op'):
-        F_op_numpy_for_block18 = optimizer.F_op.cpu().numpy() if isinstance(optimizer.F_op, torch.Tensor) else optimizer.F_op
-    elif 'F_op_numpy' in locals(): # Check if F_op_numpy was defined in Block 17's scope
-        F_op_numpy_for_block18 = F_op_numpy
-    else:
-        print("Error: optimizer.F_op not available for BLOCK 18, and F_op_numpy not found from Block 17.")
-        raise NameError("optimizer.F_op or F_op_numpy not found for BLOCK 18 plots.")
-
-    # Ensure other necessary variables are available (they should be from global scope or Block 17)
-    if 'photon_budget' not in locals():
-        raise NameError("photon_budget not found for BLOCK 18 plots.")
-    if 'category_styles_def' not in locals():
-        raise NameError("category_styles_def not found for BLOCK 18 plots (expected from Block 17).")
-    if 'wavefront_labels_latex' not in locals():
-        raise NameError("wavefront_labels_latex not found for BLOCK 18 plots (expected from Block 17).")
-
-    # Call 1: CRLB_x vs CRLB_z
-    print("\nPlotting CRLB_x vs CRLB_z...")
-    plot_pareto_frontiers(
-        optimized_wavefronts_dict=optimized_wavefronts,
-        F_operator_tensor_np=F_op_numpy_for_block18,
-        photon_budget_val=photon_budget,
-        param_names_list=param_names,
-        params_to_plot_indices=[idx_x, idx_z],
-        wavefront_categories_style=category_styles_def,
-        wavefront_labels_latex_map=wavefront_labels_latex
-    )
-
-    # Call 2: CRLB_x vs CRLB_theta
-    print("\nPlotting CRLB_x vs CRLB_theta...")
-    plot_pareto_frontiers(
-        optimized_wavefronts_dict=optimized_wavefronts,
-        F_operator_tensor_np=F_op_numpy_for_block18,
-        photon_budget_val=photon_budget,
-        param_names_list=param_names,
-        params_to_plot_indices=[idx_x, idx_theta],
-        wavefront_categories_style=category_styles_def,
-        wavefront_labels_latex_map=wavefront_labels_latex
-    )
-
-    # Call 3: CRLB_z vs CRLB_theta
-    print("\nPlotting CRLB_z vs CRLB_theta...")
-    plot_pareto_frontiers(
-        optimized_wavefronts_dict=optimized_wavefronts,
-        F_operator_tensor_np=F_op_numpy_for_block18,
-        photon_budget_val=photon_budget,
-        param_names_list=param_names,
-        params_to_plot_indices=[idx_z, idx_theta],
-        wavefront_categories_style=category_styles_def,
-        wavefront_labels_latex_map=wavefront_labels_latex
-    )
+# Call 3: CRLB_z vs CRLB_theta
+print("\nPlotting CRLB_z vs CRLB_theta...")
+plot_pareto_frontiers(
+    optimized_wavefronts_dict=optimized_wavefronts,
+    F_operator_tensor_np=optimizer.F_op,
+    photon_budget_val=photon_budget,
+    param_names_list=param_names,
+    params_to_plot_indices=[1, 2],
+    wavefront_categories_style=category_styles_def,
+    wavefront_labels_latex_map=wavefront_labels_latex,
+)
 
 print("\nBlock 18 (Individual Pareto Frontier Plots) complete.")

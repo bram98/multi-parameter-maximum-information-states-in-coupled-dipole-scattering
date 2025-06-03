@@ -481,14 +481,19 @@ def _plot_single_pareto_frontier(
         else:
             found_category = False
             for cat_key, cat_style_info in wavefront_categories_style.items():
-                if cat_key in wf_name:  # e.g., "SLM" is in "SLM_Optimized_Mode1"
+                if (
+                    cat_key in wf_name
+                ):  # e.g., "SLM" is in "SLM_Optimized_Mode1"
                     style_info = cat_style_info
-                    legend_label_for_category = style_info.get("label", cat_key)
+                    legend_label_for_category = style_info.get(
+                        "label", cat_key
+                    )
                     found_category = True
                     break
             if not found_category:
                 style_info = wavefront_categories_style.get(
-                    "default", {"marker": "x", "color": "grey", "label": "Other"}
+                    "default",
+                    {"marker": "x", "color": "grey", "label": "Other"},
                 )
                 legend_label_for_category = style_info.get("label", "Other")
 
@@ -520,16 +525,26 @@ def _plot_single_pareto_frontier(
     ax.set_ylabel(ylabel)
     ax.set_title(plot_title)
     ax.grid(True, which="both", linestyle="--", alpha=0.7)
-    if plotted_categories: # Only show legend if there's something to label
+    if plotted_categories:  # Only show legend if there's something to label
         ax.legend(title="Wavefront Types")
 
     # Ensure adjust_text is available (imported at the top of the file)
-    if "adjust_text" in globals() and callable(globals()["adjust_text"]) and texts:
-        adjust_text(texts, ax=ax, arrowprops=dict(arrowstyle="-", color="black", lw=0.5))
+    if (
+        "adjust_text" in globals()
+        and callable(globals()["adjust_text"])
+        and texts
+    ):
+        adjust_text(
+            texts,
+            ax=ax,
+            arrowprops=dict(arrowstyle="-", color="black", lw=0.5),
+        )
     elif not texts:
-        pass # No text to adjust
+        pass  # No text to adjust
     else:
-        print("Warning: adjust_text function not available for text label adjustment.")
+        print(
+            "Warning: adjust_text function not available for text label adjustment."
+        )
 
 
 def plot_crlb_vs_crlb(
@@ -597,7 +612,9 @@ def plot_pareto_frontiers(
         wavefront_labels_latex_map (dict): LaTeX labels for wavefront points.
     """
     if len(params_to_plot_indices) != 2:
-        raise ValueError("params_to_plot_indices must contain exactly two indices.")
+        raise ValueError(
+            "params_to_plot_indices must contain exactly two indices."
+        )
 
     idx1, idx2 = params_to_plot_indices[0], params_to_plot_indices[1]
 
@@ -617,7 +634,7 @@ def plot_pareto_frontiers(
         param_names_list,
         wavefront_categories_style,
         wavefront_labels_latex_map,
-        figure_title_prefix="Pareto: ", # Standard prefix for these plots
+        figure_title_prefix="Pareto: ",  # Standard prefix for these plots
     )
 
 
