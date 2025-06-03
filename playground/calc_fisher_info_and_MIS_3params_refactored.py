@@ -914,3 +914,23 @@ else:
 print("\nSection 13c (E-Optimality for Marginal FIM) complete.")
 
 print("\nAll Marginal FIM Optimizations (Sections 13a, 13b, 13c) complete.")
+
+# %% 14) Compare CRLB
+
+print("\n--- Section 9: CRLB Comparison ---")
+
+crlbanalysis.visualize_crlb_comparison(
+    optimized_wavefronts=optimized_wavefronts,
+    F_operator_tensor=optimizer.F_op,
+    photon_budget=photon_budget,
+    param_names=param_names,
+    sim_kwargs=sim_kwargs,
+    angles_deg=angles_deg,
+    kx_array=kx_array,
+    figure_title="CRLB Comparison for different types of Maximum Information States",
+    show_plane_waves=False,
+    show_random_wavefronts=False,
+    num_random_samples=1000,
+)
+
+print("\nSection 9 (CRLB Comparison) complete.")
