@@ -8,10 +8,10 @@ import numpy as np
 import torch
 
 from scatteringlibs import placedipoles  # Import the whole module
+from scatteringlibs import crlbanalysis
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
-from scatteringlibs import crlbanalysis
 
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_line_of_dipoles(
@@ -516,33 +516,18 @@ print("\nSection 8 (Wavefront Comparison Visualization) complete.")
 
 print("\n--- Section 9: CRLB Comparison ---")
 
-# Ensure F_tensor_operator is available (it's fisher_calc.F or optimizer.F_op)
-# It should be a numpy array for the crlbanalysis functions.
-# The optimizer class stores F_op as numpy, so optimizer.F_op is fine.
-
-# The base_dipoles_combined for plane wave calculation corresponds to _scatterers_vis
-# _scatterers_vis was defined in block 4:
-# if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-#     _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
-# else:
-#     _scatterers_vis = movable_dipoles_line
-
-if not optimized_wavefronts:
-    print("No optimized wavefronts available to visualize CRLBs.")
-else:
-    crlbanalysis.visualize_crlb_comparison(
-        optimized_wavefronts=optimized_wavefronts,
-        F_operator_tensor=optimizer.F_op, # Assuming optimizer.F_op is the numpy F_tensor_operator
-        photon_budget=photon_budget,      # Global variable
-        param_names=param_names,          # Global variable from Block 3
-        sim_kwargs=sim_kwargs,            # Global variable from Block 2
-        # base_dipoles_combined=_scatterers_vis, # Not directly needed by crlbanalysis.compute_crlb_for_planewaves
-        angles_deg=angles_deg,            # Global variable from Block 2
-        kx_array=kx_array,                # Global variable from Block 2
-        figure_title="CRLB Comparison (Refactored)",
-        show_plane_waves=True,            # Or False, as per user preference
-        show_random_wavefronts=True,      # Or False
-        num_random_samples=100            # As in original script
-    )
+crlbanalysis.visualize_crlb_comparison(
+    optimized_wavefronts=optimized_wavefronts,
+    F_operator_tensor=optimizer.F_op,
+    photon_budget=photon_budget,
+    param_names=param_names,
+    sim_kwargs=sim_kwargs,
+    angles_deg=angles_deg,
+    kx_array=kx_array,
+    figure_title="CRLB Comparison for different types of Maximum Information States",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+    num_random_samples=1000,
+)
 
 print("\nSection 9 (CRLB Comparison) complete.")
