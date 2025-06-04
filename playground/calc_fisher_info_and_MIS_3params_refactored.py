@@ -1,7 +1,6 @@
 # playground/calc_fisher_info_and_MIS_3params_refactored.py
 
 # %% Imports and functions
-import math
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +17,7 @@ movable_dipoles_line = placedipoles.place_line_of_dipoles(
 )
 
 frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(3.0, 0.0), number=7
+    center=(3.0, 0.0), number=4
 )
 
 # %% 2) simulator geometry and input space
@@ -90,8 +89,8 @@ optimizer = Optimizer(
 photon_budget = 1.0
 
 # Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 5
-single_run_iterations = 3000
+multi_run_count = 2
+single_run_iterations = 1000
 
 # Globally store wavefronts and their J matrices
 optimized_wavefronts = {}
@@ -228,9 +227,6 @@ print("\nSection 7a (D-Optimality) complete.")
 
 print("\n--- Section 7b: E-Optimality (Maximize min eigenvalue of J) ---")
 
-# Loss function already imported at the top
-# from scatteringlibs.lossfunctions import maximize_min_eig_J
-
 # Perform the optimization
 # We want to maximize the smallest eigenvalue of J.
 min_eig_J_optimization_results = optimizer.torch_optimize_loss_multirun(
@@ -294,9 +290,6 @@ print("\nSection 7b (E-Optimality) complete.")
 # %% 7c) A-optimality: Minimize Trace of J^-1 (sum of variances)
 
 print("\n--- Section 7c: A-Optimality (Minimize Tr(J^-1)) ---")
-
-# Loss function already imported at the top
-# from scatteringlibs.lossfunctions import minimize_trace_of_J_inv
 
 # Perform the optimization
 # We want to minimize the trace of J_inverse.
@@ -518,12 +511,11 @@ crlbanalysis.visualize_crlb_comparison(
     photon_budget=photon_budget,
     param_names=param_names,
     sim_kwargs=sim_kwargs,
-    angles_deg=angles_deg,
     kx_array=kx_array,
     figure_title="CRLB Comparison for different types of Maximum Information States",
     show_plane_waves=True,
     show_random_wavefronts=True,
-    num_random_samples=1000,
+    num_random_samples=2000,
 )
 
 print("\nSection 9 (CRLB Comparison) complete.")

@@ -101,8 +101,6 @@ def compute_crlb_for_wavefront(
 
 def compute_crlb_for_planewaves(
     sim_kwargs: dict,
-    # base_dipoles_combined: np.ndarray, # This seems not directly used by original func for CRLB calc itself once F_op is given
-    angles_deg: np.ndarray,
     F_operator_tensor: np.ndarray,  # Expects numpy array
     photon_budget: float,
     kx_array: np.ndarray,
@@ -118,21 +116,9 @@ def compute_crlb_for_planewaves(
     k0 = 2 * np.pi / sim_kwargs["lambda_0"]
     N_in = len(kx_array)
 
-    # Make sure _flux_amplitude_2d is available, e.g. by importing from scatteringsimulation
-    # from scatteringlibs.scatteringsimulation import _flux_amplitude_2d # (Ensure this import is at top of file)
-
-    for angle in angles_deg:
-        theta_rad = np.deg2rad(angle)
-        kx_val = k0 * np.sin(theta_rad)  # Corrected variable name
-
-        # Use _flux_amplitude_2d from scatteringsimulation
-        # This function might need to be exposed or copied if not directly importable
-        # For now, assuming it can be imported or is made available.
-        # If CoupledDipoleSimulator is needed for this, the design changes.
-        # The original script's _flux_amplitude_2d doesn't rely on an instance of CoupledDipoleSimulator.
+    for kx_val in kx_array:
         amplitude = _flux_amplitude_2d(k0, kx_val) * np.sqrt(photon_budget)
-
-        idx = np.argmin(np.abs(kx_array - kx_val))  # Corrected variable name
+        idx = np.argmin(np.abs(kx_array - kx_val))
         E_plane_wave = np.zeros(N_in, dtype=complex)
         E_plane_wave[idx] = amplitude
 
@@ -200,7 +186,6 @@ def visualize_crlb_comparison(
     photon_budget: float,
     param_names: list,  # List of parameter names, e.g., ["shiftX", "shiftZ", "rotation"]
     sim_kwargs: dict = None,
-    angles_deg: np.ndarray = None,
     kx_array: np.ndarray = None,
     figure_title: str = "CRLB Comparison",
     show_plane_waves: bool = True,
@@ -239,7 +224,7 @@ def visualize_crlb_comparison(
             label_suffix = r"\theta"  # Use LaTeX for theta
         else:
             label_suffix = p_name.lower()
-        crlb_plot_labels.append(f"CRLB {label_suffix}")
+        crlb_plot_labels.append(f"CRLB of ${label_suffix}$")
 
     wave_names_custom = list(optimized_wavefronts.keys())
     data_custom = []
@@ -263,20 +248,18 @@ def visualize_crlb_comparison(
     # Prepare data for plane waves if requested
     plane_wave_data_for_boxplot = None
     if show_plane_waves:
-        if not all([sim_kwargs, angles_deg is not None, kx_array is not None]):
+        if not all([sim_kwargs, kx_array is not None]):
             print(
-                "Warning: Missing sim_kwargs, angles_deg, or kx_array for plane wave CRLB calculation. Skipping."
+                "Warning: Missing sim_kwargs, or kx_array for plane wave CRLB calculation. Skipping."
             )
             show_plane_waves = False  # Disable if inputs missing
         else:
             plane_wave_crlbs_all_angles = compute_crlb_for_planewaves(
                 sim_kwargs,
-                angles_deg,
                 F_operator_tensor,
                 photon_budget,
                 kx_array,
-            )  # Shape: (num_angles, num_params)
-            # For boxplot, need list of arrays, one per parameter
+            )
             plane_wave_data_for_boxplot = [
                 plane_wave_crlbs_all_angles[:, i] for i in range(num_params)
             ]
