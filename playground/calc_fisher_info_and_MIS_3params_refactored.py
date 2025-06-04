@@ -7,9 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from scatteringlibs import crlbanalysis, placedipoles
+from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
-import scatteringlibs.lossfunctions as lossfunctions
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
@@ -709,8 +708,10 @@ print("\n--- Section 13a: D-Optimality (Maximize det(J_marginal)) ---")
 
 nuisance_param_index_for_marginal = 2  # Rotation
 
-loss_fn_det_marginal = lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
-    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
+loss_fn_det_marginal = (
+    lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
+        optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
+    )
 )
 
 det_J_marginal_results = optimizer.torch_optimize_loss_multirun(
@@ -835,9 +836,11 @@ print("\nSection 13b (A-Optimality for Marginal FIM) complete.")
 # %% 13c) E-Optimality for Marginal FIM (Maximize min_eig(J_marginal))
 print("\n--- Section 13c: E-Optimality (Maximize min_eig(J_marginal)) ---")
 
-loss_fn_min_eig_marginal = lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
-    optimizer._compute_marginal_fisher_info_matrix(
-        J_full_torch, nuisance_param_index_for_marginal
+loss_fn_min_eig_marginal = (
+    lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
+        optimizer._compute_marginal_fisher_info_matrix(
+            J_full_torch, nuisance_param_index_for_marginal
+        )
     )
 )
 
