@@ -289,7 +289,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= photon_budget ** 0.5 / norm_init
+        E_param *= photon_budget**0.5 / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_det_val = None
@@ -297,7 +297,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         det_val = torch.linalg.det(J)
         loss = -det_val
@@ -306,7 +306,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= photon_budget ** 0.5 / cur_norm
+            E_norm *= photon_budget**0.5 / cur_norm
 
         if best_det_val is None or det_val.item() > best_det_val:
             best_det_val = det_val.item()
@@ -355,7 +355,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget ** 0.5) / norm_init
+        E_param *= (photon_budget**0.5) / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_min_eig = None
@@ -363,7 +363,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         eigvals = torch.linalg.eigvalsh(J)
         min_eig = eigvals[0]  # smallest eigenvalue of J
@@ -373,7 +373,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= (photon_budget ** 0.5) / cur_norm
+            E_norm *= (photon_budget**0.5) / cur_norm
 
         if best_min_eig is None or min_eig.item() > best_min_eig:
             best_min_eig = min_eig.item()
@@ -454,15 +454,13 @@ def plot_field_and_poynting(
 
     mask = (Zs * 0).astype(bool)
     for pos in exclusion_pos:
-        mask |= (pos[0] - Zs) ** 2 + (
-            pos[1] - Xs
-        ) ** 2 <= exclusion_radius ** 2
+        mask |= (pos[0] - Zs) ** 2 + (pos[1] - Xs) ** 2 <= exclusion_radius**2
 
     Sz[mask] = 0
     Sx[mask] = 0
 
     if arrow_rescaling:
-        Smax = np.max(np.sqrt(Sz ** 2 + Sx ** 2))
+        Smax = np.max(np.sqrt(Sz**2 + Sx**2))
         Sz /= Smax
         Sx /= Smax
     if not keep_fig:

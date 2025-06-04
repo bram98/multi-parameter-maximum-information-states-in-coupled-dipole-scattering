@@ -26,7 +26,7 @@ def _flux_amplitude_2d(k0, kx):
     has ~ unit flux. k0 = 2π/λ, kx in [-k0, k0], and
     kz = sqrt(k0^2 - kx^2).
     """
-    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)
+    kz = np.sqrt(k0**2 - kx**2 + 0j)
     return np.sqrt((kz / k0).real)
 
 
@@ -188,7 +188,7 @@ class CoupledDipoleSimulator(Storable):
         return theta
 
     def compute_kz(self, k_x_array):
-        k_z_array = np.sqrt(self.k ** 2 - k_x_array ** 2, dtype=complex)
+        k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
     def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
@@ -255,7 +255,7 @@ class CoupledDipoleSimulator(Storable):
         # Interaction matrix
         A = np.eye(self.Ns, dtype=complex)
         G_matrix = self._G0(self.scatterers, self.scatterers, self.k)
-        A -= self.k ** 2 * self.alpha * G_matrix
+        A -= self.k**2 * self.alpha * G_matrix
 
         # Solve for induced fields
         self.fields = np.linalg.solve(A, E0_vec)
@@ -291,7 +291,7 @@ class CoupledDipoleSimulator(Storable):
             )
             G = (1j / 4) * hankel1(0, self.k * delta_r)
             G[delta_r == 0] = 0.0  # Avoid singularity
-            E_total += self.k ** 2 * self.alpha * self.fields[n] * G
+            E_total += self.k**2 * self.alpha * self.fields[n] * G
 
         self.E_total = E_total
         return self.E_total
@@ -331,7 +331,7 @@ class CoupledDipoleSimulator(Storable):
             delta_z = z_L - r_n[0]  # Scalar
             delta_x = x_points - r_n[1]  # Shape: (grid_points_x,)
             distances = np.sqrt(
-                delta_z ** 2 + delta_x ** 2
+                delta_z**2 + delta_x**2
             )  # Shape: (grid_points_x,)
 
             # Compute Green's function
@@ -340,7 +340,7 @@ class CoupledDipoleSimulator(Storable):
 
             # Scattered field contribution from scatterer n
             E_scatt = (
-                self.k ** 2 * self.alpha * self.fields[n] * G
+                self.k**2 * self.alpha * self.fields[n] * G
             )  # Shape: (grid_points_x,)
 
             # Add to total field
@@ -433,7 +433,8 @@ class CoupledDipoleSimulator(Storable):
             title = f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
         self._visualize(
-            display_function=np.abs, title=title,
+            display_function=np.abs,
+            title=title,
         )
 
     def visualize_real(self):
@@ -445,7 +446,8 @@ class CoupledDipoleSimulator(Storable):
             title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
         self._visualize(
-            display_function=np.real, title=title,
+            display_function=np.real,
+            title=title,
         )
 
     def visualize_output_field(

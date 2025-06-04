@@ -31,7 +31,7 @@ def flux_amplitude_2d(k0, kx):
     factor if we want an orthonormal set, but for a small discrete set we usually
     just do sqrt(kz / k0).
     """
-    kz = np.sqrt(k0 ** 2 - kx ** 2 + 0j)  # +0j to keep it in complex domain
+    kz = np.sqrt(k0**2 - kx**2 + 0j)  # +0j to keep it in complex domain
     return np.sqrt(kz / k0)  # kind of equivalent to normalize with sqrt(cos)
 
 

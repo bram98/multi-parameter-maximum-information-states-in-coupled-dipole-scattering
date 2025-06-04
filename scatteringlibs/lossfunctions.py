@@ -335,7 +335,7 @@ def offdiag_loss(
         p_idx_0, p_idx_1
     ]  # Coupling between params of interest in the full inverse
 
-    sum_sq_off_diag = off_diag_1 ** 2 + off_diag_2 ** 2 + off_diag_3 ** 2
+    sum_sq_off_diag = off_diag_1**2 + off_diag_2**2 + off_diag_3**2
 
     # Ensure diagonal elements of J_inv_interest are positive before summing, though typically they are variances.
     # The problem asks for J_inv_interest[0,0] + J_inv_interest[1,1], which are variances and should be positive.
