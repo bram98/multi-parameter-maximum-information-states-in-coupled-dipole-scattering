@@ -255,10 +255,7 @@ def visualize_crlb_comparison(
             show_plane_waves = False  # Disable if inputs missing
         else:
             plane_wave_crlbs_all_angles = compute_crlb_for_planewaves(
-                sim_kwargs,
-                F_operator_tensor,
-                photon_budget,
-                kx_array,
+                sim_kwargs, F_operator_tensor, photon_budget, kx_array,
             )
             plane_wave_data_for_boxplot = [
                 plane_wave_crlbs_all_angles[:, i] for i in range(num_params)
@@ -274,10 +271,8 @@ def visualize_crlb_comparison(
             show_random_wavefronts = False
         else:
             N_in = len(kx_array)
-            random_wavefront_crlbs_all_samples = (
-                compute_crlb_for_random_wavefronts(
-                    F_operator_tensor, photon_budget, num_random_samples, N_in
-                )
+            random_wavefront_crlbs_all_samples = compute_crlb_for_random_wavefronts(
+                F_operator_tensor, photon_budget, num_random_samples, N_in
             )  # Shape: (num_samples, num_params)
             random_wavefront_data_for_boxplot = [
                 random_wavefront_crlbs_all_samples[:, i]

@@ -17,7 +17,7 @@ movable_dipoles_line = placedipoles.place_line_of_dipoles(
 )
 
 frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(3.0, 0.0), number=4
+    center=(3.0, 0.0), number=7
 )
 
 # %% 2) simulator geometry and input space
@@ -89,8 +89,8 @@ optimizer = Optimizer(
 photon_budget = 1.0
 
 # Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 2
-single_run_iterations = 1000
+multi_run_count = 5
+single_run_iterations = 3000
 
 # Globally store wavefronts and their J matrices
 optimized_wavefronts = {}
@@ -245,9 +245,9 @@ wavefront_min_eig_J_opt = min_eig_J_optimization_results["bestvec"]
 best_min_eig_J_value = min_eig_J_optimization_results["bestval"]
 
 if wavefront_min_eig_J_opt is not None:
-    optimized_wavefronts["SpecJ_torch"] = (
-        wavefront_min_eig_J_opt  # Key used in original script for spectral opt
-    )
+    optimized_wavefronts[
+        "SpecJ_torch"
+    ] = wavefront_min_eig_J_opt  # Key used in original script for spectral opt
     J_for_min_eig_J_opt = optimizer.J_fisher_info_matrix(
         wavefront_min_eig_J_opt
     )
@@ -609,27 +609,24 @@ nuisance_param_index = 2  # Corresponds to rotation
 
 strategies = {
     "LogLin": {
-        "loss_fn_constructor": lambda: (
+        "loss_fn_constructor":
             lambda J_mat: lossfunctions.loglin_loss(
                 J_mat, nuisance_param_index=nuisance_param_index, alpha=0.1
-            )
-        ),
+            ),
         "params": {"alpha": 0.1},
     },
     "OffDiag": {
-        "loss_fn_constructor": lambda: (
+        "loss_fn_constructor":
             lambda J_mat: lossfunctions.offdiag_loss(
                 J_mat, nuisance_param_index=nuisance_param_index, beta=1.0
-            )
-        ),
+            ),
         "params": {"beta": 1.0},
     },
     "SubDet": {
-        "loss_fn_constructor": lambda: (
+        "loss_fn_constructor":
             lambda J_mat: lossfunctions.subdet_loss(
                 J_mat, nuisance_param_index=nuisance_param_index
-            )
-        ),
+            ),
         "params": {},
     },
 }
@@ -637,7 +634,7 @@ strategies = {
 for strategy_name, config in strategies.items():
     print(f"\n--- Optimizing for Strategy: {strategy_name} ---")
 
-    loss_fn = config["loss_fn_constructor"]()
+    loss_fn = config["loss_fn_constructor"]
 
     optimization_results = optimizer.torch_optimize_loss_multirun(
         loss_function_of_J=loss_fn,
@@ -645,7 +642,7 @@ for strategy_name, config in strategies.items():
         steps=single_run_iterations,
         lr=1e-3,
         verbose=True,
-        maximize=False,  # All these are minimization problems
+        maximize=False,
         photon_budget=photon_budget,
         base_seed=42,
     )
@@ -700,10 +697,8 @@ print("\n--- Section 13a: D-Optimality (Maximize det(J_marginal)) ---")
 
 nuisance_param_index_for_marginal = 2  # Rotation
 
-loss_fn_det_marginal = (
-    lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
-        optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
-    )
+loss_fn_det_marginal = lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
 )
 
 det_J_marginal_results = optimizer.torch_optimize_loss_multirun(
@@ -761,11 +756,9 @@ print("\nSection 13a (D-Optimality for Marginal FIM) complete.")
 # %% 13b) A-Optimality for Marginal FIM (Minimize Tr(J_marginal^-1))
 print("\n--- Section 13b: A-Optimality (Minimize Tr(J_marginal^-1)) ---")
 
-loss_fn_trace_inv_marginal = (
-    lambda J_full_torch: lossfunctions.minimize_trace_of_marginal_J_inv(
-        optimizer._compute_marginal_fisher_info_matrix(
-            J_full_torch, nuisance_param_index_for_marginal
-        )
+loss_fn_trace_inv_marginal = lambda J_full_torch: lossfunctions.minimize_trace_of_marginal_J_inv(
+    optimizer._compute_marginal_fisher_info_matrix(
+        J_full_torch, nuisance_param_index_for_marginal
     )
 )
 
@@ -828,11 +821,9 @@ print("\nSection 13b (A-Optimality for Marginal FIM) complete.")
 # %% 13c) E-Optimality for Marginal FIM (Maximize min_eig(J_marginal))
 print("\n--- Section 13c: E-Optimality (Maximize min_eig(J_marginal)) ---")
 
-loss_fn_min_eig_marginal = (
-    lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
-        optimizer._compute_marginal_fisher_info_matrix(
-            J_full_torch, nuisance_param_index_for_marginal
-        )
+loss_fn_min_eig_marginal = lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(
+        J_full_torch, nuisance_param_index_for_marginal
     )
 )
 
@@ -903,7 +894,6 @@ crlbanalysis.visualize_crlb_comparison(
     photon_budget=photon_budget,
     param_names=param_names,
     sim_kwargs=sim_kwargs,
-    angles_deg=angles_deg,
     kx_array=kx_array,
     figure_title="CRLB Comparison for different types of Maximum Information States",
     show_plane_waves=False,
@@ -966,28 +956,28 @@ for key in optimized_wavefronts.keys():
 
 # 3. Define category_styles
 category_styles_def = {
-    "MIS": {"marker": "x", "color": "purple", "label": "MIS (Single Param)"},
+    "MIS": {"marker": "x", "color": "purple", "label": "MIS via eigenvalue decomposition"},
     "TraceJ_eig": {
-        "marker": "^",
-        "color": "green",
-        "label": "Max Tr(J) (Eig)",
+        "marker": "x",
+        "color": "purple",
+        "label": "MIS via eigenvalue decomposition",
     },
     "TorchFull": {"marker": "o", "color": "blue", "label": "Full FIM Optim."},
     "NuisanceOriginal": {
         "marker": "s",
         "color": "green",
-        "label": "Nuisance Optim. (Original)",
+        "label": "Nuisance-engineered FIM via gradent descent optimization",
     },
     "TorchMarginal": {
         "marker": "P",
         "color": "red",
-        "label": "Marginal FIM Optim.",
+        "label": "Marginal FIM via gradent descent optimization",
     },
     "Other": {"marker": "d", "color": "grey", "label": "Other"},
     "default": {
         "marker": "*",
         "color": "black",
-        "label": "Default",
+        "label": "Gradient descent optimization",
     },  # Fallback for the plotting function
 }
 
@@ -995,7 +985,6 @@ category_styles_def = {
 if not optimized_wavefronts:
     print("No optimized wavefronts available to generate Pareto plots.")
 else:
-    # Ensure F_op is numpy
     F_op_numpy = (
         optimizer.F_op.cpu().numpy()
         if isinstance(optimizer.F_op, torch.Tensor)
