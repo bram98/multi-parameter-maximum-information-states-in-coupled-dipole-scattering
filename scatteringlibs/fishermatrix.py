@@ -2,8 +2,10 @@ from pathlib import Path
 
 import numpy as np
 
+from scatteringlibs.storable import Storable
 
-class FisherMatrix:
+
+class FisherMatrix(Storable):
     """
     A class to compute and manage multiparameter Fisher matrices from dS matrices.
     """
@@ -152,124 +154,6 @@ class FisherMatrix:
             )
         self.dS = new_dS
         return self
-
-    def load(self, filepath):
-        """
-        Loads a dS matrix from a file. Expects a .npz file with a 'dS' array.
-
-        Parameters
-        ----------
-        filepath : str or Path
-            Path to the file.
-
-        Returns
-        -------
-        FisherMatrix
-            The instance itself with the loaded dS matrix.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the specified file does not exist.
-        """
-        filepath = Path(filepath)
-        if not filepath.exists():
-            raise FileNotFoundError(f'File at "{filepath}" does not exist.')
-        loaded_data = np.load(filepath)
-        if "dS" not in loaded_data:
-            raise ValueError(f"File {filepath} does not contain a 'dS' array.")
-        self.dS = loaded_data["dS"]  # Use the setter
-        if "param_names" in loaded_data:
-            self.param_names = loaded_data["param_names"].tolist()
-        if "delta" in loaded_data:
-            self.delta = loaded_data["delta"].item()
-        if "seed" in loaded_data:
-            self._seed = loaded_data["seed"].item()
-        if "r_param" in loaded_data:
-            self._r_param = loaded_data["r_param"].item()
-
-        return self
-
-    def filename(self, name="dS"):
-        """
-        Generates a filename for saving the dS matrix.
-
-        Parameters
-        ----------
-        name : str, optional
-            Prefix for the filename (default is 'dS').
-
-        Returns
-        -------
-        str
-            Generated filename.
-        """
-        filename_parts = [name]
-        if self._param_names is not None:
-            filename_parts.append("-".join(self._param_names))
-        if self._nhilbert_out is not None and self._nhilbert_in is not None:
-            filename_parts.append(
-                f"No{self._nhilbert_out}Ni{self.nhilbert_in}"
-            )
-        if self.seed is not None:
-            filename_parts.append(f"seed{self.seed}")
-        if self.r_param is not None:
-            filename_parts.append(f"r{self.r_param:.2f}")  # Format r_param
-
-        if (
-            self.dS is not None
-        ):  # Check complexity only if dS exists, use property
-            iscomplex = np.iscomplexobj(self.dS)
-            filename_parts.append("c" if iscomplex else "r")
-
-        return "_".join(filename_parts) + ".npz"
-
-    def save(self, filename=None, folder=".", name="dS"):
-        """
-        Saves the dS matrix and other relevant metadata to a .npz file.
-
-        Parameters
-        ----------
-        folder : str or Path, optional
-            Directory to save the file. Defaults to current directory.
-        filename : str, optional
-            Name of the file to save. If None, generates using `self.filename()`.
-        name : str, optional
-            Prefix for filename generation if `filename` is None. Defaults to 'dS'.
-
-        Returns
-        -------
-        Path
-            The full path to the saved file.
-
-        Raises
-        ------
-        ValueError
-            If dS is not defined.
-        """
-        if self.dS is None:
-            raise ValueError("Error saving to file: dS is not defined.")
-
-        if filename is None:
-            filename = self.filename(name=name)
-
-        save_path = Path(folder)
-        save_path.mkdir(parents=True, exist_ok=True)  # Ensure folder exists
-        filepath = save_path / filename
-
-        save_dict = {"dS": self.dS}  # Use property
-        if self.param_names is not None:  # Use property
-            save_dict["param_names"] = self.param_names
-        if self.delta is not None:  # Use property
-            save_dict["delta"] = self.delta
-        if self.seed is not None:  # Use property
-            save_dict["seed"] = self.seed
-        if self.r_param is not None:  # Use property
-            save_dict["r_param"] = self.r_param
-
-        np.savez(filepath, **save_dict)
-        print(f"Saved FisherMatrix data to {filepath}")
-        return filepath
 
     @property
     def nparams(self):

@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from scatteringlibs.storable import Storable
 
-class Optimizer:
+
+class Optimizer(Storable):
     """
     Optimizer class that revolves around the Fisher operator tensor F.
     Can do eigenvalue optimizations and torch-based optimizations.
