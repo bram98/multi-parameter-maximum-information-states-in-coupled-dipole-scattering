@@ -100,7 +100,12 @@ class LossFunction:
         return wavefront * np.sqrt(LossFunction.photon_budget / norm_sq)
 
     def optimize(
-        self, optimizer: Optimizer, seed=None, steps=2000, num_eig=1, verbose=True
+        self,
+        optimizer: Optimizer,
+        seed=None,
+        steps=2000,
+        num_eig=1,
+        verbose=True,
     ):
         """
         Performs the optimization. If method == 'eig', the optimizer finds the
@@ -190,7 +195,9 @@ class LossFunction:
 
 
 def calc_results(
-    loss_functions: list[LossFunction], optimizer: Optimizer, metric_function: callable
+    loss_functions: list[LossFunction],
+    optimizer: Optimizer,
+    metric_function: callable,
 ):
     """
     Calculates the single parameter results using the loss_functions objects.
@@ -221,7 +228,9 @@ def calc_results(
 
 def calc_std_ideal(loss_functions, optimizer):
     return calc_results(
-        loss_functions, optimizer, lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2])
+        loss_functions,
+        optimizer,
+        lambda J: (1 / J[0, 0], 1 / J[1, 1], 1 / J[2, 2]),
     )
 
 
@@ -235,7 +244,13 @@ def calc_std_joint(loss_functions, optimizer):
 
 
 def _bar_plot_loss_functions_metrics(
-    results, metric_labels, ax=None, title=None, ylabel=None, dpi=100, **plot_kwargs
+    results,
+    metric_labels,
+    ax=None,
+    title=None,
+    ylabel=None,
+    dpi=100,
+    **plot_kwargs,
 ):
     newplot = ax is None
     if newplot:
@@ -257,7 +272,11 @@ def _bar_plot_loss_functions_metrics(
     for m in range(len(data[0])):
         offset = (m - 1) * width
         ax.bar(
-            x + offset, data[:, m], width=width, label=metric_labels[m], **plot_kwargs
+            x + offset,
+            data[:, m],
+            width=width,
+            label=metric_labels[m],
+            **plot_kwargs,
         )
 
     ax.set_title(title)
@@ -299,7 +318,11 @@ def bar_plot_STD_joint(results, title=None, ax=None, dpi=100, **plot_kwargs):
 
 
 def bar_plot_STD_ideal(results, title=None, ax=None, dpi=100, **plot_kwargs):
-    labels = (r"$1\,/\ J_{xx}$", r"$1\,/\ J_{zz}$", r"$1\,/\ J_{\theta\theta}$")
+    labels = (
+        r"$1\,/\ J_{xx}$",
+        r"$1\,/\ J_{zz}$",
+        r"$1\,/\ J_{\theta\theta}$",
+    )
 
     _bar_plot_loss_functions_metrics(
         results,
@@ -465,7 +488,7 @@ if not folder.exists():
     folder.mkdir()
     print(f"Created folder {folder.absolute()}")
 
-save_state = True
+save_state = False
 # %% 1) define some dipoles in a line
 # base_dipoles = placedipoles.square_of_dipoles(center=(4.0, 0.0), side=1.0)
 base_dipoles = placedipoles.line_of_dipoles(center=(5.0, 0), number=7)
@@ -654,7 +677,11 @@ std_ideal = calc_std_ideal(loss_functions, optimizer)
 fig, ax = plt.subplots()
 
 bar_plot_STD_joint(
-    std_joint, dpi=75, title=r"Single Param. Performance (joint)", ax=ax, alpha=0.4
+    std_joint,
+    dpi=75,
+    title=r"Single Param. Performance (joint)",
+    ax=ax,
+    alpha=0.4,
 )
 
 plt.gca().set_prop_cycle(None)
