@@ -300,7 +300,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= photon_budget**0.5 / norm_init
+        E_param *= photon_budget ** 0.5 / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_det_val = None
@@ -308,7 +308,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         det_val = torch.linalg.det(J)
         loss = -det_val
@@ -317,7 +317,7 @@ def torch_optimize_det(F_tensor, N_in, steps=300, lr=1e-3, photon_budget=1):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= photon_budget**0.5 / cur_norm
+            E_norm *= photon_budget ** 0.5 / cur_norm
 
         if best_det_val is None or det_val.item() > best_det_val:
             best_det_val = det_val.item()
@@ -363,7 +363,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget**0.5) / norm_init
+        E_param *= (photon_budget ** 0.5) / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_min_eig = None
@@ -371,7 +371,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
 
     for step in range(steps):
         opt.zero_grad()
-        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         eigvals = torch.linalg.eigvalsh(J)
         min_eig = eigvals[0]  # smallest eigenvalue of J
@@ -381,7 +381,7 @@ def torch_optimize_spec(F_tensor, N_in, steps=5000, lr=1e-3, photon_budget=10):
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_norm)
-            E_norm *= (photon_budget**0.5) / cur_norm
+            E_norm *= (photon_budget ** 0.5) / cur_norm
 
         if best_min_eig is None or min_eig.item() > best_min_eig:
             best_min_eig = min_eig.item()
@@ -438,7 +438,7 @@ def torch_optimize_traceinv(
         )
         with torch.no_grad():
             norm_init = torch.linalg.norm(E_param)
-            E_param *= photon_budget**0.5 / norm_init
+            E_param *= photon_budget ** 0.5 / norm_init
 
         opt = torch.optim.Adam([E_param], lr=lr)
         run_loss_curve = []
@@ -447,7 +447,9 @@ def torch_optimize_traceinv(
 
         for step in range(steps):
             opt.zero_grad()
-            E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+            E_norm = (
+                photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+            )
             J = fisher_3x3(E_norm, F_tensor)
             J_inv = torch.linalg.inv(J)
             trace_val = torch.trace(J_inv)
@@ -458,7 +460,7 @@ def torch_optimize_traceinv(
 
             with torch.no_grad():
                 cur_norm = torch.linalg.norm(E_norm)
-                E_norm *= photon_budget**0.5 / cur_norm
+                E_norm *= photon_budget ** 0.5 / cur_norm
 
             cur_loss = loss.item()
             run_loss_curve.append(cur_loss)
@@ -984,7 +986,7 @@ def nuisance_opt_run(
     E_param = torch.randn((N_in, 2), dtype=torch.float64, requires_grad=True)
     with torch.no_grad():
         norm_init = torch.linalg.norm(E_param)
-        E_param *= (photon_budget**0.5) / norm_init
+        E_param *= (photon_budget ** 0.5) / norm_init
 
     opt = torch.optim.Adam([E_param], lr=lr)
     best_loss = None
@@ -994,7 +996,7 @@ def nuisance_opt_run(
     for _ in range(steps):
         opt.zero_grad()
         # Re-normalize wavefront each iteration
-        E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+        E_norm = photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
         J = fisher_3x3(E_norm, F_tensor)
         J_inv = torch.linalg.inv(J)
 
@@ -1022,7 +1024,7 @@ def nuisance_opt_run(
 
         with torch.no_grad():
             cur_norm = torch.linalg.norm(E_param)
-            E_param *= (photon_budget**0.5) / cur_norm
+            E_param *= (photon_budget ** 0.5) / cur_norm
 
         cur_loss = loss.item()
         loss_curve.append(cur_loss)
@@ -1316,12 +1318,14 @@ def torch_optimize_crlb_xx(
         )
         with torch.no_grad():
             norm_init = torch.linalg.norm(E_param)
-            E_param *= (photon_budget**0.5) / norm_init
+            E_param *= (photon_budget ** 0.5) / norm_init
         opt = torch.optim.Adam([E_param], lr=lr)
         loss_curve = []
         for step in range(steps):
             opt.zero_grad()
-            E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+            E_norm = (
+                photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+            )
             J = fisher_3x3(
                 E_norm, F_tensor
             )  # Assumed function to compute 3x3 Fisher matrix
@@ -1330,7 +1334,7 @@ def torch_optimize_crlb_xx(
             loss.backward()
             opt.step()
             with torch.no_grad():
-                E_norm *= (photon_budget**0.5) / torch.linalg.norm(E_norm)
+                E_norm *= (photon_budget ** 0.5) / torch.linalg.norm(E_norm)
             loss_curve.append(loss.item())
             if step % 500 == 0:
                 print(
@@ -1359,19 +1363,21 @@ def torch_optimize_J_xx(
         )
         with torch.no_grad():
             norm_init = torch.linalg.norm(E_param)
-            E_param *= (photon_budget**0.5) / norm_init
+            E_param *= (photon_budget ** 0.5) / norm_init
         opt = torch.optim.Adam([E_param], lr=lr)
         loss_curve = []
         for step in range(steps):
             opt.zero_grad()
-            E_norm = photon_budget**0.5 * E_param / torch.linalg.norm(E_param)
+            E_norm = (
+                photon_budget ** 0.5 * E_param / torch.linalg.norm(E_param)
+            )
             J = fisher_3x3(E_norm, F_tensor)
             J_xx = J[0, 0]  # Fisher information for x
             loss = -J_xx  # Minimize -J_xx to maximize J_xx
             loss.backward()
             opt.step()
             with torch.no_grad():
-                E_norm *= (photon_budget**0.5) / torch.linalg.norm(E_norm)
+                E_norm *= (photon_budget ** 0.5) / torch.linalg.norm(E_norm)
             loss_curve.append(J_xx.item())  # Store J_xx value
             if step % 500 == 0:
                 print(
@@ -1577,7 +1583,7 @@ def torch_optimize_det_interest_nuisance_multirun(
         with torch.no_grad():
             norm_init = torch.linalg.norm(E_param)
             if norm_init > 1e-9:
-                E_param *= (photon_budget**0.5) / norm_init
+                E_param *= (photon_budget ** 0.5) / norm_init
             else:
                 E_param = torch.randn(
                     (N_in, 2),
@@ -1585,7 +1591,7 @@ def torch_optimize_det_interest_nuisance_multirun(
                     requires_grad=True,
                     device=F_tensor.device,
                 )
-                E_param *= (photon_budget**0.5) / torch.linalg.norm(E_param)
+                E_param *= (photon_budget ** 0.5) / torch.linalg.norm(E_param)
 
         opt = torch.optim.Adam([E_param], lr=lr)
 
@@ -1601,7 +1607,7 @@ def torch_optimize_det_interest_nuisance_multirun(
                 current_norm_for_E_norm = torch.linalg.norm(E_param)
                 if current_norm_for_E_norm > 1e-9:
                     E_norm = (
-                        (photon_budget**0.5)
+                        (photon_budget ** 0.5)
                         * E_param
                         / current_norm_for_E_norm
                     )
@@ -1613,7 +1619,7 @@ def torch_optimize_det_interest_nuisance_multirun(
             # Or, more directly, calculate loss based on E_param and handle normalization within
             # Let's use E_param directly and normalize inside the path to loss
             E_param_normalized_for_loss = (
-                (photon_budget**0.5) * E_param / torch.linalg.norm(E_param)
+                (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
             )
 
             J_full = fisher_3x3(E_param_normalized_for_loss, F_tensor)
@@ -1633,11 +1639,13 @@ def torch_optimize_det_interest_nuisance_multirun(
             with torch.no_grad():
                 cur_norm_e_param = torch.linalg.norm(E_param)
                 if cur_norm_e_param > 1e-9:
-                    E_param *= (photon_budget**0.5) / cur_norm_e_param
+                    E_param *= (photon_budget ** 0.5) / cur_norm_e_param
 
                 # For reporting and best_vec, use the current state of E_param, normalized
                 E_norm_report = (
-                    (photon_budget**0.5) * E_param / torch.linalg.norm(E_param)
+                    (photon_budget ** 0.5)
+                    * E_param
+                    / torch.linalg.norm(E_param)
                 )
                 J_full_report = fisher_3x3(E_norm_report, F_tensor)
                 J_interest_report = compute_fisher_interest_nuisance(
@@ -1824,7 +1832,7 @@ def torch_optimize_traceinv_interest_nuisance(
         )
         with torch.no_grad():
             norm_init = torch.linalg.norm(E_param)
-            E_param *= (photon_budget**0.5) / norm_init
+            E_param *= (photon_budget ** 0.5) / norm_init
 
         opt = torch.optim.Adam([E_param], lr=lr)
         current_run_losses = []
@@ -1834,7 +1842,7 @@ def torch_optimize_traceinv_interest_nuisance(
         for step in range(steps):
             opt.zero_grad()
             E_norm = (
-                (photon_budget**0.5) * E_param / torch.linalg.norm(E_param)
+                (photon_budget ** 0.5) * E_param / torch.linalg.norm(E_param)
             )
             J_full = fisher_3x3(E_norm, F_tensor)
             J_interest = compute_fisher_interest_nuisance(
@@ -1864,14 +1872,16 @@ def torch_optimize_traceinv_interest_nuisance(
 
             with torch.no_grad():
                 cur_norm_e = torch.linalg.norm(E_param)
-                E_param *= (photon_budget**0.5) / cur_norm_e
+                E_param *= (photon_budget ** 0.5) / cur_norm_e
 
             current_run_losses.append(current_loss_val)
             if current_loss_val < best_loss_this_run:
                 best_loss_this_run = current_loss_val
                 # Update best_vec based on the current E_param after normalization
                 E_norm_update = (
-                    (photon_budget**0.5) * E_param / torch.linalg.norm(E_param)
+                    (photon_budget ** 0.5)
+                    * E_param
+                    / torch.linalg.norm(E_param)
                 )
                 best_vec_this_run = E_norm_update.detach().clone()
 
@@ -1995,7 +2005,7 @@ def torch_optimize_spec_interest_nuisance_multirun(
             if (
                 norm_init > 1e-12
             ):  # Avoid division by zero for very small initial norms
-                E_param *= (photon_budget**0.5) / norm_init
+                E_param *= (photon_budget ** 0.5) / norm_init
             else:  # Re-initialize if norm is too small
                 E_param = torch.randn(
                     (N_in, 2),
@@ -2003,7 +2013,7 @@ def torch_optimize_spec_interest_nuisance_multirun(
                     requires_grad=True,
                     device=F_tensor.device,
                 )
-                E_param *= (photon_budget**0.5) / torch.linalg.norm(
+                E_param *= (photon_budget ** 0.5) / torch.linalg.norm(
                     E_param
                 )  # Re-normalize
 
@@ -2020,7 +2030,9 @@ def torch_optimize_spec_interest_nuisance_multirun(
             current_norm_e_param_for_loss = torch.linalg.norm(E_param)
             # Let potential division by zero or small norm propagate if it occurs here, per instructions
             E_param_normalized_for_loss = (
-                (photon_budget**0.5) * E_param / current_norm_e_param_for_loss
+                (photon_budget ** 0.5)
+                * E_param
+                / current_norm_e_param_for_loss
             )
 
             J_full = fisher_3x3(E_param_normalized_for_loss, F_tensor)
@@ -2047,12 +2059,14 @@ def torch_optimize_spec_interest_nuisance_multirun(
                     cur_norm_e_param_after_step > 1e-12
                 ):  # Check to avoid division by zero if E_param became zero
                     E_param *= (
-                        photon_budget**0.5
+                        photon_budget ** 0.5
                     ) / cur_norm_e_param_after_step
                 # If E_param becomes NaN/Inf, this normalization will also become NaN/Inf.
 
                 E_norm_report = (
-                    (photon_budget**0.5) * E_param / torch.linalg.norm(E_param)
+                    (photon_budget ** 0.5)
+                    * E_param
+                    / torch.linalg.norm(E_param)
                 )
                 # Recalculate J_full_report and J_interest_report for accurate reporting if E_param changed
                 J_full_report = fisher_3x3(E_norm_report, F_tensor)

@@ -22,7 +22,7 @@ nx = xmax * 50
 ny = ymax * 50
 wl = 1  # wavelengtgh
 k = 2 * np.pi / wl  # wave number
-alpha = 4j / k**2  # polarizability
+alpha = 4j / k ** 2  # polarizability
 
 
 fr = ff.FourierRange2d(nx, ny, xmax=xmax, ymax=ymax)
@@ -59,7 +59,7 @@ for i in range(n_scatters):
         if i == j:
             continue
         G_scatter[i, j] = (
-            k**2 * alpha * G0(pos_scatters[:, i], pos_scatters[:, j], k)
+            k ** 2 * alpha * G0(pos_scatters[:, i], pos_scatters[:, j], k)
         )
 
 
@@ -97,7 +97,7 @@ G_grid = np.zeros((nx * ny, n_scatters), dtype=complex)
 for i in range(n_grid):
     for j in range(n_scatters):
         G_grid[i, j] = (
-            k**2 * alpha * G0(grid_flat[:, i], pos_scatters[:, j], k)
+            k ** 2 * alpha * G0(grid_flat[:, i], pos_scatters[:, j], k)
         )
 
 E0_grid = E0(grid_flat, k)

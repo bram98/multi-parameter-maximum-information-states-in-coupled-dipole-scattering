@@ -245,9 +245,9 @@ wavefront_min_eig_J_opt = min_eig_J_optimization_results["bestvec"]
 best_min_eig_J_value = min_eig_J_optimization_results["bestval"]
 
 if wavefront_min_eig_J_opt is not None:
-    optimized_wavefronts["SpecJ_torch"] = (
-        wavefront_min_eig_J_opt  # Key used in original script for spectral opt
-    )
+    optimized_wavefronts[
+        "SpecJ_torch"
+    ] = wavefront_min_eig_J_opt  # Key used in original script for spectral opt
     J_for_min_eig_J_opt = optimizer.J_fisher_info_matrix(
         wavefront_min_eig_J_opt
     )
@@ -694,10 +694,8 @@ print("\n--- Section 13a: D-Optimality (Maximize det(J_marginal)) ---")
 
 nuisance_param_index_for_marginal = 2  # Rotation
 
-loss_fn_det_marginal = (
-    lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
-        optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
-    )
+loss_fn_det_marginal = lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
 )
 
 det_J_marginal_results = optimizer.torch_optimize_loss_multirun(
@@ -755,11 +753,9 @@ print("\nSection 13a (D-Optimality for Marginal FIM) complete.")
 # %% 13b) A-Optimality for Marginal FIM (Minimize Tr(J_marginal^-1))
 print("\n--- Section 13b: A-Optimality (Minimize Tr(J_marginal^-1)) ---")
 
-loss_fn_trace_inv_marginal = (
-    lambda J_full_torch: lossfunctions.minimize_trace_of_marginal_J_inv(
-        optimizer._compute_marginal_fisher_info_matrix(
-            J_full_torch, nuisance_param_index_for_marginal
-        )
+loss_fn_trace_inv_marginal = lambda J_full_torch: lossfunctions.minimize_trace_of_marginal_J_inv(
+    optimizer._compute_marginal_fisher_info_matrix(
+        J_full_torch, nuisance_param_index_for_marginal
     )
 )
 
@@ -822,11 +818,9 @@ print("\nSection 13b (A-Optimality for Marginal FIM) complete.")
 # %% 13c) E-Optimality for Marginal FIM (Maximize min_eig(J_marginal))
 print("\n--- Section 13c: E-Optimality (Maximize min_eig(J_marginal)) ---")
 
-loss_fn_min_eig_marginal = (
-    lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
-        optimizer._compute_marginal_fisher_info_matrix(
-            J_full_torch, nuisance_param_index_for_marginal
-        )
+loss_fn_min_eig_marginal = lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
+    optimizer._compute_marginal_fisher_info_matrix(
+        J_full_torch, nuisance_param_index_for_marginal
     )
 )
 

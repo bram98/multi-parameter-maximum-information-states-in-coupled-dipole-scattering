@@ -246,7 +246,9 @@ class Optimizer:
                 F_mu_nu_operator = self.F_op[mu, nu, :, :]  # (N_in, N_in)
                 # Expectation value: E_c.T @ F_mu_nu_operator @ E_wavefront
                 val = np.dot(E_c, np.dot(F_mu_nu_operator, E_wavefront))
-                J_mat[mu, nu] = (
+                J_mat[
+                    mu, nu
+                ] = (
                     val.real
                 )  # F_mu_nu_operator is Hermitian, so val should be real
         return J_mat
