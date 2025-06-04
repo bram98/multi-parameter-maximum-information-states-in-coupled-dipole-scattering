@@ -4,24 +4,23 @@ Created on Mon Mar 17 10:43:43 2025
 
 @author: 5914787
 """
-import os
-import sys
-
-import matplotlib
-import matplotlib.pyplot as plt
-
 # %%
 import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib import animation
+from scipy import stats
+import os
+import numpy as np
 import torch
+from libraries.ScatteringSimulation import CoupledDipoleSimulator
+from libraries import placedipoles
 from libraries.fishermatrix import FisherMatrix
 from libraries.optimizer import Optimizer
-from libraries.savestate import loadobj, saveobj
-from libraries.ScatteringSimulation import CoupledDipoleSimulator
-from matplotlib import animation
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy import stats
+from libraries.savestate import saveobj, loadobj
 
-from libraries import placedipoles
+import sys
 
 sys.exit()
 
@@ -81,9 +80,7 @@ def calc_E0(sim, base_dipoles, frozen_dipoles):
 
 
 def calc_E_range_theta(sim, theta_range, base_dipoles, frozen_dipoles):
-    E_output = np.zeros(
-        (len(theta_range), 3, sim.grid_points_x), dtype=complex
-    )
+    E_output = np.zeros((len(theta_range), 3, sim.grid_points_x), dtype=complex)
     for p in range(3):
         for i, dtheta in enumerate(theta_range):
             dtheta_vec = dtheta * np.eye(3)[p]
@@ -98,7 +95,7 @@ def calc_E_range_theta(sim, theta_range, base_dipoles, frozen_dipoles):
 
 n_theta = 200
 dE_dtheta = np.zeros((3, sim.grid_points_x), dtype=complex)
-theta_range = 0.1
+theta_range = 0.5
 theta_in = np.linspace(-theta_range, theta_range, num=n_theta)
 
 
@@ -148,9 +145,7 @@ Plot E0 + dE/dtheta * theta - E(theta), how big is the linear region?
 for p in range(3):
     plt.figure()
     ims = plt.imshow(
-        np.abs(
-            E0 + dE_dtheta[p] * theta_in[:, np.newaxis] - E_output[:, p, :]
-        ).T,
+        np.abs(E0 + dE_dtheta[p] * theta_in[:, np.newaxis] - E_output[:, p, :]).T,
         extent=[
             np.min(theta_in),
             np.max(theta_in),
@@ -171,8 +166,7 @@ for p in range(3):
     plt.xlabel(r"$\theta-\theta_0$")
     plt.ylabel(r"$x / \lambda$")
     plt.title(
-        r"$\left|E_{\mathrm{predict}}-E\right|$"
-        + f" for {fishermatrix.param_names[p]}"
+        r"$\left|E_{\mathrm{predict}}-E\right|$" + f" for {fishermatrix.param_names[p]}"
     )
     cax = divider.append_axes("right", size="4%", pad=0.1)
     plt.colorbar(ims, cax=cax)
@@ -245,35 +239,40 @@ def best_estimate(E, dE_dtheta, E0):
 def best_estimate_multilinear_simple(E, dE_dtheta, E0):
     H = dE_dtheta.T
     Hdag = H.conj().T
-    print(f"E {E.shape}")
-    print(f"H {H.shape}")
-    print(f"Hdag {Hdag.shape}")
-    print(f"E0 {E0.shape}")
-    theta_est = np.real(np.linalg.inv(Hdag @ H)) @ np.real(Hdag @ (E - E0))
+    # print(f"E {E.shape}")
+    # print(f"H {H.shape}")
+    # print(f"Hdag {Hdag.shape}")
+    # print(f"E0 {E0.shape}")
+    # theta_est = np.real(np.linalg.inv(Hdag @ H)) @ np.real(Hdag @ (E - E0))
+    theta_est = np.linalg.inv(np.real(Hdag @ H)) @ np.real(Hdag @ (E - E0))
     # theta_est = Hdag @ (E - E0)
     # theta_est = (E - E0)
-    print(f"theta_est {theta_est.shape}")
+    # print(f"theta_est {theta_est.shape}")
     return theta_est
 
 
 p = 2
 dtheta = best_estimate_simple(E_output[0, p], dE_dtheta[p], E0)
 dtheta = best_estimate(E_output, dE_dtheta, E0)
-dtheta = best_estimate_multilinear_simple(E_output[0, p], dE_dtheta, E0)
+dtheta_multi = [
+    best_estimate_multilinear_simple(E_output[t, p], dE_dtheta, E0)[p]
+    for t in range(200)
+]
 
-# for p in range(3):
-#     i = 0
+for p in range(2, 3):
+    i = 0
 
-#     plt.figure()
-#     plt.plot(theta_in, dtheta[:, p])
-#     theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
-#     plt.plot(theta_exact, theta_exact)
-#     param = fishermatrix.param_names[p]
-#     plt.xlabel(r"${}$".format(param))
-#     plt.ylabel(r"predicted ${}$".format(param))
-#     plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
-#     # plt.ylim(np.min(dtheta), np.max(dtheta))
-#     plt.show()
+    plt.figure()
+    plt.plot(theta_in, dtheta[:, p])
+    plt.plot(theta_in, dtheta_multi)
+    theta_exact = theta_in[n_theta // 2 - 30 : n_theta // 2 + 30]
+    plt.plot(theta_exact, theta_exact)
+    param = fishermatrix.param_names[p]
+    plt.xlabel(r"${}$".format(param))
+    plt.ylabel(r"predicted ${}$".format(param))
+    plt.title(f"Best linear estimator for {fishermatrix.param_names[p]}")
+    # plt.ylim(np.min(dtheta), np.max(dtheta))
+    plt.show()
 
 
 # %%
@@ -343,18 +342,14 @@ def measure_heterodyne(E, integration_time, nsamples=None):
     E = np.array(E)
     E_real = E.view(E.real.dtype)  # convert complex array to real array
     if nsamples is None:
-        field_samples = stats.norm.rvs(
-            loc=E_real, scale=1 / (2 * integration_time)
-        )
+        field_samples = stats.norm.rvs(loc=E_real, scale=1 / (2 * integration_time))
     else:
         field_samples = stats.norm.rvs(
             loc=E_real,
             scale=1 / (2 * integration_time),
             size=(nsamples, *E_real.shape),
         )
-    field_samples = field_samples.view(
-        E.dtype
-    )  # convert back to complex array
+    field_samples = field_samples.view(E.dtype)  # convert back to complex array
     return field_samples
 
 
@@ -390,9 +385,7 @@ def measure_heterodyne2(E, integration_time, nsamples=None):
         field_samples = stats.norm.rvs(
             loc=E_real, scale=sigma, size=(nsamples, *E_real.shape)
         )
-    field_samples = field_samples.view(
-        E.dtype
-    )  # convert back to complex array
+    field_samples = field_samples.view(E.dtype)  # convert back to complex array
     return field_samples
 
 

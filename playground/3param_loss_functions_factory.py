@@ -497,7 +497,7 @@ if not folder.exists():
     folder.mkdir()
     print(f"Created folder {folder.absolute()}")
 
-save_state = True
+save_state = False
 # %% 1) define some dipoles in a line
 # base_dipoles = placedipoles.square_of_dipoles(center=(4.0, 0.0), side=1.0)
 base_dipoles = placedipoles.line_of_dipoles(center=(5.0, 0), number=7)
