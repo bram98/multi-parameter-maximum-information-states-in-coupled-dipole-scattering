@@ -81,9 +81,7 @@ class Optimizer:
             torch.tensor(params_of_interest_indices),
         ]
         J22_scalar = full_J_torch[nuisance_param_index, nuisance_param_index]
-        J22 = J22_scalar.reshape(
-            1, 1
-        )
+        J22 = J22_scalar.reshape(1, 1)
 
         try:
             inv_J22 = torch.linalg.inv(J22)
@@ -248,9 +246,7 @@ class Optimizer:
                 F_mu_nu_operator = self.F_op[mu, nu, :, :]  # (N_in, N_in)
                 # Expectation value: E_c.T @ F_mu_nu_operator @ E_wavefront
                 val = np.dot(E_c, np.dot(F_mu_nu_operator, E_wavefront))
-                J_mat[
-                    mu, nu
-                ] = (
+                J_mat[mu, nu] = (
                     val.real
                 )  # F_mu_nu_operator is Hermitian, so val should be real
         return J_mat
