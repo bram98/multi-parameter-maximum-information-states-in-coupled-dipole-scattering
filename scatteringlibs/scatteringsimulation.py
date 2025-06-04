@@ -17,6 +17,8 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
+from scatteringlibs.storable import Storable
+
 
 def _flux_amplitude_2d(k0, kx):
     """
@@ -28,7 +30,7 @@ def _flux_amplitude_2d(k0, kx):
     return np.sqrt((kz / k0).real)
 
 
-class CoupledDipoleSimulator:
+class CoupledDipoleSimulator(Storable):
     """Simulates wave scattering in a 2D slab using the Coupled Dipole Method (CDM).
 
     Attributes:
