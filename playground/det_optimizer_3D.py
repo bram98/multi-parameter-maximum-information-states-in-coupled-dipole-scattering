@@ -90,7 +90,7 @@ def cartesian_from_spherical(phi, theta):
 
 
 def spherical_from_cartesian(x, y, z):
-    r = np.sqrt(x**2 + y**2 + z**2)
+    r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
     theta = np.arccos(z / r)
     phi = np.arctan2(y, x)
     return np.array([phi, theta])

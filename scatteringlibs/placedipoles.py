@@ -1,18 +1,11 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 25 13:29:22 2025
+# scatteringlibs/placedipoles.py
 
-@author: 5914787
-"""
-import traceback
-
-import matplotlib.pyplot as plt
 import numpy as np
 
-from libraries import CoupledDipoleSimulator
+from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 
-def square_of_dipoles(center=(4.0, 0.0), side=1.0):
+def place_square_of_dipoles(center=(4.0, 0.0), side=1.0):
     """
     Return an array shape(2,4) with the x,z coords of 4 dipoles forming a square,
     centered near 'center' (z=?, x=?), side length 'side'.
@@ -27,7 +20,7 @@ def square_of_dipoles(center=(4.0, 0.0), side=1.0):
     return corners.T  # shape(2,4)
 
 
-def line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
+def place_line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
     """
     Return an array shape(2, number) with the x,z coords of a line of dipoles.
     We'll interpret: scatterers[i] = (z_i, x_i).
@@ -39,239 +32,127 @@ def line_of_dipoles(center=(4.0, 0.0), dist=1.0, number=5):
     return pos
 
 
+def place_double_line_of_dipoles(number=7):
+    """
+    Returns an array shape(2, 2*number) with the x,z coords of two lines of dipoles:
+    - First line at z=3 (fixed).
+    - Second line at z=5 (this is the line that gets shifted/rotated in the partial-derivative steps).
+    """
+    line1 = place_line_of_dipoles(center=(3.0, 0.0), dist=1.0, number=number)
+    line2 = place_line_of_dipoles(center=(5.0, 0.0), dist=1.0, number=number)
+    return np.hstack((line1, line2))
+
+
 def shift_and_rotate_dipoles(
-    original_positions, dx, dz, dtheta, frozen_dipoles=[[], []]
+    original_positions, dx, dz, dtheta, frozen_dipoles_positions=None
 ):
     """
-    original_positions: shape(2,N), each col is one dipole
+    original_positions: shape(2,N) with each column a dipole coordinate (z, x) for movable dipoles.
     dx, dz: translations in x,z
-    dtheta: rotation in radians about the shape's centroid
-    Return the new positions shape(2,N).
+    dtheta: rotation in radians about the movable dipoles' centroid.
+    frozen_dipoles_positions: shape(2,M) for fixed dipoles, or None.
+
+    Return the new positions of *all* dipoles, shape(2, N+M).
+    If original_positions represent two lines (e.g., from place_double_line_of_dipoles),
+    this function assumes the first half are frozen and the second half are movable.
+    This interpretation should be handled by the calling function by splitting
+    the `base_dipoles` appropriately. This function will shift/rotate `original_positions`.
     """
-    meanz = np.mean(original_positions[0, :])
-    meanx = np.mean(original_positions[1, :])
-    temp_z = original_positions[0, :] - meanz
-    temp_x = original_positions[1, :] - meanx
+    out = original_positions.copy()
+
+    # Shift/rotate only the 'original_positions'
+    meanz = np.mean(out[0, :])
+    meanx = np.mean(out[1, :])
+    temp_z = out[0, :] - meanz
+    temp_x = out[1, :] - meanx
     cosT = np.cos(dtheta)
     sinT = np.sin(dtheta)
     z_rot = cosT * temp_z - sinT * temp_x
     x_rot = sinT * temp_z + cosT * temp_x
-    z_rot += meanz
-    x_rot += meanx
-    z_rot += dz
-    x_rot += dx
-    shifted_dipoles = np.vstack((z_rot, x_rot))
-    return np.hstack([shifted_dipoles, frozen_dipoles])
+    z_rot += meanz + dz
+    x_rot += meanx + dx
+
+    shifted_rotated_dipoles = np.vstack((z_rot, x_rot))
+
+    if (
+        frozen_dipoles_positions is not None
+        and frozen_dipoles_positions.size > 0
+    ):
+        return np.hstack((frozen_dipoles_positions, shifted_rotated_dipoles))
+    else:
+        return shifted_rotated_dipoles
 
 
-def shift_and_rotate_dipoles_3params(
-    original_positions, dx, dz=None, dtheta=None, frozen_dipoles=[[], []]
-):
-    """
-    Convenience function for generated shifted dipole pairs, to be used in
-    finite difference.
-
-    original_positions: shape(2,Ns), each col is one dipole
-    dx, dz: translations in x,z
-    dtheta: rotation in radians about the shape's centroid
-    Returns array [(scatters_plus_x, scatters_minus_x), ...] with shape
-    (3, 2, 2, Ns) = (Nparam, 2, d, Ns)
-    """
-    if dz is None:
-        dz = dx
-    if dtheta is None:
-        dtheta = dx
-
-    shifted_dipoles = []
-    for dx_, dz_, dtheta_ in zip([dx, 0, 0], [0, dz, 0], [0, 0, dtheta]):
-        dipoles_p = shift_and_rotate_dipoles(
-            original_positions,
-            dx_,
-            dz_,
-            dtheta_,
-            frozen_dipoles=frozen_dipoles,
-        )
-        dipoles_m = shift_and_rotate_dipoles(
-            original_positions,
-            -dx_,
-            -dz_,
-            -dtheta_,
-            frozen_dipoles=frozen_dipoles,
-        )
-        shifted_dipoles.append([dipoles_p, dipoles_m])
-
-    # print(shifted_dipoles, frozen_dipoles)
-    return shifted_dipoles
-
-
-def simulate_dS(
-    sim_kwargs,
-    scatterers_plus,
-    scatterers_minus,
-    angles_deg,
-    delta=1e-3,
-    flux_normalize=True,
-):
-    """
-    Calculates the partial derivative dS/dtheta of the scattering matrix using
-    the CoupledDipoleSimulator class. Performs a finite difference by first
-    calculating the S-matrix with the scatterers in the scatterers_plus positions
-    and then in the scatterers_minus positions.
-
-    Parameters
-    ----------
-    sim_kwargs: dict
-        Dictionary that can be directly passed to a CoupledDipoleSimulator class
-    scatterers_plus, scatters_minus: array of shape (2, Ns)
-        Positions of scatterers .
-    angles_deg: array of shape (nhilbert,)
-        Array of angles (in degrees) that are to be sampled in the scattering
-        matrix.
-    delta: float (default is 1e-3)
-        Stepsize to be used in finite difference
-
-    Returns
-    -------
-    dS: array of shape (nhilbert, nhilbert)
-        Partial derivative of the scattering matrix
-    """
-    scatterers_plus = np.array(scatterers_plus)
-    scatterers_minus = np.array(scatterers_minus)
-    try:
-        assert scatterers_plus.shape == scatterers_minus.shape
-        assert sim_kwargs["Ns"] == scatterers_plus.shape[-1]
-    except AssertionError:
-        # traceback.print_exc()
-        raise ValueError(
-            (
-                f"Shape of dipoles_plus {scatterers_plus.shape}, dipoles_minus "
-                + f'{scatterers_minus.shape} and Ns ({sim_kwargs["Ns"]}) are incompatible'
-            )
-        )
-
-    sim_minus = CoupledDipoleSimulator(**sim_kwargs)
-    sim_minus.scatterers = scatterers_minus
-    S_minus, _ = sim_minus.build_scattering_matrix(
-        angles_deg, flux_normalize=flux_normalize
-    )
-
-    sim_plus = CoupledDipoleSimulator(**sim_kwargs)
-    sim_plus.scatterers = scatterers_plus
-    S_plus, _ = sim_plus.build_scattering_matrix(
-        angles_deg, flux_normalize=flux_normalize
-    )
-
-    return (S_plus - S_minus) / (2 * delta)
-
-
-def simulate_dE(
-    sim_kwargs,
-    scatterers_plus,
-    scatterers_minus,
-    kx_array,
-    wavefront,
-    delta=1e-3,
-):
-    """
-    Calculates the partial derivative dE/dtheta for the field using
-    the CoupledDipoleSimulator class. Performs a finite difference by first
-    calculating E with the scatterers in the scatterers_plus positions
-    and then in the scatterers_minus positions
-
-    Parameters
-    ----------
-    sim_kwargs: dict
-        Dictionary that can be directly passed to a CoupledDipoleSimulator class
-    scatterers_plus, scatters_minus: array of shape (2, Ns)
-        Positions of scatterers .
-    angles_deg: array of shape (nhilbert,)
-        Array of angles (in degrees) that are to be sampled in the scattering
-        matrix.
-    kx_array: array of shape (nhilbert,)
-        Array with kx components. The input field is seen as a superposition
-        of planewaves, whose kx components are given by this array.
-    wavefront: complex array of shape (nhilbert,)
-        Complex coefficients for the input wavefront.
-    delta: float (default is 1e-3)
-        Step to be used in finite difference
-
-    Returns
-    -------
-    dE: array with shape as specified in sim_kwargs
-        Partial derivative of E
-    """
-    assert len(scatterers_plus) == len(scatterers_minus)
-    assert sim_kwargs["Ns"] == len(scatterers_plus)
-
-    # E_minus
-    sim_minus = CoupledDipoleSimulator(**sim_kwargs)
-    sim_minus.scatterers = scatterers_minus
-    sim_minus.set_input_field_kx(kx_array, wavefront)
-    E_minus = sim_minus.compute_total_field()
-
-    # E_plus
-    sim_plus = CoupledDipoleSimulator(**sim_kwargs)
-    sim_plus.scatterers = scatterers_plus
-    sim_plus.set_input_field_kx(kx_array, wavefront)
-    E_plus = sim_plus.compute_total_field()
-
-    dE = (E_plus - E_minus) / (2 * delta)
-    return dE
-
-
-def simulate_dS_3params(
+def calculate_dS_for_3_parameters(
     sim_kwargs,
     angles_deg,
-    base_dipoles,
-    dx,
-    dz=None,
-    dtheta=None,
+    movable_dipoles,
     frozen_dipoles=None,
-    delta=1e-3,
+    delta_param=1e-3,
     flux_normalize=True,
 ):
     """
-    Calculates the partial derivative dS/dtheta of the scattering matrix using
-    the CoupledDipoleSimulator class. Performs a finite difference by first
-    calculating the S-matrix with the scatterers in the scatterers_plus positions
-    and then in the scatterers_minus positions.
+    Calculates dS/d(param) for three parameters: shiftX, shiftZ, and rotation.
+    The shifts/rotation are applied *only* to the `movable_dipoles`.
+    `frozen_dipoles` remain fixed.
 
-    Parameters
-    ----------
-    sim_kwargs: dict
-        Dictionary that can be directly passed to a CoupledDipoleSimulator class
-    scatterers_plus, scatters_minus: array of shape (2, Ns)
-        Positions of scatterers .
-    angles_deg: array of shape (nhilbert,)
-        Array of angles (in degrees) that are to be sampled in the scattering
-        matrix.
-    delta: float (default is 1e-3)
-        Stepsize to be used in finite difference
+    Args:
+        sim_kwargs (dict): Keyword arguments for CoupledDipoleSimulator.
+        angles_deg (np.ndarray): Array of incident/output angles in degrees.
+        movable_dipoles (np.ndarray): Positions (2, N_movable) of the dipoles to be perturbed.
+        frozen_dipoles (np.ndarray, optional): Positions (2, N_frozen) of fixed dipoles. Defaults to None.
+        delta_param (float, optional): Finite difference step. Defaults to 1e-3.
+        flux_normalize (bool, optional): Whether to flux-normalize input for S-matrix. Defaults to True.
 
-    Returns
-    -------
-    dS: array of shape (nhilbert, nhilbert)
-        Partial derivative of the scattering matrix
+    Returns:
+        np.ndarray: dS array of shape (3, N_out, N_in), where 3 corresponds to dx, dz, dtheta.
     """
-    shifted_dipoles = shift_and_rotate_dipoles_3params(
-        base_dipoles,
-        dx=dx,
-        dz=dz,
-        dtheta=dtheta,
-        frozen_dipoles=frozen_dipoles,
-    )
+    dS_list = []
+    param_shifts = [
+        (delta_param, 0.0, 0.0),  # dx
+        (0.0, delta_param, 0.0),  # dz
+        (0.0, 0.0, delta_param),  # dtheta
+    ]
 
-    dS = []
+    # Ensure sim_kwargs reflects the total number of dipoles
+    total_Ns = movable_dipoles.shape[1]
+    if frozen_dipoles is not None and frozen_dipoles.size > 0:
+        total_Ns += frozen_dipoles.shape[1]
 
-    for dipoles_plus, dipoles_minus in shifted_dipoles:
-        dS_cur = simulate_dS(
-            sim_kwargs,
-            dipoles_plus,
-            dipoles_minus,
-            angles_deg,
-            delta,
-            flux_normalize=flux_normalize,
+    # Create a temporary sim_kwargs for this function to avoid modifying the original
+    current_sim_kwargs = sim_kwargs.copy()
+    current_sim_kwargs["Ns"] = total_Ns
+
+    for dx, dz, dtheta in param_shifts:
+        # Positions for S_plus
+        scatterers_plus = shift_and_rotate_dipoles(
+            movable_dipoles,
+            dx,
+            dz,
+            dtheta,
+            frozen_dipoles_positions=frozen_dipoles,
         )
-        dS.append(dS_cur)
+        sim_plus = CoupledDipoleSimulator(**current_sim_kwargs)
+        sim_plus.scatterers = scatterers_plus
+        S_plus, _ = sim_plus.build_scattering_matrix(
+            angles_deg, flux_normalize=flux_normalize
+        )
 
-    return np.array(dS)
+        # Positions for S_minus
+        scatterers_minus = shift_and_rotate_dipoles(
+            movable_dipoles,
+            -dx,
+            -dz,
+            -dtheta,
+            frozen_dipoles_positions=frozen_dipoles,
+        )
+        sim_minus = CoupledDipoleSimulator(**current_sim_kwargs)
+        sim_minus.scatterers = scatterers_minus
+        S_minus, _ = sim_minus.build_scattering_matrix(
+            angles_deg, flux_normalize=flux_normalize
+        )
+
+        S_deriv = (S_plus - S_minus) / (2 * delta_param)
+        dS_list.append(S_deriv)
+
+    return np.array(dS_list)
