@@ -8,23 +8,8 @@ import numpy as np
 import torch
 
 from scatteringlibs import crlbanalysis, placedipoles
-from scatteringlibs.crlbanalysis import (
-    plot_fisher_comparison,
-    plot_pareto_frontiers,
-    plot_pareto_frontiers_individual,
-)
 from scatteringlibs.fishermatrix import FisherMatrix
-from scatteringlibs.lossfunctions import (
-    determinant_of_J,
-    determinant_of_marginal_J,
-    loglin_loss,
-    maximize_min_eig_J,
-    maximize_min_eig_marginal_J,
-    minimize_trace_of_J_inv,
-    minimize_trace_of_marginal_J_inv,
-    offdiag_loss,
-    subdet_loss,
-)
+import scatteringlibs.lossfunctions as lossfunctions
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
@@ -188,13 +173,10 @@ base_sim_for_vis.visualize_intensity(
 
 print("\n--- Section 7a: D-Optimality (Maximize det(J)) ---")
 
-# Import the loss function
-from scatteringlibs.lossfunctions import determinant_of_J
-
 # Perform the optimization using the multi-run method
 # We want to maximize the determinant of J.
 det_J_optimization_results = optimizer.torch_optimize_loss_multirun(
-    loss_function_of_J=determinant_of_J,
+    loss_function_of_J=lossfunctions.determinant_of_J,
     runs=multi_run_count,
     steps=single_run_iterations,
     lr=1e-3,
@@ -253,7 +235,7 @@ print("\n--- Section 7b: E-Optimality (Maximize min eigenvalue of J) ---")
 # Perform the optimization
 # We want to maximize the smallest eigenvalue of J.
 min_eig_J_optimization_results = optimizer.torch_optimize_loss_multirun(
-    loss_function_of_J=maximize_min_eig_J,
+    loss_function_of_J=lossfunctions.maximize_min_eig_J,
     runs=multi_run_count,
     steps=single_run_iterations,
     lr=1e-3,
@@ -320,7 +302,7 @@ print("\n--- Section 7c: A-Optimality (Minimize Tr(J^-1)) ---")
 # Perform the optimization
 # We want to minimize the trace of J_inverse.
 trace_J_inv_optimization_results = optimizer.torch_optimize_loss_multirun(
-    loss_function_of_J=minimize_trace_of_J_inv,
+    loss_function_of_J=lossfunctions.minimize_trace_of_J_inv,
     runs=multi_run_count,
     steps=single_run_iterations,
     lr=1e-3,
@@ -618,7 +600,7 @@ print(
 print("Section 10 (Fisher and Covariance Matrix Visualization Data) complete.")
 
 # Call the visualization function (now imported from crlbanalysis)
-plot_fisher_comparison(
+crlbanalysis.plot_fisher_comparison(
     Js_map=Js_for_visualization,
     J_invs_map=J_invs_for_visualization,
     cond_nums_map=cond_nums_for_visualization,
@@ -631,15 +613,13 @@ print("\nSection 10b (J, J^-1, Condition Number Visualization) complete.")
 # %% 11) Multi-objective optimization considering nuisance parameters
 print("\n--- Section 11: Nuisance Parameter Optimization Strategies ---")
 
-from scatteringlibs.lossfunctions import loglin_loss, offdiag_loss, subdet_loss
-
 block11_loss_histories = {}
 nuisance_param_index = 2  # Corresponds to rotation
 
 strategies = {
     "LogLin": {
         "loss_fn_constructor": lambda: (
-            lambda J_mat: loglin_loss(
+            lambda J_mat: lossfunctions.loglin_loss(
                 J_mat, nuisance_param_index=nuisance_param_index, alpha=0.1
             )
         ),
@@ -647,7 +627,7 @@ strategies = {
     },
     "OffDiag": {
         "loss_fn_constructor": lambda: (
-            lambda J_mat: offdiag_loss(
+            lambda J_mat: lossfunctions.offdiag_loss(
                 J_mat, nuisance_param_index=nuisance_param_index, beta=1.0
             )
         ),
@@ -655,7 +635,7 @@ strategies = {
     },
     "SubDet": {
         "loss_fn_constructor": lambda: (
-            lambda J_mat: subdet_loss(
+            lambda J_mat: lossfunctions.subdet_loss(
                 J_mat, nuisance_param_index=nuisance_param_index
             )
         ),
@@ -729,7 +709,7 @@ print("\n--- Section 13a: D-Optimality (Maximize det(J_marginal)) ---")
 
 nuisance_param_index_for_marginal = 2  # Rotation
 
-loss_fn_det_marginal = lambda J_full_torch: determinant_of_marginal_J(
+loss_fn_det_marginal = lambda J_full_torch: lossfunctions.determinant_of_marginal_J(
     optimizer._compute_marginal_fisher_info_matrix(J_full_torch, 2)
 )
 
@@ -789,7 +769,7 @@ print("\nSection 13a (D-Optimality for Marginal FIM) complete.")
 print("\n--- Section 13b: A-Optimality (Minimize Tr(J_marginal^-1)) ---")
 
 loss_fn_trace_inv_marginal = (
-    lambda J_full_torch: minimize_trace_of_marginal_J_inv(
+    lambda J_full_torch: lossfunctions.minimize_trace_of_marginal_J_inv(
         optimizer._compute_marginal_fisher_info_matrix(
             J_full_torch, nuisance_param_index_for_marginal
         )
@@ -855,7 +835,7 @@ print("\nSection 13b (A-Optimality for Marginal FIM) complete.")
 # %% 13c) E-Optimality for Marginal FIM (Maximize min_eig(J_marginal))
 print("\n--- Section 13c: E-Optimality (Maximize min_eig(J_marginal)) ---")
 
-loss_fn_min_eig_marginal = lambda J_full_torch: maximize_min_eig_marginal_J(
+loss_fn_min_eig_marginal = lambda J_full_torch: lossfunctions.maximize_min_eig_marginal_J(
     optimizer._compute_marginal_fisher_info_matrix(
         J_full_torch, nuisance_param_index_for_marginal
     )
@@ -1027,7 +1007,7 @@ else:
         else optimizer.F_op
     )
 
-    plot_pareto_frontiers_individual(
+    crlbanalysis.plot_pareto_frontiers_individual(
         optimized_wavefronts=optimized_wavefronts,
         F_operator_tensor=F_op_numpy,  # Should be optimizer.F_op as per instructions
         photon_budget=photon_budget,  # Global variable
@@ -1045,7 +1025,7 @@ print(
 
 # Call 1: CRLB_x vs CRLB_z
 print("\nPlotting CRLB_x vs CRLB_z...")
-plot_pareto_frontiers(
+crlbanalysis.plot_pareto_frontiers(
     optimized_wavefronts_dict=optimized_wavefronts,
     F_operator_tensor_np=optimizer.F_op,
     photon_budget_val=photon_budget,
@@ -1057,7 +1037,7 @@ plot_pareto_frontiers(
 
 # Call 2: CRLB_x vs CRLB_theta
 print("\nPlotting CRLB_x vs CRLB_theta...")
-plot_pareto_frontiers(
+crlbanalysis.plot_pareto_frontiers(
     optimized_wavefronts_dict=optimized_wavefronts,
     F_operator_tensor_np=optimizer.F_op,
     photon_budget_val=photon_budget,
@@ -1069,7 +1049,7 @@ plot_pareto_frontiers(
 
 # Call 3: CRLB_z vs CRLB_theta
 print("\nPlotting CRLB_z vs CRLB_theta...")
-plot_pareto_frontiers(
+crlbanalysis.plot_pareto_frontiers(
     optimized_wavefronts_dict=optimized_wavefronts,
     F_operator_tensor_np=optimizer.F_op,
     photon_budget_val=photon_budget,
