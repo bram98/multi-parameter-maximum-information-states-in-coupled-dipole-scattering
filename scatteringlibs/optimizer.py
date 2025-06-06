@@ -196,28 +196,92 @@ class Optimizer(Storable):
             )
         return mis_results
 
-    # def eig_optimize_F_general(
-    #     self, matrix_function_of_F, maximize=True, num=1
-    # ):
-    #     """
-    #     Optimizes a general matrix function of the Fisher operator tensor F_op
-    #     via eigenvalue decomposition.
+    def get_weighted_trace_mis(self, photon_budget: float = 1.0):
+        """
+        Computes the MIS for a weighted trace of the diagonal Fisher operators.
+        This involves normalizing each F_mumu block by its largest eigenvalue
+        and then applying a user-defined weight to each block.
 
-    #     Args:
-    #         matrix_function_of_F (function): A function that takes the full F_op
-    #                                          (nparams, nparams, N_in, N_in) and
-    #                                          returns a 2D matrix (N_in, N_in)
-    #                                          to be diagonalized.
-    #         maximize (bool, optional): Maximize or minimize eigenvalues. Defaults to True.
-    #         num (int, optional): Number of eigenvectors to return. Defaults to 1.
+        The operator to be diagonalized is:
+        F_weighted_trace = sum(weights[i] * (1/lambda_max_i) * F_op[i,i,:,:])
 
-    #     Returns:
-    #         tuple: (eigenvalues, eigenvectors)
-    #     """
-    #     target_matrix = matrix_function_of_F(self.F_op)
-    #     return self.eig_optimize_matrix(
-    #         target_matrix, maximize=maximize, num=num
-    #     )
+        Args:
+            photon_budget (float, optional): Photon budget for normalizing the final wavefront.
+                                             Defaults to 1.0.
+
+        Returns:
+            dict: A dictionary containing the result under the key 'weighted_trace',
+                  which includes the largest eigenvalue of the combined operator,
+                  the corresponding wavefront (MIS), the weights used, and the
+                  normalization factors applied.
+        """
+
+        # 1. Compute normalization factors (1 / max_eigenvalue of each F_ii)
+        normalization_factors = np.zeros(self.nparams)
+        for i in range(self.nparams):
+            F_ii = self.F_op[i, i, :, :]
+            max_eig_val, _ = self.eig_optimize_matrix(
+                F_ii, maximize=True, num=1
+            )
+            if (
+                max_eig_val > 1e-12
+            ):  # Avoid division by zero or very small numbers
+                normalization_factors[i] = 1.0 / max_eig_val
+            else:
+                normalization_factors[i] = (
+                    0.0  # This parameter contributes nothing
+                )
+
+        # 2. Compute the weighted trace operator
+        F_weighted_trace_op = np.zeros(
+            (self.n_input_modes, self.n_input_modes), dtype=complex
+        )
+        for i in range(self.nparams):
+            F_weighted_trace_op += (
+                normalization_factors[i] * self.F_op[i, i, :, :]
+            )
+
+        # 3. Find the MIS for this combined operator
+        lam_max, v_max = self.eig_optimize_matrix(
+            F_weighted_trace_op, maximize=True, num=1
+        )
+
+        # 4. Normalize the resulting wavefront
+        normalized_v_max = Optimizer.normalize_wavefront(v_max, photon_budget)
+
+        # 5. Format and return the result
+        result = {
+            "weighted_trace": {
+                "eigenvalue": lam_max,
+                "wavefront": normalized_v_max,
+                "normalization_factors": normalization_factors,
+            }
+        }
+        print(f"Weighted Trace MIS: Max Eigenvalue = {lam_max:.3g}")
+        return result
+
+    def eig_optimize_F_general(
+        self, matrix_function_of_F, maximize=True, num=1
+    ):
+        """
+        Optimizes a general matrix function of the Fisher operator tensor F_op
+        via eigenvalue decomposition.
+
+        Args:
+            matrix_function_of_F (function): A function that takes the full F_op
+                                             (nparams, nparams, N_in, N_in) and
+                                             returns a 2D matrix (N_in, N_in)
+                                             to be diagonalized.
+            maximize (bool, optional): Maximize or minimize eigenvalues. Defaults to True.
+            num (int, optional): Number of eigenvectors to return. Defaults to 1.
+
+        Returns:
+            tuple: (eigenvalues, eigenvectors)
+        """
+        target_matrix = matrix_function_of_F(self.F_op)
+        return self.eig_optimize_matrix(
+            target_matrix, maximize=maximize, num=num
+        )
 
     def J_fisher_info_matrix(self, E_wavefront: np.ndarray):
         """
