@@ -196,28 +196,28 @@ class Optimizer(Storable):
             )
         return mis_results
 
-    def eig_optimize_F_general(
-        self, matrix_function_of_F, maximize=True, num=1
-    ):
-        """
-        Optimizes a general matrix function of the Fisher operator tensor F_op
-        via eigenvalue decomposition.
+    # def eig_optimize_F_general(
+    #     self, matrix_function_of_F, maximize=True, num=1
+    # ):
+    #     """
+    #     Optimizes a general matrix function of the Fisher operator tensor F_op
+    #     via eigenvalue decomposition.
 
-        Args:
-            matrix_function_of_F (function): A function that takes the full F_op
-                                             (nparams, nparams, N_in, N_in) and
-                                             returns a 2D matrix (N_in, N_in)
-                                             to be diagonalized.
-            maximize (bool, optional): Maximize or minimize eigenvalues. Defaults to True.
-            num (int, optional): Number of eigenvectors to return. Defaults to 1.
+    #     Args:
+    #         matrix_function_of_F (function): A function that takes the full F_op
+    #                                          (nparams, nparams, N_in, N_in) and
+    #                                          returns a 2D matrix (N_in, N_in)
+    #                                          to be diagonalized.
+    #         maximize (bool, optional): Maximize or minimize eigenvalues. Defaults to True.
+    #         num (int, optional): Number of eigenvectors to return. Defaults to 1.
 
-        Returns:
-            tuple: (eigenvalues, eigenvectors)
-        """
-        target_matrix = matrix_function_of_F(self.F_op)
-        return self.eig_optimize_matrix(
-            target_matrix, maximize=maximize, num=num
-        )
+    #     Returns:
+    #         tuple: (eigenvalues, eigenvectors)
+    #     """
+    #     target_matrix = matrix_function_of_F(self.F_op)
+    #     return self.eig_optimize_matrix(
+    #         target_matrix, maximize=maximize, num=num
+    #     )
 
     def J_fisher_info_matrix(self, E_wavefront: np.ndarray):
         """
