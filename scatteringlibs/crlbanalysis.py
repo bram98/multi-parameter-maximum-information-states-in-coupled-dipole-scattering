@@ -570,7 +570,7 @@ def plot_crlb_vs_crlb(
     )
 
     plt.tight_layout()
-    plt.show()
+    # plt.show() # Removed this line
 
 
 def plot_pareto_frontiers(
