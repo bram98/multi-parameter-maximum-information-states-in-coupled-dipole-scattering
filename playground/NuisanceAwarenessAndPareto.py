@@ -577,7 +577,7 @@ if verbose_plotting:
     )
 
 
-# %% 8) Compare CRLB, with optional plane wave or random wavefront comparison
+# %% 10) Compare CRLB, with optional plane wave or random wavefront comparison
 
 crlbanalysis.visualize_crlb_comparison(
     optimized_wavefronts=optimized_wavefronts,
@@ -592,7 +592,7 @@ crlbanalysis.visualize_crlb_comparison(
     num_random_samples=100,
 )
 
-# %% 17) Generate Pareto frontier plots
+# %% 11) Generate Pareto frontier plots
 print("\n--- Block 17: Generating Pareto frontier plots... ---")
 
 # 1. Create wavefront_categories dictionary
@@ -675,6 +675,122 @@ category_styles_def = {
 print("\nPlotting CRLB_x vs CRLB_z...")
 crlbanalysis.plot_pareto_frontiers(
     optimized_wavefronts_dict=optimized_wavefronts,
+    F_operator_tensor_np=optimizer.F_op,
+    photon_budget_val=photon_budget,
+    param_names_list=param_names,
+    params_to_plot_indices=[0, 1],
+    wavefront_categories_style=category_styles_def,
+    wavefront_labels_latex_map=wavefront_labels_latex,
+)
+
+# %% 11b) Leaner plot alternative
+
+# 1. Create wavefront_categories dictionary
+wavefront_categories_map = {}
+for key in optimized_wavefronts.keys():
+    if key.startswith("MIS_") or "TraceJ_norm_eig" in key:
+        wavefront_categories_map[key] = "MIS"
+    elif key in ["DetJ_torch", "SpecJ_torch", "TraceJinv_torch"]:
+        wavefront_categories_map[key] = "TorchFull"
+    elif key in ["LogLin_torch", "OffDiag_torch", "SubDet_torch"]:
+        wavefront_categories_map[key] = "NuisanceHeuristic"
+    elif (
+        key.startswith("DetJ_marginal_")
+        or key.startswith("TraceJinv_marginal_")
+        or key.startswith("SpecJ_marginal_")
+    ):
+        wavefront_categories_map[key] = "TorchMarginal"
+    else:
+        wavefront_categories_map[key] = "Other"
+
+# 2. Create wavefront_labels_latex dictionary with unified typography from previous steps
+wavefront_labels_latex = {
+    "MIS_shiftX": r"MIS$_{x}$",
+    "MIS_shiftZ": r"MIS$_{z}$",
+    "MIS_rotation": r"MIS$_{\theta}$",
+    "TraceJ_norm_eig": r"$\max\,\mathrm{Tr}(\mathcal{J})$",
+    "DetJ_torch": r"$\max\,\det(\mathcal{J})$",
+    "SpecJ_torch": r"$\max\,\lambda_{\min}(\mathcal{J})$",
+    "TraceJinv_torch": r"$\min\,\mathrm{Tr}(\mathcal{J}^{-1})$",
+    "LogLin_torch": r"$\text{LogLin}$",
+    "OffDiag_torch": r"$\text{OffDiag}$",
+    # "SubDet_torch": r"$\text{SubDet}$",
+    "SubDet_torch": r"$\max\,\det(\mathcal{J}_{\psi|\psi})$",
+    "DetJ_marginal_n2_torch": r"$\max\,\det(\mathcal{J}_{\psi|\phi})$",
+    "TraceJinv_marginal_n2_torch": r"$\min\,\mathrm{Tr}((\mathcal{J}_{\psi|\phi})^{-1})$",
+    "SpecJ_marginal_n2_torch": r"$\max\,\lambda_{\min}(\mathcal{J}_{\psi|\phi})$",
+}
+
+
+wavefront_labels_latex = {
+    # Single-parameter MIS
+    "MIS_shiftX": r"MIS$_{x}$",
+    "MIS_shiftZ": r"MIS$_{z}$",
+    "MIS_rotation": r"MIS$_{\theta}$",
+    # Full FIM Optimality Criteria
+    "TraceJ_norm_eig": r"T-Opt. ($\mathcal{J}$)",
+    "DetJ_torch": r"D-Opt. ($\mathcal{J}$)",
+    "SpecJ_torch": r"E-Opt. ($\mathcal{J}$)",
+    "TraceJinv_torch": r"A-Opt. ($\mathcal{J}$)",
+    # Heuristic Nuisance Strategies
+    "LogLin_torch": "LogLin",
+    "OffDiag_torch": "OffDiag",
+    "SubDet_torch": "D-Opt. ($\mathcal{J}_{\psi|\psi}$)",
+    # Marginal FIM Optimality Criteria (Principled Nuisance-Aware)
+    "DetJ_marginal_n2_torch": r"D-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+    "TraceJinv_marginal_n2_torch": r"A-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+    "SpecJ_marginal_n2_torch": r"E-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+}
+
+for key in optimized_wavefronts.keys():
+    if key not in wavefront_labels_latex:
+        wavefront_labels_latex[key] = key.replace("_", " ").replace(
+            "torch", ""
+        )
+
+# 3. Define category_styles with new, clearer labels
+category_styles_def = {
+    "MIS": {
+        "marker": "x",
+        "color": "purple",
+        "label": "Single-Param. MIS",
+    },
+    "n2_torch": {
+        "marker": "o",
+        "color": "blue",
+        "label": "Two-Param. MIS, nuisance-aware",
+    },
+    "_torch": {
+        "marker": "s",
+        "color": "green",
+        "label": "Multi-Param. MIS",
+    },
+    "SubDet_torch": {
+        "marker": "P",
+        "color": "red",
+        "label": "Two-Param. MIS",
+    },
+    "Other": {"marker": "d", "color": "grey", "label": "Other"},
+    "default": {"marker": "*", "color": "black", "label": "Default"},
+}
+
+# 4. Create a copy of the wavefronts dictionary for plotting
+wavefronts_for_plotting = optimized_wavefronts.copy()
+
+# Remove the 'TraceJ_norm_eig' wavefront as requested
+wavefronts_for_plotting.pop("TraceJ_norm_eig", None)
+
+# wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
+# wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
+# wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
+
+print("\n'TraceJ_norm_eig' wavefront removed from the following plots.")
+
+
+# 5. Call the plotting function with the modified dictionary
+print("\nPlotting CRLB_x vs CRLB_z...")
+crlbanalysis.plot_pareto_frontiers(
+    optimized_wavefronts_dict=wavefronts_for_plotting,
     F_operator_tensor_np=optimizer.F_op,
     photon_budget_val=photon_budget,
     param_names_list=param_names,
