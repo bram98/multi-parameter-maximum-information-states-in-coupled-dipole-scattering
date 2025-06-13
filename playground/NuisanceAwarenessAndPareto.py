@@ -592,98 +592,7 @@ crlbanalysis.visualize_crlb_comparison(
     num_random_samples=100,
 )
 
-# %% 11) Generate Pareto frontier plots
-print("\n--- Block 17: Generating Pareto frontier plots... ---")
-
-# 1. Create wavefront_categories dictionary
-wavefront_categories_map = {}
-for key in optimized_wavefronts.keys():
-    if key.startswith("MIS_"):
-        wavefront_categories_map[key] = "MIS"
-    elif "TraceJ_eig" == key:
-        wavefront_categories_map[key] = "TraceJ_eig"
-    elif key in ["DetJ_torch", "SpecJ_torch", "TraceJinv_torch"]:
-        wavefront_categories_map[key] = "TorchFull"
-    elif key in ["LogLin_torch", "OffDiag_torch", "SubDet_torch"]:
-        wavefront_categories_map[key] = "NuisanceOriginal"
-    elif (
-        key.startswith("DetJ_marginal_")
-        or key.startswith("TraceJinv_marginal_")
-        or key.startswith("SpecJ_marginal_")
-    ):
-        wavefront_categories_map[key] = "TorchMarginal"
-    else:
-        wavefront_categories_map[key] = "Other"
-
-# 2. Create wavefront_labels_latex dictionary
-wavefront_labels_latex = {
-    "MIS_shiftX": r"MIS$_x$",
-    "MIS_shiftZ": r"MIS$_z$",
-    "MIS_rotation": r"MIS$_\theta$",
-    "TraceJ_eig": r"Max Tr($\mathcal{J}$)$_{eig}$",
-    "DetJ_torch": r"Max Det($\mathcal{J}$)",
-    "SpecJ_torch": r"Max MinEig($\mathcal{J}$)",
-    "TraceJinv_torch": r"Min Tr($\mathcal{J}^{-1}$)",
-    "LogLin_torch": r"LogLin",
-    "OffDiag_torch": r"OffDiag",
-    "SubDet_torch": r"SubDet",
-    "DetJ_marginal_n2_torch": r"Max Det($\mathcal{J}_{\psi|\phi}$)",
-    "TraceJinv_marginal_n2_torch": r"Min Tr($\mathcal{J}^{-1}_{\psi|\phi}$)",
-    "SpecJ_marginal_n2_torch": r"Max MinEig($\mathcal{J}_{\psi|\phi}$)",
-}
-# Add default labels for any missing keys
-for key in optimized_wavefronts.keys():
-    if key not in wavefront_labels_latex:
-        wavefront_labels_latex[key] = key.replace("_", " ").replace(
-            "torch", ""
-        )
-
-
-# 3. Define category_styles
-category_styles_def = {
-    "MIS": {
-        "marker": "x",
-        "color": "purple",
-        "label": "MIS via eigenvalue decomposition",
-    },
-    "TraceJ_eig": {
-        "marker": "x",
-        "color": "purple",
-        "label": "MIS via eigenvalue decomposition",
-    },
-    "TorchFull": {"marker": "o", "color": "blue", "label": "Full FIM Optim."},
-    "NuisanceOriginal": {
-        "marker": "s",
-        "color": "green",
-        "label": "Nuisance-engineered FIM via gradent descent optimization",
-    },
-    "TorchMarginal": {
-        "marker": "P",
-        "color": "red",
-        "label": "Marginal FIM via gradent descent optimization",
-    },
-    "Other": {"marker": "d", "color": "grey", "label": "Other"},
-    "default": {
-        "marker": "*",
-        "color": "black",
-        "label": "Gradient descent optimization",
-    },  # Fallback for the plotting function
-}
-
-
-# Call 1: CRLB_x vs CRLB_z
-print("\nPlotting CRLB_x vs CRLB_z...")
-crlbanalysis.plot_pareto_frontiers(
-    optimized_wavefronts_dict=optimized_wavefronts,
-    F_operator_tensor_np=optimizer.F_op,
-    photon_budget_val=photon_budget,
-    param_names_list=param_names,
-    params_to_plot_indices=[0, 1],
-    wavefront_categories_style=category_styles_def,
-    wavefront_labels_latex_map=wavefront_labels_latex,
-)
-
-# %% 11b) Leaner plot alternative
+# %% 11) Generate Pareto frontier plot
 
 # 1. Create wavefront_categories dictionary
 wavefront_categories_map = {}
@@ -779,10 +688,10 @@ wavefronts_for_plotting = optimized_wavefronts.copy()
 # Remove the 'TraceJ_norm_eig' wavefront as requested
 wavefronts_for_plotting.pop("TraceJ_norm_eig", None)
 
-wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
-wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
-wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
-wavefronts_for_plotting.pop("SubDet_torch", None)
+# wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
+# wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
+# wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
+# wavefronts_for_plotting.pop("SubDet_torch", None)
 
 print("\n'TraceJ_norm_eig' wavefront removed from the following plots.")
 
