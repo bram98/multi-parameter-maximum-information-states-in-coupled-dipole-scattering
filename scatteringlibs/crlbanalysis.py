@@ -623,7 +623,7 @@ def plot_pareto_frontiers(
     )
 
     if filepath:
-        plt.savefig(filepath, dpi=dpi, bbox_inches='tight')
+        plt.savefig(filepath, dpi=dpi, bbox_inches="tight")
     plt.show()
 
 
