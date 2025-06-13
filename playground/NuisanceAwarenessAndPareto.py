@@ -681,6 +681,8 @@ crlbanalysis.plot_pareto_frontiers(
     params_to_plot_indices=[0, 1],
     wavefront_categories_style=category_styles_def,
     wavefront_labels_latex_map=wavefront_labels_latex,
+    filepath="pareto_frontier_x_vs_z.png",
+    dpi=300,
 )
 
 # %% 11b) Leaner plot alternative
