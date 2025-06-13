@@ -581,6 +581,8 @@ def plot_pareto_frontiers(
     params_to_plot_indices: list,
     wavefront_categories_style: dict,
     wavefront_labels_latex_map: dict,
+    filepath: str = None,
+    dpi: int = 300,
 ):
     """
     Calculates CRLBs and plots a specific Pareto frontier based on two selected parameter indices.
@@ -619,6 +621,10 @@ def plot_pareto_frontiers(
         wavefront_labels_latex_map,
         figure_title_prefix="Pareto: ",  # Standard prefix for these plots
     )
+
+    if filepath:
+        plt.savefig(filepath, dpi=dpi, bbox_inches='tight')
+    plt.show()
 
 
 def plot_pareto_frontiers_individual(
