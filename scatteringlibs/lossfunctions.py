@@ -1,9 +1,235 @@
 # scatteringlibs/lossfunctions.py
+import numpy as np
 import torch
+
+from scatteringlibs.optimizer import Optimizer
+from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
+from scatteringlibs.storable import Storable
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Basic Loss Functions / Objectives for the full J matrix
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+class LossFunctionsDict(Storable, dict):
+    pass
+
+
+class LossFunction(Storable):
+    """
+    Class for handling loss functions conveniently. Encompasses:
+        1. A loss function that takes in the Fisher matrix or J and returns a
+        scalar
+        2.
+
+    Parameters
+    ----------
+    loss_function : function or lambda expression
+        Expects a Fisher matrix F and should return a scalar in case method=='torch'
+        and should return a matrix in case method=='eig'.
+    name: str
+        Name of method. Used in printing.
+    displayname: str, optional
+        Used in plots. If not provided, `name` will be used.
+    shortname: str, optional
+        Used as an abbreviation. Can be used in plots along the axis. Not used
+        by this class.
+    maximize: bool, default: True
+        If True the loss_function will be maximized, otherwise minimized.
+    method: {'eig', 'torch'}
+        For 'eig', the optimized will calculate the largest eigenvalue of the
+        matrix returned by loss_function. Otherwise it will use torch
+        optimization.
+    """
+
+    _optim_methods = ("eig", "torch")
+    photon_budget = 1.0
+
+    def __init__(
+        self,
+        loss_function,
+        name,
+        displayname=None,
+        shortname=None,
+        maximize=True,
+        method="eig",
+        steps=2000,
+        multiruns=None,
+    ):
+        self.loss_function = loss_function
+        self.name = name
+        if shortname is None:
+            shortname = name
+        self.shortname = shortname
+        if displayname is None:
+            displayname = name
+        self.displayname = displayname
+        self.maximize = maximize
+        if not method in LossFunction._optim_methods:
+            raise ValueError(
+                f"Method '{method}' not supported. Please use "
+                "one of " + str(LossFunction._optim_methods)
+            )
+        self.method = method
+
+        self._wavefront = None
+        self.bestval = None
+        self.loss_history = None
+
+        self.steps = steps
+        self.multiruns = multiruns
+
+    @staticmethod
+    def normalize_wavefront(wavefront):
+        """
+        Normalizes wavefront. Use the class variable LossFunction.photon_budget
+        to determine the final scale.
+        """
+
+        norm_sq = np.sum(np.abs(wavefront) ** 2)
+
+        if norm_sq <= 0.0:
+            return wavefront
+
+        return wavefront * np.sqrt(LossFunction.photon_budget / norm_sq)
+
+    def optimize(
+        self,
+        optimizer: Optimizer,
+        seed=None,
+        steps=None,
+        multiruns=None,
+        num_eig=1,
+        verbose=True,
+        lr=1e-3,
+        photon_budget=1.0,
+    ):
+        """
+        Performs the optimization. If method == 'eig', the optimizer finds the
+        eigenvectors and eigenvalues of the matrix returned by loss_function.
+        If method == 'torch', the loss_function is optimized using torch. The
+        loss_function should return a scalar and for calculations, torch
+        methods should be used.
+
+        Parameters
+        ----------
+        optimizer: Optimizer
+            The optimizer from the libraries.optimizer class
+        seed: int, default: None
+            Provide a seed for torch optimizer to make the run deterministic.
+        steps: int, default: None
+            Number of steps for torch optimizer. When not given, uses the steps
+            attribute, which has default 2000.
+        multiruns: int, default: None
+            How many times to repeat the torch optimization. When not given,
+            uses the instance attribute. When that is also None, the optimizer
+            runs once.
+        num_eig: int, default: 1
+            How many eigenvalues/eigenvectors to return for the eig optimizer
+        verbose: bool, default: True
+            Enable printing.
+        """
+
+        if self.method == "eig":
+            bestval, wavefront = optimizer.eig_optimize_F_general(
+                self.loss_function, maximize=self.maximize, num=num_eig
+            )
+            self.wavefront = LossFunction.normalize_wavefront(wavefront)
+            self.bestval = bestval
+
+        elif self.method == "torch":
+            steps = steps or self.steps
+            multiruns = multiruns or self.multiruns
+
+            if multiruns is None:
+                result = optimizer.torch_optimize_loss(
+                    self.loss_function,
+                    steps=steps,
+                    lr=lr,
+                    verbose=verbose,
+                    maximize=self.maximize,
+                    photon_budget=photon_budget,
+                    seed=seed,
+                )
+                self.loss_history = result["loss_history"]
+            else:
+                result = optimizer.torch_optimize_loss_multirun(
+                    self.loss_function,
+                    runs=multiruns,
+                    steps=steps,
+                    lr=lr,
+                    verbose=verbose,
+                    maximize=self.maximize,
+                    photon_budget=photon_budget,
+                    base_seed=seed,
+                )
+                self.loss_history = result["all_loss_histories"]
+            self.wavefront = LossFunction.normalize_wavefront(
+                result["bestvec"]
+            )
+            self.bestval = result["bestval"]
+            # print(result)
+
+        if verbose:
+            print(f"Optimized {self.name: <30}loss: {self.bestval:.5g}")
+
+    def visualize(
+        self, sim: CoupledDipoleSimulator, kx_array, title=None, dpi=100
+    ):
+        """
+        Plot wavefront and scatterers.
+
+        Parameters
+        ----------
+        sim: CoupledDipoleSimulator
+            The simulator that is used
+        kx_array: np.array
+            Input kx_vectors. Can be seen as input angles. Must have same
+            dimension as wavefront
+        title: str, default: None
+            Title to be used on plot
+        dpi: int, default: 100
+            dpi to be used in plot.
+
+        """
+        sim.reset()
+        sim.set_input_field_kx(kx_array, self.wavefront)
+        sim.solve_fields()
+
+        if title is None:
+            title = f"{self.displayname} Optimized Wavefront"
+
+        sim.visualize_intensity(title=title, dpi=dpi)
+
+    @property
+    def wavefront(self):
+        if self._wavefront is None:
+            raise ValueError(
+                "Wavefront not defined. Please run optimizer first."
+            )
+
+        return self._wavefront
+
+    @wavefront.setter
+    def wavefront(self, wavefront):
+        self._wavefront = wavefront
+
+    def __str__(self):
+        return f"<LossFunction {self.name}>"
+
+    def __repr__(self):
+        return f"<LossFunction {self.name}>"
+
+
+def single_param_F(i: int) -> np.ndarray:
+    """
+    Used for calculating the single parameter Fisher information.
+    Args:
+        i (int): the parameter to optimize for
+    Returns:
+        lambda: function that takes in F and returns F[i, i]
+    """
+    return lambda F: F[i, i]
 
 
 def determinant_of_J(J_mat: torch.Tensor) -> torch.Tensor:
@@ -21,13 +247,37 @@ def determinant_of_J(J_mat: torch.Tensor) -> torch.Tensor:
 def trace_of_J(J_mat: torch.Tensor) -> torch.Tensor:
     """
     Calculates the trace of the Fisher Information Matrix J.
-    For T-optimality, this value should be maximized.
     Args:
         J_mat (torch.Tensor): The Fisher Information Matrix (nparams, nparams).
     Returns:
         torch.Tensor: The trace of J_mat.
     """
     return torch.trace(J_mat)
+
+
+def trace_of_F(F: np.ndarray) -> np.ndarray:
+    """
+    Calculates the trace of the Fisher Information operator F.
+    Args:
+        F (np.ndarray): The Fisher Information Matrix (nparams, nparams, nhilbert, nhilbert).
+    Returns:
+        np.ndarray: The trace of F with shape (nhilbert, nhilbert).
+    """
+    return np.trace(F, axis1=0, axis2=1)
+
+
+def F_weighted(F: np.ndarray, w) -> np.ndarray:
+    eig_max = [np.linalg.eigvalsh(F[i, i])[-1] for i in range(3)]
+    scale_factors = 1 / np.sqrt(eig_max)
+    scale_factors = np.outer(w, w)  # Create matrix
+    scale_factors = scale_factors[:, :, np.newaxis, np.newaxis]
+    return F * scale_factors
+
+
+def normalized_trace_of_F(F: np.ndarray) -> np.ndarray:
+    eig_max = [np.linalg.eigvalsh(F[i, i])[-1] for i in range(F.shape[0])]
+    w = 1 / np.sqrt(eig_max)
+    return trace_of_F(F_weighted(F, w))
 
 
 def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:

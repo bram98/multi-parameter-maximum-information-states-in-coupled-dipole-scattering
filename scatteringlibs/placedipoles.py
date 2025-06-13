@@ -43,6 +43,49 @@ def place_double_line_of_dipoles(number=7):
     return np.hstack((line1, line2))
 
 
+def _fibonacci_chain(iterations):
+    """
+    Generates the Fibonacci word using L-system rules with L and S:
+      - Axiom: 'L'
+      - Production rules:
+          'L' -> 'LS'
+          'S' -> 'L'
+    After n iterations, returns the L-system string (i.e., the Fibonacci word in L/S form).
+    """
+    axiom = "L"
+    rules = {"L": "LS", "S": "L"}
+
+    result = axiom
+    for _ in range(iterations):
+        next_result = []
+        for symbol in result:
+            next_result.append(rules.get(symbol, symbol))
+        result = "".join(next_result)
+    return result
+
+
+def place_quasi_random_line_of_dipoles(
+    center=(4.0, 0.0), small_dist=1.0, number=5, start_index=0
+):
+
+    fib_chain = "LSLLSLSLLSLLSLSLLSLSLLSLLSLSLLSLLSLSLLSLSLLSLLSLSLLSLSL"
+    fib_chain = fib_chain[start_index : start_index + number]
+    print(fib_chain)
+    golden_ratio = (1 + np.sqrt(5)) / 2
+
+    y = 0
+    pos = np.zeros((2, number))
+    for i in range(number):
+        pos[0, i] = center[0]
+        pos[1, i] = y
+        if fib_chain[i] == "L":
+            y += golden_ratio * small_dist
+        elif fib_chain[i] == "S":
+            y += small_dist
+    pos[1, :] += center[1] - np.mean(pos[1, :])
+    return pos
+
+
 def shift_and_rotate_dipoles(
     original_positions, dx, dz, dtheta, frozen_dipoles_positions=None
 ):
@@ -126,28 +169,23 @@ def calculate_dS_for_3_parameters(
     for dx, dz, dtheta in param_shifts:
         # Positions for S_plus
         scatterers_plus = shift_and_rotate_dipoles(
-            movable_dipoles,
-            dx,
-            dz,
-            dtheta,
-            frozen_dipoles_positions=frozen_dipoles,
+            movable_dipoles, dx, dz, dtheta
         )
         sim_plus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_plus.scatterers = scatterers_plus
+        sim_plus.movable_scatterers = scatterers_plus
+        sim_plus.frozen_scatterers = frozen_dipoles
         S_plus, _ = sim_plus.build_scattering_matrix(
             angles_deg, flux_normalize=flux_normalize
         )
 
         # Positions for S_minus
         scatterers_minus = shift_and_rotate_dipoles(
-            movable_dipoles,
-            -dx,
-            -dz,
-            -dtheta,
-            frozen_dipoles_positions=frozen_dipoles,
+            movable_dipoles, -dx, -dz, -dtheta
         )
         sim_minus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_minus.scatterers = scatterers_minus
+        sim_minus.movable_scatterers = scatterers_minus
+        sim_minus.frozen_scatterers = frozen_dipoles
+        # print(total_Ns, sim_minus.movable_scatterers.shape, sim)
         S_minus, _ = sim_minus.build_scattering_matrix(
             angles_deg, flux_normalize=flux_normalize
         )

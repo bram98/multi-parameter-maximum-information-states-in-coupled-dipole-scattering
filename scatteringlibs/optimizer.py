@@ -34,9 +34,9 @@ class Optimizer(Storable):
         self.Ft = None  # Torch version, initialized when needed
         self.device = device
         self.nparams, _, self.n_input_modes, _ = F_operator_tensor.shape
-        self.loss_history_torch = (
-            None  # For storing loss from torch_optimize_loss
-        )
+        # self.loss_history_torch = (
+        #     None  # For storing loss from torch_optimize_loss
+        # )
 
     def _compute_marginal_fisher_info_matrix(
         self, full_J_torch, nuisance_param_index
@@ -255,30 +255,25 @@ class Optimizer(Storable):
 
     def plot_torch_loss(
         self,
-        loss_history=None,
+        loss_history,
         title="Torch Optimization Loss",
         first_step=None,
     ):
-        if loss_history is None:
-            if self.loss_history_torch is None:
-                print("No loss history available to plot.")
-                return
-            loss_history = self.loss_history_torch
 
-        steps_array = np.arange(len(loss_history))
-        plot_loss = np.array(loss_history)
-
-        if first_step is not None:
-            steps_array = steps_array[first_step:]
-            plot_loss = plot_loss[first_step:]
+        loss_history = np.array(loss_history)
+        if len(loss_history.shape) == 1:
+            loss_history = loss_history[np.newaxis, :]
+        steps_array = np.arange(len(loss_history[0]))
 
         plt.figure()
-        plt.plot(steps_array, np.abs(plot_loss))
+        for i in range(len(loss_history)):
+            plt.plot(steps_array[first_step:], loss_history[i, first_step:])
         plt.xlabel("Optimization Steps")
         plt.ylabel("Loss Value")
         plt.yscale("log")
         plt.title(title)
         plt.grid(True, linestyle=":")
+        plt.tight_layout()
         plt.show()
 
     def torch_optimize_loss(
@@ -417,16 +412,15 @@ class Optimizer(Storable):
                             .copy()
                         )
 
-            if verbose and step % 50 == 0:
+            if verbose and (step + 1) % 50 == 0:
                 print(
-                    f"\rStep {step:4d}/{steps} => loss={current_loss_val:.3e}",
+                    f"\rStep {step + 1:4d}/{steps} => loss={current_loss_val:.3e}",
                     end="",
                 )
-
         if verbose:
-            print(f"\nFinished optimization. Best loss: {best_val_loss:.3e}")
+            print()
 
-        self.loss_history_torch = run_loss_history
+        # self.loss_history_torch = run_loss_history
 
         result = {
             "bestval": best_val_loss,

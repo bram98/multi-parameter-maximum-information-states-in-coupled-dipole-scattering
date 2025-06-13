@@ -118,7 +118,9 @@ class CoupledDipoleSimulator(Storable):
         self.Z_grid, self.X_grid = np.meshgrid(self.z, self.x)
 
         # Initialize scatterer positions
-        self.scatterers = self._generate_scatterers()
+        self.movable_scatterers = self._generate_scatterers()
+        self.frozen_scatterers = None
+        #   Note: self.scatterers is defined via a getter
 
         # Initialize fields as None; compute when needed
         self.fields = None
@@ -649,8 +651,18 @@ class CoupledDipoleSimulator(Storable):
         # re-initialize if needed
         return S, self.x
 
+    @property
+    def scatterers(self):
+        scat = self.movable_scatterers
+        if not scat is None and not self.frozen_scatterers is None:
+            scat = np.append(
+                self.movable_scatterers, self.frozen_scatterers, axis=1
+            )
+        return scat
+
 
 if __name__ == "__main__":
+    sys.exit()
     import time  # Import the time module for performance measurement
 
     # Start timer
