@@ -681,8 +681,6 @@ crlbanalysis.plot_pareto_frontiers(
     params_to_plot_indices=[0, 1],
     wavefront_categories_style=category_styles_def,
     wavefront_labels_latex_map=wavefront_labels_latex,
-    filepath="pareto_frontier_x_vs_z.png",
-    dpi=300,
 )
 
 # %% 11b) Leaner plot alternative
@@ -706,23 +704,22 @@ for key in optimized_wavefronts.keys():
         wavefront_categories_map[key] = "Other"
 
 # 2. Create wavefront_labels_latex dictionary with unified typography from previous steps
-wavefront_labels_latex = {
-    "MIS_shiftX": r"MIS$_{x}$",
-    "MIS_shiftZ": r"MIS$_{z}$",
-    "MIS_rotation": r"MIS$_{\theta}$",
-    "TraceJ_norm_eig": r"$\max\,\mathrm{Tr}(\mathcal{J})$",
-    "DetJ_torch": r"$\max\,\det(\mathcal{J})$",
-    "SpecJ_torch": r"$\max\,\lambda_{\min}(\mathcal{J})$",
-    "TraceJinv_torch": r"$\min\,\mathrm{Tr}(\mathcal{J}^{-1})$",
-    "LogLin_torch": r"$\text{LogLin}$",
-    "OffDiag_torch": r"$\text{OffDiag}$",
-    # "SubDet_torch": r"$\text{SubDet}$",
-    "SubDet_torch": r"$\max\,\det(\mathcal{J}_{\psi|\psi})$",
-    "DetJ_marginal_n2_torch": r"$\max\,\det(\mathcal{J}_{\psi|\phi})$",
-    "TraceJinv_marginal_n2_torch": r"$\min\,\mathrm{Tr}((\mathcal{J}_{\psi|\phi})^{-1})$",
-    "SpecJ_marginal_n2_torch": r"$\max\,\lambda_{\min}(\mathcal{J}_{\psi|\phi})$",
-}
-
+# wavefront_labels_latex = {
+#     "MIS_shiftX": r"MIS$_{x}$",
+#     "MIS_shiftZ": r"MIS$_{z}$",
+#     "MIS_rotation": r"MIS$_{\theta}$",
+#     "TraceJ_norm_eig": r"$\max\,\mathrm{Tr}(\mathcal{J})$",
+#     "DetJ_torch": r"$\max\,\det(\mathcal{J})$",
+#     "SpecJ_torch": r"$\max\,\lambda_{\min}(\mathcal{J})$",
+#     "TraceJinv_torch": r"$\min\,\mathrm{Tr}(\mathcal{J}^{-1})$",
+#     "LogLin_torch": r"$\text{LogLin}$",
+#     "OffDiag_torch": r"$\text{OffDiag}$",
+#     # "SubDet_torch": r"$\text{SubDet}$",
+#     "SubDet_torch": r"$\max\,\det(\mathcal{J}_{\psi|\psi})$",
+#     "DetJ_marginal_n2_torch": r"$\max\,\det(\mathcal{J}_{\psi|\phi})$",
+#     "TraceJinv_marginal_n2_torch": r"$\min\,\mathrm{Tr}((\mathcal{J}_{\psi|\phi})^{-1})$",
+#     "SpecJ_marginal_n2_torch": r"$\max\,\lambda_{\min}(\mathcal{J}_{\psi|\phi})$",
+# }
 
 wavefront_labels_latex = {
     # Single-parameter MIS
@@ -782,9 +779,10 @@ wavefronts_for_plotting = optimized_wavefronts.copy()
 # Remove the 'TraceJ_norm_eig' wavefront as requested
 wavefronts_for_plotting.pop("TraceJ_norm_eig", None)
 
-# wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
-# wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
-# wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("SubDet_torch", None)
 
 print("\n'TraceJ_norm_eig' wavefront removed from the following plots.")
 
@@ -799,4 +797,6 @@ crlbanalysis.plot_pareto_frontiers(
     params_to_plot_indices=[0, 1],
     wavefront_categories_style=category_styles_def,
     wavefront_labels_latex_map=wavefront_labels_latex,
+    filepath="pareto_frontier_x_vs_z.png",
+    dpi=300,
 )
