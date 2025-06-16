@@ -87,7 +87,7 @@ optimizer = Optimizer(F_operator_tensor=fisher_calc.F, device=optimizer_device)
 photon_budget = 1.0
 
 # Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 5
+multi_run_count = 10
 single_run_iterations = 3000
 
 # Globally store wavefronts and their J matrices
@@ -579,18 +579,80 @@ if verbose_plotting:
 
 # %% 10) Compare CRLB, with optional plane wave or random wavefront comparison
 
+wavefront_labels_latex = {
+    # Single-parameter MIS
+    "MIS_shiftX": r"MIS$_{x}$",
+    "MIS_shiftZ": r"MIS$_{z}$",
+    "MIS_rotation": r"MIS$_{\theta}$",
+    # Full FIM Optimality Criteria
+    "TraceJ_norm_eig": r"T-Opt. ($\mathcal{J}$)",
+    "DetJ_torch": r"D-Opt. ($\mathcal{J}$)",
+    "SpecJ_torch": r"E-Opt. ($\mathcal{J}$)",
+    "TraceJinv_torch": r"A-Opt. ($\mathcal{J}$)",
+    # Heuristic Nuisance Strategies
+    "LogLin_torch": "LogLin",
+    "OffDiag_torch": "OffDiag",
+    "SubDet_torch": "D-Opt. ($\mathcal{J}_{\psi|\psi}$)",
+    # Marginal FIM Optimality Criteria (Principled Nuisance-Aware)
+    "DetJ_marginal_n2_torch": r"D-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+    "TraceJinv_marginal_n2_torch": r"A-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+    "SpecJ_marginal_n2_torch": r"E-Opt. ($\mathcal{J}_{\psi|\phi}$)",
+}
+
+param_map = {
+    "MIS_shiftX": [0],
+    "MIS_shiftZ": [1],
+    "MIS_rotation": [2],
+    "TraceJ_norm_eig": "all",  # Special keyword for all parameters
+    "DetJ_torch": "all",
+    "SpecJ_torch": "all",
+    "TraceJinv_torch": "all",
+    "SubDet_torch": [0, 1],  # Optimized for x and z
+    "DetJ_marginal_n2_torch": [0, 1],
+    "TraceJinv_marginal_n2_torch": [0, 1],
+    "SpecJ_marginal_n2_torch": [0, 1],
+}
+
+legend_params = {"title": "Parameters", "loc": "upper left"}
+legend_status = {
+    "title": "Optimization Status",
+    "loc": "upper left",
+    "bbox_to_anchor": (0.08, 1),  # Adjust this x-value to move it left/right
+}
+
+# Selecting wavefronts via removal
+wavefronts_for_plotting = optimized_wavefronts.copy()
+
+wavefronts_for_plotting.pop("TraceJ_norm_eig", None)
+wavefronts_for_plotting.pop("DetJ_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("TraceJinv_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("SpecJ_marginal_n2_torch", None)
+wavefronts_for_plotting.pop("SubDet_torch", None)
+
 crlbanalysis.visualize_crlb_comparison(
-    optimized_wavefronts=optimized_wavefronts,
+    optimized_wavefronts=wavefronts_for_plotting,
     F_operator_tensor=optimizer.F_op,
     photon_budget=photon_budget,
     param_names=param_names,
     sim_kwargs=sim_kwargs,
     kx_array=kx_array,
-    figure_title="CRLB Comparison for different types of Maximum Information States",
-    show_plane_waves=False,
-    show_random_wavefronts=False,
-    num_random_samples=100,
+    figure_title="",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+    num_random_samples=1000,
+    optimized_param_map=param_map,
+    ylim=(0.9e-3, 1.25e-1),
+    force_linear_scale=False,  # Force the y-axis to be linear
+    legend_params_kwargs=legend_params,
+    legend_status_kwargs=legend_status,
+    xtick_labels_map=wavefront_labels_latex,
+    xtick_label_rotation=0,
+    custom_wavefronts_label=r"Shaped Wavefront $E^\mathrm{in}$",
+    broad_xlabel_yoffset=-0.07,
+    filepath="figures/final_crlb_comparison.png",
+    dpi=400,
 )
+
 
 # %% 11) Generate Pareto frontier plot
 
@@ -611,44 +673,6 @@ for key in optimized_wavefronts.keys():
         wavefront_categories_map[key] = "TorchMarginal"
     else:
         wavefront_categories_map[key] = "Other"
-
-# 2. Create wavefront_labels_latex dictionary with unified typography from previous steps
-# wavefront_labels_latex = {
-#     "MIS_shiftX": r"MIS$_{x}$",
-#     "MIS_shiftZ": r"MIS$_{z}$",
-#     "MIS_rotation": r"MIS$_{\theta}$",
-#     "TraceJ_norm_eig": r"$\max\,\mathrm{Tr}(\mathcal{J})$",
-#     "DetJ_torch": r"$\max\,\det(\mathcal{J})$",
-#     "SpecJ_torch": r"$\max\,\lambda_{\min}(\mathcal{J})$",
-#     "TraceJinv_torch": r"$\min\,\mathrm{Tr}(\mathcal{J}^{-1})$",
-#     "LogLin_torch": r"$\text{LogLin}$",
-#     "OffDiag_torch": r"$\text{OffDiag}$",
-#     # "SubDet_torch": r"$\text{SubDet}$",
-#     "SubDet_torch": r"$\max\,\det(\mathcal{J}_{\psi|\psi})$",
-#     "DetJ_marginal_n2_torch": r"$\max\,\det(\mathcal{J}_{\psi|\phi})$",
-#     "TraceJinv_marginal_n2_torch": r"$\min\,\mathrm{Tr}((\mathcal{J}_{\psi|\phi})^{-1})$",
-#     "SpecJ_marginal_n2_torch": r"$\max\,\lambda_{\min}(\mathcal{J}_{\psi|\phi})$",
-# }
-
-wavefront_labels_latex = {
-    # Single-parameter MIS
-    "MIS_shiftX": r"MIS$_{x}$",
-    "MIS_shiftZ": r"MIS$_{z}$",
-    "MIS_rotation": r"MIS$_{\theta}$",
-    # Full FIM Optimality Criteria
-    "TraceJ_norm_eig": r"T-Opt. ($\mathcal{J}$)",
-    "DetJ_torch": r"D-Opt. ($\mathcal{J}$)",
-    "SpecJ_torch": r"E-Opt. ($\mathcal{J}$)",
-    "TraceJinv_torch": r"A-Opt. ($\mathcal{J}$)",
-    # Heuristic Nuisance Strategies
-    "LogLin_torch": "LogLin",
-    "OffDiag_torch": "OffDiag",
-    "SubDet_torch": "D-Opt. ($\mathcal{J}_{\psi|\psi}$)",
-    # Marginal FIM Optimality Criteria (Principled Nuisance-Aware)
-    "DetJ_marginal_n2_torch": r"D-Opt. ($\mathcal{J}_{\psi|\phi}$)",
-    "TraceJinv_marginal_n2_torch": r"A-Opt. ($\mathcal{J}_{\psi|\phi}$)",
-    "SpecJ_marginal_n2_torch": r"E-Opt. ($\mathcal{J}_{\psi|\phi}$)",
-}
 
 for key in optimized_wavefronts.keys():
     if key not in wavefront_labels_latex:
@@ -708,4 +732,50 @@ crlbanalysis.plot_pareto_frontiers(
     wavefront_labels_latex_map=wavefront_labels_latex,
     filepath="pareto_frontier_x_vs_z.png",
     dpi=300,
+)
+
+# %% 12) Full CRLB comparison
+
+
+param_map = {
+    "MIS_shiftX": [0],
+    "MIS_shiftZ": [1],
+    "MIS_rotation": [2],
+    "TraceJ_norm_eig": "all",  # Special keyword for all parameters
+    "DetJ_torch": "all",
+    "SpecJ_torch": "all",
+    "TraceJinv_torch": "all",
+    "SubDet_torch": [0, 1],  # Optimized for x and z
+    "DetJ_marginal_n2_torch": [0, 1],
+    "TraceJinv_marginal_n2_torch": [0, 1],
+    "SpecJ_marginal_n2_torch": [0, 1],
+}
+
+legend_params = {"title": "Parameters", "loc": "upper left"}
+legend_status = {
+    "title": "Optimization Status",
+    "loc": "upper left",
+    "bbox_to_anchor": (0.08, 1),  # Adjust this x-value to move it left/right
+}
+
+crlbanalysis.visualize_crlb_comparison(
+    optimized_wavefronts=optimized_wavefronts,
+    F_operator_tensor=optimizer.F_op,
+    photon_budget=photon_budget,
+    param_names=param_names,
+    sim_kwargs=sim_kwargs,
+    kx_array=kx_array,
+    figure_title="",
+    show_plane_waves=True,
+    show_random_wavefronts=True,
+    num_random_samples=100,
+    optimized_param_map=param_map,
+    ylim=(0.9e-3, 1.25e-1),
+    force_linear_scale=False,  # Force the y-axis to be linear
+    legend_params_kwargs=legend_params,
+    legend_status_kwargs=legend_status,
+    xtick_labels_map=wavefront_labels_latex,
+    xtick_label_rotation=0,
+    custom_wavefronts_label=r"Shaped Wavefront $E^\mathrm{in}$",
+    broad_xlabel_yoffset=-0.07,
 )

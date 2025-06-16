@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch  # For type hinting if F_op comes as torch tensor
 from adjustText import adjust_text
+from matplotlib.patches import Patch
 
 from scatteringlibs.scatteringsimulation import (  # If needed for plane waves
     _flux_amplitude_2d,
@@ -178,260 +179,6 @@ def get_crlb_data(
         )
         all_crlbs[wf_name] = crlbs
     return all_crlbs
-
-
-def visualize_crlb_comparison(
-    optimized_wavefronts: dict,  # Dict of {name: wavefront_coeffs}
-    F_operator_tensor: np.ndarray,  # The (nparams, nparams, N_in, N_in) Fisher op tensor (numpy)
-    photon_budget: float,
-    param_names: list,  # List of parameter names, e.g., ["shiftX", "shiftZ", "rotation"]
-    sim_kwargs: dict = None,
-    kx_array: np.ndarray = None,
-    figure_title: str = "CRLB Comparison",
-    show_plane_waves: bool = True,
-    show_random_wavefronts: bool = True,
-    num_random_samples: int = 100,
-):
-    """
-    Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
-    Adapted from original script's block 9.
-
-    Args:
-        optimized_wavefronts (dict): Wavefronts to plot (name:coeffs). Coeffs are numpy arrays.
-        F_operator_tensor (np.ndarray): Fisher operator tensor (numpy format).
-        photon_budget (float): Photon budget for normalization.
-        param_names (list): Names of the parameters being estimated.
-        sim_kwargs (dict, optional): Simulation keyword arguments, for plane waves.
-        angles_deg (np.ndarray, optional): Array of angles in degrees, for plane waves.
-        kx_array (np.ndarray, optional): Array of kx values, for plane waves & N_in.
-        figure_title (str, optional): Title for the plot.
-        show_plane_waves (bool, optional): Whether to compute and show plane wave CRLBs.
-        show_random_wavefronts (bool, optional): Whether to compute and show random wavefront CRLBs.
-        num_random_samples (int, optional): Number of random wavefronts to sample.
-    """
-    if isinstance(F_operator_tensor, torch.Tensor):
-        # Ensure F_operator_tensor is a NumPy array for internal functions
-        F_operator_tensor = F_operator_tensor.detach().cpu().numpy()
-
-    num_params = len(param_names)
-
-    # Generate CRLB labels like "CRLB x", "CRLB z", "CRLB θ"
-    crlb_plot_labels = []
-    for p_name in param_names:
-        if "shift" in p_name.lower():
-            label_suffix = p_name.replace("shift", "").lower()
-        elif "rotation" in p_name.lower():
-            label_suffix = r"\theta"  # Use LaTeX for theta
-        else:
-            label_suffix = p_name.lower()
-        crlb_plot_labels.append(f"CRLB of ${label_suffix}$")
-
-    wave_names_custom = list(optimized_wavefronts.keys())
-    data_custom = []
-    for wname in wave_names_custom:
-        wf_coeffs = optimized_wavefronts[wname]
-        # compute_crlb_for_wavefront handles normalization internally
-        crlb_vals = compute_crlb_for_wavefront(
-            wf_coeffs, F_operator_tensor, photon_budget
-        )
-        data_custom.append(crlb_vals)
-
-    if (
-        data_custom
-    ):  # Ensure data_custom is not empty before converting to numpy array
-        data_custom = np.array(
-            data_custom
-        )  # Shape: (num_custom_wavefronts, num_params)
-    else:
-        data_custom = np.empty((0, num_params))
-
-    # Prepare data for plane waves if requested
-    plane_wave_data_for_boxplot = None
-    if show_plane_waves:
-        if not all([sim_kwargs, kx_array is not None]):
-            print(
-                "Warning: Missing sim_kwargs, or kx_array for plane wave CRLB calculation. Skipping."
-            )
-            show_plane_waves = False  # Disable if inputs missing
-        else:
-            plane_wave_crlbs_all_angles = compute_crlb_for_planewaves(
-                sim_kwargs,
-                F_operator_tensor,
-                photon_budget,
-                kx_array,
-            )
-            plane_wave_data_for_boxplot = [
-                plane_wave_crlbs_all_angles[:, i] for i in range(num_params)
-            ]
-
-    # Prepare data for random wavefronts if requested
-    random_wavefront_data_for_boxplot = None
-    if show_random_wavefronts:
-        if kx_array is None:  # N_in is derived from kx_array
-            print(
-                "Warning: Missing kx_array (for N_in) for random wavefront CRLB calculation. Skipping."
-            )
-            show_random_wavefronts = False
-        else:
-            N_in = len(kx_array)
-            random_wavefront_crlbs_all_samples = (
-                compute_crlb_for_random_wavefronts(
-                    F_operator_tensor, photon_budget, num_random_samples, N_in
-                )
-            )  # Shape: (num_samples, num_params)
-            random_wavefront_data_for_boxplot = [
-                random_wavefront_crlbs_all_samples[:, i]
-                for i in range(num_params)
-            ]
-
-    # --- Plotting ---
-    num_custom_wavefronts = len(wave_names_custom)
-    num_boxplot_groups = 0
-    if show_plane_waves:
-        num_boxplot_groups += 1
-    if show_random_wavefronts:
-        num_boxplot_groups += 1
-
-    # Adjust figure width based on number of boxplot groups
-    fig_width = 7 + 2.5 * num_boxplot_groups + 0.5 * num_custom_wavefronts
-    fig, ax = plt.subplots(
-        figsize=(max(10, fig_width), 7)
-    )  # Ensure a minimum width
-
-    x_idx_custom = np.arange(num_custom_wavefronts)
-    bar_width = 0.2  # Width of individual bars for each parameter
-
-    # Colors for parameters (e.g., CRLB_x, CRLB_z, CRLB_theta)
-    # Ensure enough colors if num_params > 3
-    prop_cycle = plt.rcParams["axes.prop_cycle"]
-    colors = prop_cycle.by_key()["color"]
-    param_colors = [colors[i % len(colors)] for i in range(num_params)]
-
-    # Bar charts for custom wavefronts
-    if num_custom_wavefronts > 0:
-        for i in range(num_params):  # For each parameter (x, z, theta)
-            # Offset for each parameter's bar within a group
-            offset = (i - (num_params - 1) / 2) * bar_width
-            ax.bar(
-                x_idx_custom + offset,
-                data_custom[:, i],
-                width=bar_width,
-                label=crlb_plot_labels[i],
-                color=param_colors[i],
-                alpha=1.0,
-            )
-
-    # Determine positions for boxplots
-    current_xtick_pos = (
-        num_custom_wavefronts - 1
-    )  # Last position of custom bars
-    xtick_positions = list(x_idx_custom)
-    xtick_labels = list(wave_names_custom)
-
-    # Boxplots for plane waves
-    if show_plane_waves and plane_wave_data_for_boxplot:
-        current_xtick_pos += 1.0  # Spacing before boxplot group
-        box_positions_plane = [
-            current_xtick_pos + (i - (num_params - 1) / 2) * bar_width * 1.2
-            for i in range(num_params)
-        ]
-
-        bp_plane = ax.boxplot(
-            plane_wave_data_for_boxplot,
-            positions=box_positions_plane,
-            widths=bar_width * 1.1,  # Slightly wider boxes
-            patch_artist=True,  # Fill with color
-            showfliers=False,  # Hide outliers for cleaner plot
-            medianprops={"color": "black", "linewidth": 1.5},
-        )
-        for patch, color in zip(bp_plane["boxes"], param_colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(1.0)
-
-        xtick_positions.append(
-            np.mean(box_positions_plane)
-        )  # Tick in middle of group
-        xtick_labels.append("Plane Waves")
-
-    # Boxplots for random wavefronts
-    if show_random_wavefronts and random_wavefront_data_for_boxplot:
-        # Adjust current_xtick_pos based on whether plane waves were plotted
-        if (
-            show_plane_waves and plane_wave_data_for_boxplot
-        ):  # If plane waves were plotted
-            current_xtick_pos = (
-                np.mean(box_positions_plane)
-                + (num_params / 2 * bar_width * 1.2)
-                + 0.5
-            )  # position after plane wave boxes
-        else:  # If only custom bars were plotted or no plane waves
-            current_xtick_pos = (
-                num_custom_wavefronts - 1
-            ) + 1.5  # position after custom bars or start fresh
-
-        box_positions_random = [
-            current_xtick_pos + (i - (num_params - 1) / 2) * bar_width * 1.2
-            for i in range(num_params)
-        ]
-
-        bp_random = ax.boxplot(
-            random_wavefront_data_for_boxplot,
-            positions=box_positions_random,
-            widths=bar_width * 1.1,
-            patch_artist=True,
-            showfliers=False,
-            medianprops={"color": "black", "linewidth": 1.5},
-        )
-        for patch, color in zip(bp_random["boxes"], param_colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(1.0)
-
-        xtick_positions.append(np.mean(box_positions_random))
-        xtick_labels.append(
-            f"Random WFs\n({num_random_samples} samples)"
-        )  # Corrected label
-
-    # Final plot adjustments
-    ax.set_xticks(xtick_positions)
-    # Rotate labels only if there are many or they are long
-    if len(xtick_labels) > 5 or any(len(label) > 10 for label in xtick_labels):
-        ax.set_xticklabels(xtick_labels, rotation=25, ha="right", fontsize=10)
-    else:
-        ax.set_xticklabels(xtick_labels, fontsize=10)
-
-    ax.set_title(figure_title, fontsize=14)
-    ax.set_ylabel("Estimation Error (CRLB)", fontsize=12)
-    ax.grid(True, linestyle=":", alpha=1.0)
-
-    if (
-        show_plane_waves or show_random_wavefronts
-    ):  # or data_custom.size > 0: # Check if data_custom is not empty
-        ax.set_yscale("log")
-
-    # Create legend - only add labels for parameters once.
-    legend_handles = []
-    if (
-        num_custom_wavefronts == 0
-        and (show_plane_waves or show_random_wavefronts)
-        and num_params > 0
-    ):
-        for i in range(num_params):
-            # Create dummy artists for legend if no bars were plotted for custom wavefronts
-            legend_handles.append(
-                plt.Rectangle(
-                    (0, 0),
-                    1,
-                    1,
-                    color=param_colors[i],
-                    label=crlb_plot_labels[i],
-                )
-            )
-        ax.legend(handles=legend_handles, title="Parameters", fontsize=10)
-    elif num_custom_wavefronts > 0:  # Legend from bar plot labels
-        ax.legend(title="Parameters", fontsize=10)
-
-    plt.tight_layout()
-    plt.show()
 
 
 def _plot_single_pareto_frontier(
@@ -1065,5 +812,264 @@ def plot_fisher_comparison(
 
     ax_cond.grid(True, which="both", ls=":", alpha=0.7)
     fig_cond.tight_layout()
+
+    plt.show()
+
+
+def visualize_crlb_comparison(
+    optimized_wavefronts: dict,
+    F_operator_tensor: np.ndarray,
+    photon_budget: float,
+    param_names: list,
+    sim_kwargs: dict = None,
+    kx_array: np.ndarray = None,
+    figure_title: str = "CRLB Comparison",
+    show_plane_waves: bool = True,
+    show_random_wavefronts: bool = True,
+    num_random_samples: int = 100,
+    optimized_param_map: dict = None,
+    ylim: tuple = None,
+    force_linear_scale: bool = False,
+    legend_status_kwargs: dict = None,
+    legend_params_kwargs: dict = None,
+    xtick_labels_map: dict = None,
+    xtick_label_rotation: int = None,
+    custom_wavefronts_label: str = None,
+    broad_xlabel_yoffset: float = None,
+    filepath: str = None,
+    dpi: int = 300,
+):
+    """
+    Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
+    Final version with full customization and save-to-file capability.
+    """
+    if isinstance(F_operator_tensor, torch.Tensor):
+        F_operator_tensor = F_operator_tensor.detach().cpu().numpy()
+
+    num_params = len(param_names)
+
+    crlb_plot_labels = []
+    for p_name in param_names:
+        if "shift" in p_name.lower():
+            label_suffix = p_name.replace("shift", "").lower()
+        elif "rotation" in p_name.lower():
+            label_suffix = r"\theta"
+        else:
+            label_suffix = p_name.lower()
+        crlb_plot_labels.append(f"CRLB of ${label_suffix}$")
+
+    wave_names_custom = list(optimized_wavefronts.keys())
+    data_custom = [
+        compute_crlb_for_wavefront(
+            optimized_wavefronts[wname], F_operator_tensor, photon_budget
+        )
+        for wname in wave_names_custom
+    ]
+    data_custom = (
+        np.array(data_custom) if data_custom else np.empty((0, num_params))
+    )
+
+    plane_wave_data_for_boxplot = None
+    if show_plane_waves:
+        if not all([sim_kwargs, kx_array is not None]):
+            show_plane_waves = False
+        else:
+            plane_wave_crlbs = compute_crlb_for_planewaves(
+                sim_kwargs, F_operator_tensor, photon_budget, kx_array
+            )
+            plane_wave_data_for_boxplot = [
+                plane_wave_crlbs[:, i] for i in range(num_params)
+            ]
+
+    random_wavefront_data_for_boxplot = None
+    if show_random_wavefronts:
+        if kx_array is None:
+            show_random_wavefronts = False
+        else:
+            random_crlbs = compute_crlb_for_random_wavefronts(
+                F_operator_tensor,
+                photon_budget,
+                num_random_samples,
+                len(kx_array),
+            )
+            random_wavefront_data_for_boxplot = [
+                random_crlbs[:, i] for i in range(num_params)
+            ]
+
+    num_custom_wavefronts = len(wave_names_custom)
+    num_boxplot_groups = int(show_plane_waves) + int(show_random_wavefronts)
+    fig_width = 8 + 2.5 * num_boxplot_groups + 0.5 * num_custom_wavefronts
+    fig, ax = plt.subplots(figsize=(max(12, fig_width), 7))
+
+    x_idx_custom = np.arange(num_custom_wavefronts)
+    bar_width = 0.2
+    prop_cycle = plt.rcParams["axes.prop_cycle"]
+    colors = prop_cycle.by_key()["color"]
+    param_colors = [colors[i % len(colors)] for i in range(num_params)]
+
+    if num_custom_wavefronts > 0:
+        for wf_idx, wf_name in enumerate(wave_names_custom):
+            for param_idx in range(num_params):
+                is_optimized = True
+                if optimized_param_map and wf_name in optimized_param_map:
+                    target_params = optimized_param_map[wf_name]
+                    if (
+                        target_params != "all"
+                        and param_idx not in target_params
+                    ):
+                        is_optimized = False
+                hatch_pattern = None if is_optimized else "///"
+                edge_color = "black" if is_optimized else "#404040"
+                line_width = 1.0 if is_optimized else 0.7
+                zorder = 2 if is_optimized else 1
+                offset = (param_idx - (num_params - 1) / 2) * bar_width
+                ax.bar(
+                    x_idx_custom[wf_idx] + offset,
+                    data_custom[wf_idx, param_idx],
+                    width=bar_width,
+                    color=param_colors[param_idx],
+                    hatch=hatch_pattern,
+                    edgecolor=edge_color,
+                    linewidth=line_width,
+                    zorder=zorder,
+                    alpha=0.9,
+                )
+
+    current_xtick_pos = num_custom_wavefronts - 1
+    xtick_positions = list(x_idx_custom)
+    if xtick_labels_map:
+        xtick_labels = [
+            xtick_labels_map.get(name, name) for name in wave_names_custom
+        ]
+    else:
+        xtick_labels = list(wave_names_custom)
+
+    if show_plane_waves and plane_wave_data_for_boxplot:
+        current_xtick_pos += 1.2
+        box_pos = [
+            current_xtick_pos + (i - (num_params - 1) / 2) * bar_width * 1.2
+            for i in range(num_params)
+        ]
+        bp = ax.boxplot(
+            plane_wave_data_for_boxplot,
+            positions=box_pos,
+            widths=bar_width * 1.1,
+            patch_artist=True,
+            showfliers=False,
+            medianprops={"color": "black", "linewidth": 1.5},
+        )
+        for patch, color in zip(bp["boxes"], param_colors):
+            patch.set_facecolor(color)
+            patch.set_hatch("///")
+            patch.set_edgecolor("#404040")
+        xtick_positions.append(np.mean(box_pos))
+        xtick_labels.append("Plane Waves")
+
+    if show_random_wavefronts and random_wavefront_data_for_boxplot:
+        if show_plane_waves:
+            current_xtick_pos = (
+                np.mean(box_pos) + (num_params / 2 * bar_width * 1.2) + 0.7
+            )
+        else:
+            current_xtick_pos = num_custom_wavefronts - 1 + 1.5
+        box_pos_rand = [
+            current_xtick_pos + (i - (num_params - 1) / 2) * bar_width * 1.2
+            for i in range(num_params)
+        ]
+        bp_rand = ax.boxplot(
+            random_wavefront_data_for_boxplot,
+            positions=box_pos_rand,
+            widths=bar_width * 1.1,
+            patch_artist=True,
+            showfliers=False,
+            medianprops={"color": "black", "linewidth": 1.5},
+        )
+        for patch, color in zip(bp_rand["boxes"], param_colors):
+            patch.set_facecolor(color)
+            patch.set_hatch("///")
+            patch.set_edgecolor("#404040")
+        xtick_positions.append(np.mean(box_pos_rand))
+        xtick_labels.append("Random Wavefronts")
+
+    ax.set_xticks(xtick_positions)
+    if xtick_label_rotation is not None:
+        rotation = xtick_label_rotation
+    else:
+        rotation = (
+            30
+            if len(xtick_labels) > 4
+            or any(len(str(label)) > 10 for label in xtick_labels)
+            else 0
+        )
+    ha = "right" if rotation > 0 else "center"
+    ax.set_xticklabels(xtick_labels, rotation=rotation, ha=ha, fontsize=10)
+
+    ax.set_title(figure_title, fontsize=14, pad=20)
+    ax.set_ylabel("Estimation Error [units of parameter]", fontsize=12)
+    ax.grid(True, which="major", linestyle="--", alpha=0.6, zorder=0)
+    ax.grid(True, which="minor", linestyle=":", alpha=0.4, zorder=0)
+
+    if not force_linear_scale:
+        ax.set_yscale("log")
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    if legend_params_kwargs is None:
+        legend_params_kwargs = {"title": "Parameters", "loc": "upper left"}
+    if legend_status_kwargs is None:
+        legend_status_kwargs = {
+            "title": "Optimization Status",
+            "loc": "upper left",
+            "bbox_to_anchor": (0.13, 1),
+        }
+    color_handles = [
+        Patch(facecolor=param_colors[i], label=crlb_plot_labels[i])
+        for i in range(num_params)
+    ]
+    leg1 = ax.legend(handles=color_handles, **legend_params_kwargs)
+    ax.add_artist(leg1)
+    style_handles = [
+        Patch(
+            facecolor="grey",
+            edgecolor="black",
+            linewidth=1.0,
+            label="Optimized",
+        ),
+        Patch(
+            facecolor="white",
+            hatch="///",
+            edgecolor="#404040",
+            label="Not Optimized",
+        ),
+    ]
+    ax.legend(handles=style_handles, **legend_status_kwargs)
+
+    if custom_wavefronts_label and num_custom_wavefronts > 0:
+        center_x = (num_custom_wavefronts - 1) / 2.0
+        if broad_xlabel_yoffset is not None:
+            y_offset = broad_xlabel_yoffset
+        else:
+            y_offset = -0.20 if rotation > 20 else -0.15
+        ax.text(
+            center_x,
+            y_offset,
+            custom_wavefronts_label,
+            ha="center",
+            va="top",
+            fontsize=12,
+            transform=ax.get_xaxis_transform(),
+        )
+
+    plt.tight_layout()
+
+    # --- Save Figure Logic ---
+    if filepath:
+        # Ensure directory exists
+        import os
+        from pathlib import Path
+
+        Path(os.path.dirname(filepath)).mkdir(parents=True, exist_ok=True)
+        plt.savefig(filepath, dpi=dpi, bbox_inches="tight")
+        print(f"Figure saved to {filepath}")
 
     plt.show()
