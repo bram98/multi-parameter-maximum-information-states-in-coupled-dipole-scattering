@@ -20,9 +20,9 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # %% 0) settings
 verbose_plotting = True
-max_angle = 85  # degrees, max angle for input modes
-number_of_input_channels = 200  # Input angle channels
-number_of_output_channels = 100  # Output channels (direct basis)
+max_angle = 80  # degrees, max angle for input modes
+number_of_input_channels = 100  # Input angle channels
+number_of_output_channels = 300  # Output channels (direct basis)
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3  # delta for building dS
 
