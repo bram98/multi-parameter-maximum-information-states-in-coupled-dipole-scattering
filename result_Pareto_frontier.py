@@ -52,6 +52,16 @@ frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
 )
 
 
+### Square
+movable_dipoles_line = placedipoles.place_square_of_dipoles(
+    center=(5.0, 0.0), side=1.0
+)
+
+frozen_dipoles_line = placedipoles.place_line_of_dipoles(
+    center=(2.5, 0.0), number=7
+)
+
+
 # %% 2) simulator geometry and input
 total_Ns_sim = movable_dipoles_line.shape[1]
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
