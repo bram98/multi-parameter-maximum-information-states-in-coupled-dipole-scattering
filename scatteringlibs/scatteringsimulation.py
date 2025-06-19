@@ -97,12 +97,13 @@ class CoupledDipoleSimulator(Storable):
         self.alpha = alpha
         self.exclusion_radius = exclusion_radius * self.lambda_0
         self.grid_points_x = grid_points_x
-        if theta_inc_deg is not None:
-            self.theta_inc_deg = theta_inc_deg
-        elif theta_inc is not None:
-            self.theta_inc = theta_inc
-        else:
-            self.theta_inc = 0.0
+
+        self.set_input_field_angles(
+            k_x_array=k_x_array,
+            theta_inc=theta_inc,
+            theta_inc_deg=theta_inc_deg,
+        )
+
         self.seed = seed
 
         # Derive grid points along z based on x sampling
@@ -127,8 +128,6 @@ class CoupledDipoleSimulator(Storable):
         self.E_total = None
         self.E_output = None
 
-        # For arbitrary input fields
-        self.k_x_array = k_x_array
         self.E_kx_array = E_kx_array
 
     def _generate_scatterers(self):
@@ -193,23 +192,66 @@ class CoupledDipoleSimulator(Storable):
         k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
-    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
-        k_x_array = np.array(k_x_array)
+    def set_input_field_angles(
+        self, k_x_array=None, theta_inc=None, theta_inc_deg=None
+    ):
+        """
+        Sets the input field angles. The input field is written as a superposition of
+        plane waves. The angles are input via k_x_array, which describes the kx
+        components of each planewave. The amplitudes are give by E_kx_array,
+        which should have the same shape as k_x_array.
+        """
+
+        if k_x_array is not None:
+            self.k_x_array = np.array(k_x_array)
+        elif theta_inc_deg is not None:
+            self.theta_inc_deg = np.array(theta_inc_deg)
+        elif theta_inc is not None:
+            self.theta_inc = np.array(theta_inc)
+        else:
+            self.theta_inc = 0.0
+
+    def set_input_field_amplitudes(self, E_kx_array, flux_normalize=True):
+        """
+        Sets the input field amplitudes. The input field is written as a
+        superposition of plane waves. The angles are input via k_x_array, which describes the kx
+        components of each planewave. The amplitudes are give by E_kx_array,
+        which should have the same shape as k_x_array. The amplitudes can
+        be automatically flux_normalized by passing flux_normalized=True. This
+        means each plane wave has unit flux through the simulation box. This
+        method also calls reset().
+
+        Args:
+            k_x_array (numpy.ndarray): Array of kx values.
+            E_kx_array (numpy.ndarray): Array of amplitudes
+            flux_normalize (bool): Use flux normalization or use raw amplitudes
+        """
+
         E_kx_array = np.array(E_kx_array)
 
-        if k_x_array.shape != E_kx_array.shape:
+        if self.k_x_array.shape != E_kx_array.shape:
             raise ValueError(
                 "k_x_array and E_kx_array must have the same shape."
             )
 
         if flux_normalize:
-            amp = _flux_amplitude_2d(self.k, k_x_array)
+            amp = _flux_amplitude_2d(self.k, self.k_x_array)
         else:
             amp = 1.0
 
-        self.k_x_array = k_x_array
+        # self.k_x_array = k_x_array
         self.E_kx_array = E_kx_array * amp
         self.reset()  # Reset computed fields
+
+    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
+        """
+        Sets both k_x_array and E_kx_array. The name is for backwards
+        compatibility
+        """
+        self.set_input_field_angles(k_x_array=k_x_array)
+        self.set_input_field_amplitudes(
+            E_kx_array, flux_normalize=flux_normalize
+        )
 
     def compute_incident_field(self, x, z):
         """Computes the incident field at given positions.
@@ -537,13 +579,47 @@ class CoupledDipoleSimulator(Storable):
         self.E_output = self.E_total[:, -1]
         return self.E_output
 
+    # k_x_array is the variable that's actually stored. theta_inc and
+    # theta_inc_deg just shadow k_x_array.
     @property
     def theta_inc_deg(self):
-        return np.rad2deg(self.theta_inc)
+        return self.k_x2theta(self.k_x_array, degree=True)
 
     @theta_inc_deg.setter
-    def theta_inc_deg(self, deg):
-        self.theta_inc = np.deg2rad(deg)
+    def theta_inc_deg(self, theta_deg):
+        self.k_x_array = self.theta2k_x(theta_deg, degree=True)
+
+    @property
+    def theta_inc(self):
+        return self.k_x2theta(self.k_x_array, degree=False)
+
+    @theta_inc.setter
+    def theta_inc(self, theta):
+        self.k_x_array = self.theta2k_x(theta, degree=False)
+
+    def get_kwargs(self):
+        keys = [
+            "lambda_0",
+            "Lz",
+            "Lx",
+            "Ns",
+            "alpha",
+            "exclusion_radius",
+            "grid_points_x",
+            # "theta_inc_deg",
+            # "theta_inc",
+            "seed",
+            "k_x_array",
+            "E_kx_array",
+            "movable_scatterers",
+            "frozen_scatterers",
+        ]
+        kwargs = {
+            key: self.__getattribute__(key)
+            for key in keys
+            if self.__getattribute__(key) is not None
+        }
+        return kwargs
 
     def animate_time_evolution(
         self,
@@ -619,7 +695,7 @@ class CoupledDipoleSimulator(Storable):
 
         plt.show()
 
-    def build_scattering_matrix(self, angles_deg, flux_normalize=True):
+    def build_scattering_matrix(self, flux_normalize=True):
         """
         Build a scattering matrix S of shape (N_out, N_in) where:
         - N_in = len(angles_deg)
@@ -627,17 +703,18 @@ class CoupledDipoleSimulator(Storable):
         For each angle in angles_deg, we set a single plane wave input,
         solve, read off E_zL. Then store in S.
         Returns:
-            S: shape (N_out, N_in)
-            x_cam: array of x-values at z=Lz
+            tuple (S, x_cam):
+                S: shape (N_out, N_in)
+                x_cam: array of x-values at z=Lz
         """
-        N_in = len(angles_deg)
+        N_in = len(self.k_x_array)
         N_out = self.grid_points_x
         S = np.zeros((N_out, N_in), dtype=complex)
 
         # We'll do a loop over angles
-        for n, th_deg in enumerate(angles_deg):
-            th_rad = np.deg2rad(th_deg)
-            kx = self.k * np.sin(th_rad)
+        for n, kx in enumerate(self.k_x_array):
+            # th_rad = np.deg2rad(th_deg)
+            # kx = self.k * np.sin(th_rad)
             # if flux_normalize:
             #     amp = _flux_amplitude_2d(self.k, kx)
             # else:
@@ -662,7 +739,7 @@ class CoupledDipoleSimulator(Storable):
 
 
 if __name__ == "__main__":
-    sys.exit()
+    # sys.exit()
     import time  # Import the time module for performance measurement
 
     # Start timer
@@ -687,15 +764,18 @@ if __name__ == "__main__":
 
     # Define arbitrary input field in terms of k_x components
     angles_deg = np.array([-30, 0, 30])  # Incident angles in degrees
-    angles_rad = np.deg2rad(angles_deg)  # Convert to radians
-    k_x_array = simulator.k * np.sin(angles_rad)  # k_x values
+    # angles_rad = np.deg2rad(angles_deg)  # Convert to radians
+    # k_x_array = simulator.k * np.sin(angles_rad)  # k_x values
     E_kx_array = np.array([1.0, 2, 1.0])  # Corresponding amplitudes
 
     # Initialize a new simulator instance for arbitrary input field with scatterers
     simulator_arbitrary = CoupledDipoleSimulator(Ns=5)
 
     # Set the arbitrary input field
-    simulator_arbitrary.set_input_field_kx(k_x_array, E_kx_array)
+    simulator_arbitrary.set_input_field_angles(angles_deg)
+    simulator_arbitrary.set_input_field_amplitudes(
+        E_kx_array, flux_normalize=False
+    )
 
     # Visualize scatterer positions
     simulator_arbitrary.visualize_scatterers()
@@ -714,7 +794,9 @@ if __name__ == "__main__":
     simulator_arbitrary_no_scatterers = CoupledDipoleSimulator(Ns=0)
 
     # Set the same arbitrary input field
-    simulator_arbitrary_no_scatterers.set_input_field_kx(k_x_array, E_kx_array)
+
+    simulator_arbitrary_no_scatterers.set_input_field_angles(angles_deg)
+    simulator_arbitrary_no_scatterers.set_input_field_amplitudes(E_kx_array)
 
     # Visualize the intensity over the full slab with arbitrary input field and no scatterers
     simulator_arbitrary_no_scatterers.visualize_intensity()

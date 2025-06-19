@@ -3,16 +3,33 @@ import numpy as np
 import torch  # For type hinting if F_op comes as torch tensor
 from adjustText import adjust_text
 
+from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
 from scatteringlibs.scatteringsimulation import (  # If needed for plane waves
     _flux_amplitude_2d,
 )
 
+
 # Potential import from optimizer if we decide to use its J calculation directly
 # from .optimizer import Optimizer
-
-
-def compute_crlb_from_J(J_matrix: np.ndarray) -> np.ndarray:
+def compute_scalar_crlb_from_J(J_matrix: np.ndarray) -> np.ndarray:
     """Calculates CRLB from a given Fisher Information Matrix J.
+    CRLB_i = sqrt(1 / J_ii).
+
+    Args:
+        J_matrix (np.ndarray): The Fisher Information Matrix (nparams, nparams) or (..., nparams, nparams).
+
+    Returns:
+        np.ndarray: Array of CRLB values for each parameter (nparams,) or (..., nparams).
+    """
+    # if J_matrix.shape[0] != J_matrix.shape[1]:
+    #     raise ValueError("J_matrix must be square.")
+
+    crlb_values = np.sqrt(1 / np.diagonal(J_matrix, axis1=-2, axis2=-1))
+    return crlb_values
+
+
+def compute_joint_crlb_from_J(J_matrix: np.ndarray) -> np.ndarray:
+    """Calculates joint CRLB from a given Fisher Information Matrix J.
     CRLB_i = sqrt((J_inv)_ii).
 
     Args:
@@ -25,12 +42,14 @@ def compute_crlb_from_J(J_matrix: np.ndarray) -> np.ndarray:
         raise ValueError("J_matrix must be square.")
     try:
         J_inv = np.linalg.inv(J_matrix)
-        crlb_values = np.sqrt(np.diag(J_inv))
+        crlb_values = np.sqrt(np.diagonal(J_inv, axis1=-2, axis2=-1))
     except np.linalg.LinAlgError:
         print(
-            "Warning: J_matrix is singular or near singular. CRLBs will be Inf."
+            "Warning: J_matrix is singular or near singular. CRLBs are infinite. Pseudo-inverse is used instead."
         )
-        crlb_values = np.full(J_matrix.shape[0], np.inf)
+
+        J_inv = np.linalg.pinv(J_matrix)
+        crlb_values = np.sqrt(np.diagonal(J_inv, axis1=-2, axis2=-1))
     return crlb_values
 
 
@@ -73,6 +92,21 @@ def normalize_wavefront(
     return wavefront_coeffs * scale_factor
 
 
+def compute_crlb_for_optimized(
+    loss_functions_dict: LossFunctionsDict,
+) -> np.ndarray:
+    crlb_optimized_joint = []
+    crlb_optimized_scalar = []
+    for loss_function in loss_functions_dict.values():
+        J = loss_function.J
+        crlb_optimized_joint.append(compute_joint_crlb_from_J(J))
+        crlb_optimized_scalar.append(compute_scalar_crlb_from_J(J))
+
+    crlb_optimized_joint = np.array(crlb_optimized_joint)
+    crlb_optimized_scalar = np.array(crlb_optimized_scalar)
+    return crlb_optimized_joint, crlb_optimized_scalar
+
+
 def compute_crlb_for_wavefront(
     wavefront_coeffs: np.ndarray,
     F_operator_tensor: np.ndarray,  # Expects numpy array
@@ -96,7 +130,9 @@ def compute_crlb_for_wavefront(
 
     normalized_wf = normalize_wavefront(wavefront_coeffs, photon_budget)
     J_matrix = _compute_J_for_wavefront_numpy(normalized_wf, F_operator_tensor)
-    return compute_crlb_from_J(J_matrix)
+    return compute_joint_crlb_from_J(J_matrix), compute_scalar_crlb_from_J(
+        J_matrix
+    )
 
 
 def compute_crlb_for_planewaves(
@@ -112,7 +148,8 @@ def compute_crlb_for_planewaves(
     if isinstance(F_operator_tensor, torch.Tensor):
         F_operator_tensor = F_operator_tensor.detach().cpu().numpy()
 
-    all_crlbs = []
+    all_crlbs_joint = []
+    all_crlbs_scalar = []
     k0 = 2 * np.pi / sim_kwargs["lambda_0"]
     N_in = len(kx_array)
 
@@ -122,18 +159,22 @@ def compute_crlb_for_planewaves(
         E_plane_wave = np.zeros(N_in, dtype=complex)
         E_plane_wave[idx] = amplitude
 
-        crlb_vals = compute_crlb_for_wavefront(
+        crlb_val_joint, crlb_val_scalar = compute_crlb_for_wavefront(
             E_plane_wave, F_operator_tensor, photon_budget
         )
-        all_crlbs.append(crlb_vals)
-    return np.array(all_crlbs)
+        all_crlbs_joint.append(crlb_val_joint)
+        all_crlbs_scalar.append(crlb_val_scalar)
+
+    all_crlbs_joint = np.array(all_crlbs_joint)
+    all_crlbs_scalar = np.array(all_crlbs_scalar)
+
+    return all_crlbs_joint, all_crlbs_scalar
 
 
 def compute_crlb_for_random_wavefronts(
     F_operator_tensor: np.ndarray,  # Expects numpy array
     photon_budget: float,
     num_samples: int,
-    N_in: int,
 ) -> np.ndarray:
     """
     Computes CRLB for a number of random wavefronts.
@@ -142,15 +183,26 @@ def compute_crlb_for_random_wavefronts(
     if isinstance(F_operator_tensor, torch.Tensor):
         F_operator_tensor = F_operator_tensor.detach().cpu().numpy()
 
-    all_crlbs = []
+    N_in = F_operator_tensor.shape[-1]
+
+    all_crlbs_joint = []
+    all_crlbs_scalar = []
     for _ in range(num_samples):
-        E_random = np.random.randn(N_in) + 1j * np.random.randn(N_in)
+        E_random = (
+            np.random.randn(N_in) + 1j * np.random.randn(N_in) - 0.5 - 0.5j
+        )
+
         # Normalization is handled by compute_crlb_for_wavefront
-        crlb_vals = compute_crlb_for_wavefront(
+        crlb_val_joint, crlb_val_scalar = compute_crlb_for_wavefront(
             E_random, F_operator_tensor, photon_budget
         )
-        all_crlbs.append(crlb_vals)
-    return np.array(all_crlbs)
+        all_crlbs_joint.append(crlb_val_joint)
+        all_crlbs_scalar.append(crlb_val_scalar)
+
+    all_crlbs_joint = np.array(all_crlbs_joint)
+    all_crlbs_scalar = np.array(all_crlbs_scalar)
+
+    return all_crlbs_joint, all_crlbs_scalar
 
 
 def get_crlb_data(

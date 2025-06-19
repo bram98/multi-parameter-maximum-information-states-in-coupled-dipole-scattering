@@ -19,7 +19,7 @@ sys.exit()
 
 # %%
 
-save_folder = "../data/quasirandom"  # Where to save state
+data_folder = "../data/quasirandom"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
@@ -111,8 +111,8 @@ optimized_wavefronts = {}
 fisher_matrices_for_wavefronts = {}
 
 if save_state:
-    base_sim_for_vis.save(folder=save_folder)
-    fisher_calc.save(folder=save_folder)
+    base_sim_for_vis.save(folder=data_folder)
+    fisher_calc.save(folder=data_folder)
 # %%
 
 loss_functions_dict = LossFunctionsDict()
@@ -250,4 +250,4 @@ Save results to be used in other scripts
 """
 
 if save_state:
-    loss_functions_dict.save(folder=save_folder)
+    loss_functions_dict.save(folder=data_folder)

@@ -73,6 +73,7 @@ class LossFunction(Storable):
         self.method = method
 
         self._wavefront = None
+        self._J = None
         self.bestval = None
         self.loss_history = None
 
@@ -134,7 +135,7 @@ class LossFunction(Storable):
             bestval, wavefront = optimizer.eig_optimize_F_general(
                 self.loss_function, maximize=self.maximize, num=num_eig
             )
-            self.wavefront = LossFunction.normalize_wavefront(wavefront)
+            self._wavefront = LossFunction.normalize_wavefront(wavefront)
             self.bestval = bestval
 
         elif self.method == "torch":
@@ -164,11 +165,13 @@ class LossFunction(Storable):
                     base_seed=seed,
                 )
                 self.loss_history = result["all_loss_histories"]
-            self.wavefront = LossFunction.normalize_wavefront(
+            self._wavefront = LossFunction.normalize_wavefront(
                 result["bestvec"]
             )
             self.bestval = result["bestval"]
             # print(result)
+
+        self._J = optimizer.J_fisher_info_matrix(self._wavefront)
 
         if verbose:
             print(f"Optimized {self.name: <30}loss: {self.bestval:.5g}")
@@ -210,9 +213,15 @@ class LossFunction(Storable):
 
         return self._wavefront
 
-    @wavefront.setter
-    def wavefront(self, wavefront):
-        self._wavefront = wavefront
+    # @wavefront.setter
+    # def wavefront(self, wavefront):
+    #     self._wavefront = wavefront
+
+    @property
+    def J(self):
+        if self._J is None:
+            raise ValueError("J is not defined. Please run optimizer first.")
+        return self._J
 
     def __str__(self):
         return f"<LossFunction {self.name}>"
