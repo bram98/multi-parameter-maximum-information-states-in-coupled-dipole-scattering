@@ -52,7 +52,7 @@ def best_estimate(E, dE_dtheta, E0):
 
 
 # %% 0) settings
-OPTIMALITY_CRITERION = "D"  # Can be 'D' or 'E'
+OPTIMALITY_CRITERION = "D"  # Can be 'D' or 'E', or 'A'
 
 verbose_plotting = True
 max_angle = 80
@@ -189,6 +189,51 @@ if OPTIMALITY_CRITERION == "D":
         optimizer.J_fisher_info_matrix(marginal_opt_results["bestvec"])
     )
 
+elif OPTIMALITY_CRITERION == "A":
+    print("\n--- A-Optimality (Minimize Tr(J_inv)) ---")
+    opt_results = optimizer.torch_optimize_loss_multirun(
+        loss_function_of_J=lossfunctions.minimize_trace_of_J_inv,
+        runs=multi_run_count,
+        steps=single_run_iterations,
+        lr=1e-3,
+        verbose=True,
+        maximize=False,  # Note: A-Optimality is a minimization problem
+        photon_budget=photon_budget,
+        base_seed=42,
+    )
+    optimized_wavefronts["Full_FIM_Optimal"] = opt_results["bestvec"]
+    fisher_matrices_for_wavefronts["Full_FIM_Optimal"] = (
+        optimizer.J_fisher_info_matrix(opt_results["bestvec"])
+    )
+
+    print(
+        "\n--- A-Optimality for Marginal FIM (Minimize Tr((J_marginal)^-1)) ---"
+    )
+    nuisance_param_index_for_marginal = 2
+    loss_fn_marginal = (
+        lambda J_full: lossfunctions.minimize_trace_of_marginal_J_inv(
+            optimizer._compute_marginal_fisher_info_matrix(
+                J_full, nuisance_param_index_for_marginal
+            )
+        )
+    )
+    marginal_opt_results = optimizer.torch_optimize_loss_multirun(
+        loss_function_of_J=loss_fn_marginal,
+        runs=multi_run_count,
+        steps=single_run_iterations,
+        lr=1e-3,
+        verbose=True,
+        maximize=False,  # Note: A-Optimality is a minimization problem
+        photon_budget=photon_budget,
+        base_seed=42,
+    )
+    optimized_wavefronts["Marginal_FIM_Optimal"] = marginal_opt_results[
+        "bestvec"
+    ]
+    fisher_matrices_for_wavefronts["Marginal_FIM_Optimal"] = (
+        optimizer.J_fisher_info_matrix(marginal_opt_results["bestvec"])
+    )
+
 elif OPTIMALITY_CRITERION == "E":
     print("\n--- E-Optimality (Maximize min_eig(J)) ---")
     opt_results = optimizer.torch_optimize_loss_multirun(
@@ -235,21 +280,21 @@ elif OPTIMALITY_CRITERION == "E":
     )
 
 else:
-    raise ValueError("OPTIMALITY_CRITERION must be 'D' or 'E'")
+    raise ValueError("OPTIMALITY_CRITERION must be 'D', 'A', or 'E'")
 
 # %% 6) Run simulation with the CORRECT multi-parameter estimator
 total_photons = 1e6
-N_estimations = 5000
+N_estimations = 10000
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
 N_deviations = 51
-max_deviation = 0.02 * 10
+max_deviation = 0.02 * 5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
 all_estimates_full_opt = []
 all_estimates_marginal = []
-all_estimates_mis_x = []  # NEW
+all_estimates_mis_x = []
 
 print("\nPre-calculating estimator components...")
 sim = CoupledDipoleSimulator(**sim_kwargs)
@@ -417,7 +462,7 @@ ax1_x.plot(
     color="#2ca02c",
     markersize=8,
     lw=2,
-)  # NEW
+)
 ax1_x.axhline(0, color="k", linestyle="--", label="Unbiased")
 ax1_x.set_ylabel("Estimation Bias of $\\hat{x}$", fontsize=14)
 ax1_x.legend(fontsize=12)
@@ -469,7 +514,7 @@ ax2_x.axhline(
     color="#2ca02c",
     linestyle="--",
     label="CRLB for MIS_x State",
-)  # NEW
+)
 ax2_x.set_xlabel(
     "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
     fontsize=14,
@@ -481,6 +526,7 @@ ax2_x.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 ax2_x.set_title("Precision (Standard Deviation)", fontsize=14)
 ax2_x.set_ylim(bottom=0)
 plt.tight_layout(rect=[0, 0, 1, 0.96])
+# plt.savefig('out.png', dpi=300)
 plt.show()
 
 # %% 8) Plotting Bias and Precision for Z-parameter (Multi-param estimator)
@@ -603,6 +649,7 @@ ax2_z.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 ax2_z.set_title("Precision (Standard Deviation)", fontsize=14)
 ax2_z.set_ylim(bottom=0)
 plt.tight_layout(rect=[0, 0, 1, 0.96])
+# plt.savefig('out.png', dpi=300)
 plt.show()
 
 
@@ -752,6 +799,8 @@ ax_z.set_ylabel("Systematic Estimation Bias of $\\hat{z}$", fontsize=12)
 ax_z.legend(fontsize=10)
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+# plt.savefig('out.png', dpi=300)
+
 plt.show()
 
 # %% Print J for one of the optimal states
