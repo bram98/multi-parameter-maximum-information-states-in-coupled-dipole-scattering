@@ -33,6 +33,14 @@ frozen_dipoles_line = placedipoles.place_line_of_dipoles(
     center=(3.0, 0.0), number=7
 )
 
+### Quasi-random double line
+movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+)
+frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
+)
+
 # %% 2) simulator geometry and input
 total_Ns_sim = movable_dipoles_line.shape[1]
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
@@ -641,7 +649,7 @@ crlbanalysis.visualize_crlb_comparison(
     show_random_wavefronts=True,
     num_random_samples=1000,
     optimized_param_map=param_map,
-    ylim=(0.9e-3, 1.25e-1),
+    ylim=(0.9e-3, 1.85e-1),
     force_linear_scale=False,  # Force the y-axis to be linear
     legend_params_kwargs=legend_params,
     legend_status_kwargs=legend_status,

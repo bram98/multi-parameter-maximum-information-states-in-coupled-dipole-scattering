@@ -65,32 +65,30 @@ multi_run_count = 10
 single_run_iterations = 3000
 
 # %% 1) define dipole configurations
-movable_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(5.0, 0.0), number=7
-)
-frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(3.0, 0.0), number=7
-)
+# movable_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(5.0, 0.0), number=7
+# )
+# frozen_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(3.0, 0.0), number=7
+# )
 
-"""
 ### Quasi-random double line
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.0, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
 )
 
-### Square
-movable_dipoles_line = placedipoles.place_square_of_dipoles(
-    center=(5.0, 0.0), side=1.0
-)
+# ### Square
+# movable_dipoles_line = placedipoles.place_square_of_dipoles(
+#     center=(5.0, 0.0), side=1.0
+# )
 
-frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(2.5, 0.0), number=7
-)
-# frozen_dipoles_line = None
-"""
+# frozen_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(2.5, 0.0), number=7
+# )
+# # frozen_dipoles_line = None
 
 
 # %% 2) simulator geometry and input
@@ -649,7 +647,7 @@ ax2_z.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 ax2_z.set_title("Precision (Standard Deviation)", fontsize=14)
 ax2_z.set_ylim(bottom=0)
 plt.tight_layout(rect=[0, 0, 1, 0.96])
-# plt.savefig('out.png', dpi=300)
+plt.savefig("out.png", dpi=300)
 plt.show()
 
 
@@ -817,3 +815,127 @@ for i, row in enumerate(J_to_print):
         f"{param_names[i]:>6} | {row[0]:>12.3e} | {row[1]:>12.3e} | {row[2]:>12.3e}"
     )
 print("=" * 50)
+
+# %% produce nuisance wiggle animation
+
+if False:
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    # --- 1. Animation Setup ---
+    # Select the wavefront to visualize.
+    wavefront_to_animate = optimized_wavefronts["Marginal_FIM_Optimal"]
+    animation_filename = "marginal_d_optimal_loop_animation.gif"
+    print(
+        f"Preparing animation for Marginal FIM ({OPTIMALITY_CRITERION}-Optimality)..."
+    )
+
+    # Create a seamless looping path for the animation
+    # The path goes from 0 -> -max -> +max -> 0
+    n_sweep_points = len(theta_deviations)
+    p1 = np.linspace(0, -max_deviation, n_sweep_points // 2, endpoint=False)
+    p2 = np.linspace(
+        -max_deviation, max_deviation, n_sweep_points, endpoint=False
+    )
+    p3 = np.linspace(max_deviation, 0, n_sweep_points // 2, endpoint=True)
+    animation_thetas = np.concatenate((p1, p2, p3))
+    num_frames = len(animation_thetas)
+
+    # Create a figure for the animation
+    fig_anim, ax_anim = plt.subplots(figsize=(8, 8))
+
+    # Pre-compute the total field for colormap scaling
+    sim.set_input_field_kx(kx_array, wavefront_to_animate)
+    sim.compute_total_field()
+    vmax = np.max(np.abs(sim.E_total) ** 2)
+    sim.reset()
+
+    # --- 2. Animation Function ---
+    def animate(i):
+        ax_anim.clear()
+
+        # Get the rotation from the new looping animation path
+        theta_dev = animation_thetas[i]
+
+        # Update the scatterer positions
+        true_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
+            movable_dipoles_line, x_true_pos, z_true_pos, theta_dev
+        )
+        if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+            sim.scatterers = np.hstack(
+                (frozen_dipoles_line, true_movable_dipoles)
+            )
+        else:
+            sim.scatterers = true_movable_dipoles
+        sim.reset()
+
+        # Set the input field and compute the total scattered field
+        sim.set_input_field_kx(kx_array, wavefront_to_animate)
+        sim.compute_total_field()
+        intensity = np.abs(sim.E_total) ** 2
+
+        # Define plot extents in units of wavelength
+        extents = [
+            sim.z[0] / sim.lambda_0,
+            sim.z[-1] / sim.lambda_0,
+            sim.x[0] / sim.lambda_0,
+            sim.x[-1] / sim.lambda_0,
+        ]
+
+        # BUG FIX: Plot the intensity without transposing it (.T is removed)
+        im = ax_anim.imshow(
+            intensity,
+            vmax=vmax,
+            extent=extents,
+            origin="lower",
+            cmap="inferno",
+            interpolation="spline16",
+            aspect="equal",
+        )
+
+        # Overlay the dipole positions
+        if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+            ax_anim.scatter(
+                frozen_dipoles_line[0, :] / sim.lambda_0,
+                frozen_dipoles_line[1, :] / sim.lambda_0,
+                c="cyan",
+                s=25,
+                label="Fixed Dipoles",
+                marker="o",
+            )
+        ax_anim.scatter(
+            true_movable_dipoles[0, :] / sim.lambda_0,
+            true_movable_dipoles[1, :] / sim.lambda_0,
+            c="white",
+            s=25,
+            label="Movable Dipoles",
+            marker="x",
+        )
+
+        # Set labels and title for the current frame
+        ax_anim.set_xlabel("z / λ₀")
+        ax_anim.set_ylabel("x / λ₀")
+        ax_anim.set_title(
+            f"Nuisance Deviation: {np.rad2deg(theta_dev):.2f} degrees"
+        )
+        ax_anim.legend(loc="upper right")
+
+        return [im]
+
+    # --- 3. Create and Save the Animation ---
+    print(
+        f"Creating animation ({num_frames} frames)... This will take a moment."
+    )
+    # Note: blit=True can be faster but is sometimes buggy depending on the Matplotlib backend.
+    # If you experience issues, setting blit=False is a safe alternative.
+    anim = FuncAnimation(
+        fig_anim, animate, frames=num_frames, interval=50, blit=False
+    )
+
+    # Save the animation as a GIF
+    writer = PillowWriter(fps=15)
+    anim.save(animation_filename, writer=writer)
+    plt.close(fig_anim)
+
+    print(f"Animation successfully saved as '{animation_filename}'")

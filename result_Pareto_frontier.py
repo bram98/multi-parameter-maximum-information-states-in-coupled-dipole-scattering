@@ -45,21 +45,21 @@ frozen_dipoles_line = placedipoles.place_line_of_dipoles(
 
 ### Quasi-random double line
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.0, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
 )
 
 
-### Square
-movable_dipoles_line = placedipoles.place_square_of_dipoles(
-    center=(5.0, 0.0), side=1.0
-)
+# ### Square
+# movable_dipoles_line = placedipoles.place_square_of_dipoles(
+#     center=(5.0, 0.0), side=1.0
+# )
 
-frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(2.5, 0.0), number=7
-)
+# frozen_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(2.5, 0.0), number=7
+# )
 
 
 # %% 2) simulator geometry and input
