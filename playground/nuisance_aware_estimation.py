@@ -801,7 +801,7 @@ plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
 plt.show()
 
-# %% Print J for one of the optimal states
+# %% 10) Print J for one of the optimal states
 J_to_print = fisher_matrices_for_wavefronts["Full_FIM_Optimal"]
 print("\\n" + "=" * 50)
 print(
@@ -816,7 +816,7 @@ for i, row in enumerate(J_to_print):
     )
 print("=" * 50)
 
-# %% produce nuisance wiggle animation
+# %% 11) produce nuisance wiggle animation
 
 if False:
     import matplotlib.pyplot as plt
