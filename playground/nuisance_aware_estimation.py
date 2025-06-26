@@ -81,7 +81,7 @@ movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=6
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=15
+    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=12
 )
 # frozen_dipoles_line = None
 
@@ -297,7 +297,7 @@ N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 11
+N_deviations = 21
 max_deviation = 0.02 * 5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
@@ -500,7 +500,12 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     crlb_full_fim_list = []
     crlb_mis_x_list = []
 
-    for theta_dev in theta_deviations:
+    print("\nRecalculating CRLB for each nuisance deviation...")
+    for i, theta_dev in enumerate(theta_deviations):
+        print(
+            f"\rCalculating CRLB for deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
+            end="     ",
+        )
         # Recalculate dS for the current deviation
         dS_tensor_dev = placedipoles.calculate_dS_for_3_parameters(
             sim_kwargs,
@@ -572,13 +577,41 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     crlb_nuisance_aware = np.array(crlb_nuisance_aware_list)
     crlb_full_fim = np.array(crlb_full_fim_list)
 
-    # Bias Plot
+    # --- Define Plotting Styles ---
+    # Inspired by result_Pareto_frontier.py
+    opt_criterion_label = f"{OPTIMALITY_CRITERION}-Opt."
+    styles = {
+        "NuisanceAware": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
+            "color": "#1f77b4",  # Blue
+            "marker": "o",
+        },
+        "Subdet_XZ": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi}})$",
+            "color": "#ff7f0e",  # Orange
+            "marker": "s",
+        },
+        "FullFIM": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
+            "color": "#2ca02c",  # Green
+            "marker": "d",
+        },
+        "MIS_x": {
+            "label": r"MIS$_x$",
+            "color": "#d62728",  # Red
+            "marker": "^",
+        },
+    }
+
+    # --- Bias Plot ---
+    # Order: Nuisance-Aware, Subdet, FullFIM, MIS_x
     ax1.plot(
         theta_deviations,
         bias_nuisance_aware,
-        "o-",
-        label=f"Nuisance-Aware {OPTIMALITY_CRITERION}-Opt (3-param est.)",
-        color="#ff7f0e",
+        marker=styles["NuisanceAware"]["marker"],
+        linestyle="-",
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
         markersize=8,
         lw=2,
     )
@@ -586,18 +619,20 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         ax1.plot(
             theta_deviations,
             bias_subdet_xz,
-            "s-",
-            label=f"Subdet XZ {OPTIMALITY_CRITERION}-Opt (2-param est.)",
-            color="#1f77b4",
+            marker=styles["Subdet_XZ"]["marker"],
+            linestyle="-",
+            label=styles["Subdet_XZ"]["label"],
+            color=styles["Subdet_XZ"]["color"],
             markersize=8,
             lw=2,
         )
     ax1.plot(
         theta_deviations,
         bias_full_fim,
-        "d-",
-        label=f"Full FIM {OPTIMALITY_CRITERION}-Opt (3-param est.)",
-        color="#d62728",
+        marker=styles["FullFIM"]["marker"],
+        linestyle="-",
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
         markersize=8,
         lw=2,
     )
@@ -605,27 +640,30 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         ax1.plot(
             theta_deviations,
             bias_mis_x,
-            "^-",
-            label="MIS_x (1-param est.)",
-            color="#2ca02c",
+            marker=styles["MIS_x"]["marker"],
+            linestyle="-",
+            label=styles["MIS_x"]["label"],
+            color=styles["MIS_x"]["color"],
             markersize=8,
             lw=2,
         )
     ax1.axhline(0, color="k", linestyle="--", label="Unbiased")
     ax1.set_ylabel(
-        f"Estimation Bias of $\\hat{{{param_name.lower()}}}$", fontsize=14
+        f"Estimation Bias of $\hat{{{param_name.lower()}}}$", fontsize=14
     )
     ax1.legend(fontsize=11)
     ax1.grid(True, which="both", linestyle=":", alpha=0.6)
     ax1.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 
-    # Precision Plot
+    # --- Precision Plot ---
+    # Order: Nuisance-Aware, Subdet, FullFIM, MIS_x
     ax2.plot(
         theta_deviations,
         std_nuisance_aware,
-        "o-",
-        label=f"Nuisance-Aware {OPTIMALITY_CRITERION}-Opt (3-param est.)",
-        color="#ff7f0e",
+        marker=styles["NuisanceAware"]["marker"],
+        linestyle="-",
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
         markersize=8,
         lw=2,
     )
@@ -633,18 +671,20 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         ax2.plot(
             theta_deviations,
             std_subdet_xz,
-            "s-",
-            label=f"Subdet XZ {OPTIMALITY_CRITERION}-Opt (2-param est.)",
-            color="#1f77b4",
+            marker=styles["Subdet_XZ"]["marker"],
+            linestyle="-",
+            label=styles["Subdet_XZ"]["label"],
+            color=styles["Subdet_XZ"]["color"],
             markersize=8,
             lw=2,
         )
     ax2.plot(
         theta_deviations,
         std_full_fim,
-        "d-",
-        label=f"Full FIM {OPTIMALITY_CRITERION}-Opt (3-param est.)",
-        color="#d62728",
+        marker=styles["FullFIM"]["marker"],
+        linestyle="-",
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
         markersize=8,
         lw=2,
     )
@@ -652,50 +692,52 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         ax2.plot(
             theta_deviations,
             std_mis_x,
-            "^-",
-            label="MIS_x (1-param est.)",
-            color="#2ca02c",
+            marker=styles["MIS_x"]["marker"],
+            linestyle="-",
+            label=styles["MIS_x"]["label"],
+            color=styles["MIS_x"]["color"],
             markersize=8,
             lw=2,
         )
 
+    # --- CRLB Plotting ---
     ax2.plot(
         theta_deviations,
         crlb_nuisance_aware / np.sqrt(total_photons),
-        color="#ff7f0e",
+        color=styles["NuisanceAware"]["color"],
         linestyle="--",
-        label=f"CRLB Nuisance-Aware",
+        label=f"CRLB " + styles["NuisanceAware"]["label"],
     )
     if crlb_subdet_xz is not None:
         ax2.plot(
             theta_deviations,
             crlb_subdet_xz / np.sqrt(total_photons),
-            color="#1f77b4",
+            color=styles["Subdet_XZ"]["color"],
             linestyle="--",
-            label=f"CRLB Subdet XZ",
+            label=f"CRLB " + styles["Subdet_XZ"]["label"],
         )
     ax2.plot(
         theta_deviations,
         crlb_full_fim / np.sqrt(total_photons),
-        color="#d62728",
+        color=styles["FullFIM"]["color"],
         linestyle="--",
-        label=f"CRLB Full FIM",
+        label=f"CRLB " + styles["FullFIM"]["label"],
     )
     if crlb_mis_x is not None:
         ax2.plot(
             theta_deviations,
             crlb_mis_x / np.sqrt(total_photons),
-            color="#2ca02c",
+            color=styles["MIS_x"]["color"],
             linestyle="--",
-            label="CRLB MIS_x",
+            label="CRLB " + styles["MIS_x"]["label"],
         )
 
     ax2.set_xlabel(
-        "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
+        "Nuisance Parameter Deviation ($\theta_{true} - \theta_0$) [rad]",
         fontsize=14,
     )
     ax2.set_ylabel(
-        f"Estimation Error (Std. Dev. of $\\hat{{{param_name.lower()}}}$)",
+        f"Estimation Error (Std. Dev. of $\hat{{{param_name.lower()}}}$)",
         fontsize=14,
     )
     ax2.legend(fontsize=12)
@@ -736,7 +778,7 @@ J_to_print_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
 
 J_to_print = fisher_matrices_for_wavefronts[J_to_print_key]
 # J_to_print = np.linalg.inv(J_to_print)
-print("\\n" + "=" * 50)
+print("\n" + "=" * 50)
 print(
     f"Fisher Information Matrix J for the {OPTIMALITY_CRITERION}-Optimal Wavefront: {J_to_print_key}"
 )
