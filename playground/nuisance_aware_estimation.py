@@ -10,7 +10,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 
 # %% -1) define functions
-def measure_heterodyne(E, total_photons, nsamples=None):
+def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
     with the quantum mechanical model where the variance of a quadrature
@@ -21,13 +21,17 @@ def measure_heterodyne(E, total_photons, nsamples=None):
     # Therefore, the standard deviation is sqrt(0.5).
     noise_std_dev = np.sqrt(0.5)
     E_real = signal_field.view(np.float64)
+    rng = np.random.RandomState(seed)
     if nsamples is None:
-        field_samples = stats.norm.rvs(loc=E_real, scale=noise_std_dev)
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=noise_std_dev, random_state=rng
+        )
     else:
         field_samples = stats.norm.rvs(
             loc=E_real,
             scale=noise_std_dev,
             size=(nsamples, *E_real.shape),
+            random_state=rng,
         )
     return field_samples.view(np.complex128) / np.sqrt(total_photons)
 
@@ -79,7 +83,7 @@ movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(3.0, 0.0), number=6, small_dist=0.786, start_index=15
 )
-frozen_dipoles_line = None
+# frozen_dipoles_line = None
 
 # ### Square
 # movable_dipoles_line = placedipoles.place_square_of_dipoles(
@@ -289,13 +293,12 @@ fisher_matrices_for_wavefronts[full_fim_result_key] = (
 
 # %% 6) Run simulation with the multi-parameter estimator
 total_photons = 1e6
-N_estimations = int(1e6)
+N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 31
+N_deviations = 11
 max_deviation = 0.02 * 5
-max_deviation = 1.5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
 # Lists to store results for each strategy
@@ -386,7 +389,9 @@ for i, theta_dev in enumerate(theta_deviations):
     # Nuisance-Aware
     sim.set_input_field_kx(kx_array, wf_nuisance_aware)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations)
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10
+    )
     estimates = np.array(
         [
             best_estimate_multi(
@@ -400,7 +405,9 @@ for i, theta_dev in enumerate(theta_deviations):
     # Sub-determinant XZ
     sim.set_input_field_kx(kx_array, wf_subdet_xz)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations)
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 1
+    )
     estimates = np.array(
         [
             best_estimate_multi(
@@ -414,7 +421,9 @@ for i, theta_dev in enumerate(theta_deviations):
     # Full FIM
     sim.set_input_field_kx(kx_array, wf_full_fim)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations)
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 2
+    )
     estimates = np.array(
         [
             best_estimate_multi(Z, E0_full_fim, dE_full_fim, J_inv_full_fim)
@@ -426,7 +435,9 @@ for i, theta_dev in enumerate(theta_deviations):
     # MIS_x
     sim.set_input_field_kx(kx_array, wf_mis_x)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations)
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 3
+    )
     estimates = np.array(
         [best_estimate(Z, dE_mis_x, E0_mis_x) for Z in Z_noisy]
     )
