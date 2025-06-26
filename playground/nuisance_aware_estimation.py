@@ -297,7 +297,7 @@ N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 21
+N_deviations = 11
 max_deviation = 0.02 * 5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
