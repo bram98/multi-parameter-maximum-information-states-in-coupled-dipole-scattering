@@ -926,135 +926,226 @@ if False:  # false because it's very slow to generate
     print(f"Animation successfully saved as '{animation_filename}'")
 
 
-# %% 10) Data Preparation for XZ Deviation Impact
+# %% 10) Data Preparation for XZ Deviation Impact (Optimal vs. Random with Fair Estimators)
+
 # Settings for the XZ deviation analysis
-N_xz_deviations = 15  # Number of points for x and z deviation
-max_xz_deviation = 0.1  # Max deviation for x and z
+N_xz_deviations = 51
+max_xz_deviation = 0.12
 x_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
 z_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
 
-# We will use the NuisanceAware Marginal FIM optimized wavefront for this analysis
-# Its components were calculated in step 6.
-# wavefront_key_xz_analysis = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
-# Using the specific key from the script for clarity
-wavefront_key_xz_analysis = nuisance_aware_wf_key # Defined in step 6
+# --- 1. Components for Nuisance-Aware Optimized Wavefront ---
+wavefront_key_optimal = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+wf_optimal = optimized_wavefronts[wavefront_key_optimal]
+E0_estimator_optimal = E0_nuisance_aware
+dE_vectors_estimator_optimal = dE_nuisance_aware
+J_inv_estimator_optimal = J_inv_nuisance_aware
+absolute_bias_grid_optimal = np.zeros((N_xz_deviations, N_xz_deviations))
 
-wf_xz_analysis = optimized_wavefronts[wavefront_key_xz_analysis]
-E0_estimator = E0_nuisance_aware # Nominal E-field for the estimator
-dE_vectors_estimator = dE_nuisance_aware # Nominal dE/dparams for the estimator
-J_inv_estimator = J_inv_nuisance_aware # Nominal J_inv for the estimator
+# --- 2. Components for Flux-Normalized Random Wavefront ---
+np.random.seed(42)  # for reproducibility
+wf_random = np.random.randn(number_of_input_channels) + 1j * np.random.randn(
+    number_of_input_channels
+)
+wf_random = optimizer.normalize_wavefront(wf_random, photon_budget)
 
-# Store results: bias of x for each (x_dev, z_dev)
-estimated_x_means_xz_dev = np.zeros((N_xz_deviations, N_xz_deviations))
+# **FAIR COMPARISON STEP**: Calibrate an estimator specifically for the random wavefront
+print("\nCalibrating a separate, fair estimator for the random wavefront...")
+# a) Calculate the nominal field E0 for the random wavefront
+sim.scatterers = (
+    np.hstack((frozen_dipoles_line, movable_dipoles_line))
+    if frozen_dipoles_line is not None
+    else movable_dipoles_line
+)
+sim.reset()
+sim.set_input_field_kx(kx_array, wf_random)
+E0_estimator_random = sim.compute_zL_fields_direct()
+# b) Calculate the derivative vectors for the random wavefront
+dE_vectors_estimator_random = [
+    dS_tensor[i] @ wf_random for i in range(len(param_names))
+]
+# c) Calculate the Fisher Matrix and its inverse for the random wavefront
+J_matrix_random = optimizer.J_fisher_info_matrix(wf_random)
+J_inv_estimator_random = np.linalg.inv(J_matrix_random)
+absolute_bias_grid_random = np.zeros((N_xz_deviations, N_xz_deviations))
 
-print(f"\nStarting XZ deviation simulation for wavefront: {wavefront_key_xz_analysis}...")
-# Loop through x and z deviations
+
+print(
+    f"\nStarting XZ deviation simulation for two wavefronts with fair estimators..."
+)
 for i, x_dev in enumerate(x_dev_range):
     for j, z_dev in enumerate(z_dev_range):
         print(
             f"\rSimulating XZ deviation: x={x_dev:.3f}, z={z_dev:.3f} ({i*N_xz_deviations + j + 1}/{N_xz_deviations**2})",
-            end=" ",
+            end="",
         )
 
-        # Update scatterer positions for the TRUE state
-        # Nuisance parameter (rotation) is kept at its nominal value (0)
         current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-            movable_dipoles_line, x_dev, z_dev, 0.0  # theta_true is 0
+            movable_dipoles_line, x_dev, z_dev, 0.0
         )
-        if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-            sim.scatterers = np.hstack(
-                (frozen_dipoles_line, current_movable_dipoles)
-            )
-        else:
-            sim.scatterers = current_movable_dipoles
+        sim.scatterers = (
+            np.hstack((frozen_dipoles_line, current_movable_dipoles))
+            if frozen_dipoles_line is not None
+            else current_movable_dipoles
+        )
+
+        # --- Process Optimal Wavefront ---
         sim.reset()
-
-        # Calculate the true electric field for this deviated state
-        sim.set_input_field_kx(kx_array, wf_xz_analysis)
-        E_true_xz_dev = sim.compute_zL_fields_direct()
-
-        # Measure noisy field
-        # Using a combined seed based on i and j to ensure reproducibility if needed
-        Z_noisy_xz_dev = measure_heterodyne(
-            E_true_xz_dev, total_photons, nsamples=N_estimations, seed=(i * N_xz_deviations + j) * 100
+        sim.set_input_field_kx(kx_array, wf_optimal)
+        E_true_optimal = sim.compute_zL_fields_direct()
+        Z_noisy_optimal = measure_heterodyne(
+            E_true_optimal,
+            total_photons,
+            nsamples=N_estimations,
+            seed=(i * N_xz_deviations + j),
         )
-
-        # Estimate parameters using the estimator calibrated at nominal conditions
-        estimates_xz_dev = np.array(
+        estimates_optimal = np.array(
             [
                 best_estimate_multi(
-                    Z, E0_estimator, dE_vectors_estimator, J_inv_estimator
+                    Z,
+                    E0_estimator_optimal,
+                    dE_vectors_estimator_optimal,
+                    J_inv_estimator_optimal,
                 )
-                for Z in Z_noisy_xz_dev
+                for Z in Z_noisy_optimal
             ]
         )
+        absolute_bias_grid_optimal[i, j] = np.abs(
+            np.mean(estimates_optimal[:, param_names.index("shiftX")]) - x_dev
+        )
 
-        # Store the mean of the estimated x parameter
-        # The estimator returns [x_est, z_est, theta_est]
-        estimated_x_means_xz_dev[i, j] = np.mean(estimates_xz_dev[:, param_names.index("shiftX")])
+        # --- Process Random Wavefront ---
+        sim.reset()
+        sim.set_input_field_kx(kx_array, wf_random)
+        E_true_random = sim.compute_zL_fields_direct()
+        Z_noisy_random = measure_heterodyne(
+            E_true_random,
+            total_photons,
+            nsamples=N_estimations,
+            seed=(i * N_xz_deviations + j) + N_xz_deviations**2,
+        )
+        # Use the estimator calibrated for the random wavefront
+        estimates_random = np.array(
+            [
+                best_estimate_multi(
+                    Z,
+                    E0_estimator_random,
+                    dE_vectors_estimator_random,
+                    J_inv_estimator_random,
+                )
+                for Z in Z_noisy_random
+            ]
+        )
+        absolute_bias_grid_random[i, j] = np.abs(
+            np.mean(estimates_random[:, param_names.index("shiftX")]) - x_dev
+        )
 
-print("\nXZ deviation simulation finished.")
+print("\nXZ deviation simulation for both wavefronts finished.")
 
-# Calculate Bias and Relative Absolute Bias for x
-bias_x_xz_dev = np.zeros_like(estimated_x_means_xz_dev)
-relative_absolute_bias_x_xz_dev = np.zeros_like(estimated_x_means_xz_dev)
+# %% 11) Combined Contour Plot of Absolute Estimation Bias
 
-for i, x_dev in enumerate(x_dev_range):
-    for j, z_dev in enumerate(z_dev_range): # z_dev is not directly used here but defines the grid point
-        current_bias = estimated_x_means_xz_dev[i, j] - x_dev
-        bias_x_xz_dev[i, j] = current_bias
-        if x_dev == 0:
-            # If x_dev is 0, relative bias is tricky.
-            # We can define it as abs(bias) / a small_number or look at absolute bias.
-            # For contour plotting, we are interested in levels like 0.05.
-            # If x_dev is 0, a non-zero bias means infinite relative error.
-            # Let's use absolute bias if x_dev is zero, assuming the "target" for relative error is based on the deviation.
-            # Or, more practically for plotting contours, if x_dev is 0, any bias means it's "off".
-            # The user wants contours at 5% and 50%. If x_dev is 0, bias is x_est.
-            # Relative bias abs(x_est / x_dev) would blow up.
-            # Let's consider the case where x_dev is very small.
-            # A simple solution for now: if x_dev is 0, the relative bias is 0 if bias is also 0, otherwise very large.
-            if np.isclose(current_bias, 0):
-                relative_absolute_bias_x_xz_dev[i, j] = 0.0
-            else:
-                # Assign a large value if bias is non-zero when x_dev is zero,
-                # so it likely falls outside typical contour levels like 0.05, 0.5.
-                relative_absolute_bias_x_xz_dev[i, j] = np.inf
-        else:
-            relative_absolute_bias_x_xz_dev[i, j] = np.abs(current_bias / x_dev)
-
-
-# %% 11) Plot XZ Deviation Impact
+# Prepare meshgrid and data for plotting
 X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
+plot_data_optimal = absolute_bias_grid_optimal.T
+plot_data_random = absolute_bias_grid_random.T
 
-plt.figure(figsize=(10, 8))
-# Note: contour function expects Z values to be (row, column) which corresponds to (z_dev, x_dev)
-# if x_dev_range is the first varying index and z_dev_range is the second.
-# Our `estimated_x_means_xz_dev` is indexed as [index_for_x_dev, index_for_z_dev].
-# So, `relative_absolute_bias_x_xz_dev` is also [i_x_dev, j_z_dev].
-# For contour plot: X should be x_dev_range, Y should be z_dev_range.
-# Data Z should be `relative_absolute_bias_x_xz_dev.T` if X is x_dev and Y is z_dev.
+# Calculate the difference in bias (performance gain)
+performance_difference = plot_data_random - plot_data_optimal
 
-contour_levels = [0.05, 0.50]
-# Transpose relative_absolute_bias_x_xz_dev for plotting
-cs = plt.contour(X_dev_grid, Z_dev_grid, relative_absolute_bias_x_xz_dev.T, levels=contour_levels, cmap="viridis")
-plt.clabel(cs, inline=True, fontsize=10, fmt=lambda x_contour: f"{x_contour*100:.0f}%%") # Renamed lambda variable
+plt.figure(figsize=(12, 10))
 
-# Let's try a pcolormesh for the background heatmap/color fill
-# Clip infinity to a large value for visualization, e.g., 2 (200% error)
-pcm_data = np.clip(relative_absolute_bias_x_xz_dev.T, 0, 2) # Transposed here too
-plt.pcolormesh(X_dev_grid, Z_dev_grid, pcm_data, cmap="viridis", shading='gouraud', vmax=1.0, alpha=0.7)
-# Using raw string for the label to correctly render LaTeX
-plt.colorbar(label=r"Relative Absolute Estimation Bias of $\hat{x}$ (clipped at 200%)")
+# Use pcolormesh to show the performance difference
+vmax_diff = 0.005
+pcm = plt.pcolormesh(
+    X_dev_grid,
+    Z_dev_grid,
+    performance_difference,
+    cmap="coolwarm",
+    shading="gouraud",
+    vmin=-vmax_diff,
+    vmax=vmax_diff,
+)
+cbar = plt.colorbar(pcm, extend="both")
+cbar.set_label(
+    r"Bias Reduction: $\epsilon_{random} - \epsilon_{optimal}$ [$\lambda$]",
+    fontsize=14,
+)
 
+# Define contour levels
+contour_levels = [0.001, 0.01]
+fmt_dict = {level: f"{level:.3f} $\\lambda$" for level in contour_levels}
 
-plt.xlabel("True x deviation from nominal ($x_{true}$)")
-plt.ylabel("True z deviation from nominal ($z_{true}$)")
-# Corrected title: using raw string for LaTeX part and f-string for variable part
-plt.title(r"Contour Plot of Relative Absolute Bias for $\hat{x}$ Estimation" + f"\nWavefront: {wavefront_key_xz_analysis}")
-plt.axhline(0, color='k', linestyle='--', linewidth=0.8)
-plt.axvline(0, color='k', linestyle='--', linewidth=0.8)
-plt.scatter([0], [0], marker='o', color='red', s=50, label="Nominal (0,0)")
-plt.legend()
-plt.gca().set_aspect('equal', adjustable='box')
+# Overlay contours for the OPTIMAL wavefront (solid white lines)
+cs_optimal = plt.contour(
+    X_dev_grid,
+    Z_dev_grid,
+    plot_data_optimal,
+    levels=contour_levels,
+    colors="white",
+    linewidths=2.5,
+    linestyles="solid",
+)
+plt.clabel(cs_optimal, inline=True, fontsize=12, fmt=fmt_dict, colors="white")
+
+# Overlay contours for the RANDOM wavefront (dashed black lines)
+cs_random = plt.contour(
+    X_dev_grid,
+    Z_dev_grid,
+    plot_data_random,
+    levels=contour_levels,
+    colors="black",
+    linewidths=2.5,
+    linestyles="dashed",
+)
+plt.clabel(cs_random, inline=True, fontsize=12, fmt=fmt_dict, colors="black")
+
+# Add plot details and labels
+plt.xlabel(
+    r"True Deviation in x-position ($\Delta x$) [$\lambda$]", fontsize=14
+)
+plt.ylabel(
+    r"True Deviation in z-position ($\Delta z$) [$\lambda$]", fontsize=14
+)
+plt.title(r"Absolute Estimation Bias ($\epsilon$) for $\hat{x}$", fontsize=16)
+plt.axhline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+plt.axvline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+plt.scatter(
+    [0],
+    [0],
+    marker="o",
+    color="magenta",
+    s=80,
+    zorder=5,
+    edgecolors="black",
+    label="Nominal (0,0)",
+)
+
+# Create custom legend for the contour styles
+from matplotlib.lines import Line2D
+
+legend_elements = [
+    Line2D(
+        [0],
+        [0],
+        color="white",
+        lw=2.5,
+        linestyle="-",
+        label=f'Optimal WF ({wavefront_key_optimal.replace("_", " ")})',
+    ),
+    Line2D([0], [0], color="black", lw=2.5, linestyle="--", label="Random WF"),
+    plt.scatter(
+        [],
+        [],
+        marker="o",
+        color="magenta",
+        s=80,
+        edgecolors="black",
+        label="Nominal (0,0)",
+    ),
+]
+plt.legend(handles=legend_elements, loc="upper right", fontsize=12)
+
+plt.gca().set_aspect("equal", adjustable="box")
+plt.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+plt.tight_layout()
 plt.show()
