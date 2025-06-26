@@ -1034,34 +1034,24 @@ plt.figure(figsize=(10, 8))
 # So, `relative_absolute_bias_x_xz_dev` is also [i_x_dev, j_z_dev].
 # For contour plot: X should be x_dev_range, Y should be z_dev_range.
 # Data Z should be `relative_absolute_bias_x_xz_dev.T` if X is x_dev and Y is z_dev.
-# Let's verify:
-# X_dev_grid[j,i] = x_dev_range[i]
-# Z_dev_grid[j,i] = z_dev_range[j]
-# We want to plot `relative_absolute_bias_x_xz_dev[i,j]` at `(x_dev_range[i], z_dev_range[j])`
-# So, if X = X_dev_grid and Y = Z_dev_grid, then Z should be `relative_absolute_bias_x_xz_dev.T`
 
 contour_levels = [0.05, 0.50]
+# Transpose relative_absolute_bias_x_xz_dev for plotting
 cs = plt.contour(X_dev_grid, Z_dev_grid, relative_absolute_bias_x_xz_dev.T, levels=contour_levels, cmap="viridis")
-plt.clabel(cs, inline=True, fontsize=10, fmt=lambda x: f"{x*100:.0f}%%")
-
-# Add a color fill for better visualization, even though contours are primary
-# Use a sensible vmax, perhaps 1 (100% relative error)
-# Replace inf with a large number for plotting with contourf, or ensure colormap handles it.
-# A simple way is to clip values or use a masked array.
-plot_data_for_contourf = relative_absolute_bias_x_xz_dev.T.copy()
-# plot_data_for_contourf[plot_data_for_contourf == np.inf] = 2.0 # Replace inf with a value slightly above max contour
-# plt.contourf(X_dev_grid, Z_dev_grid, plot_data_for_contourf, levels=np.linspace(0, 1, 50), cmap="viridis", alpha=0.7, extend='max')
+plt.clabel(cs, inline=True, fontsize=10, fmt=lambda x_contour: f"{x_contour*100:.0f}%%") # Renamed lambda variable
 
 # Let's try a pcolormesh for the background heatmap/color fill
 # Clip infinity to a large value for visualization, e.g., 2 (200% error)
-pcm_data = np.clip(relative_absolute_bias_x_xz_dev.T, 0, 2)
+pcm_data = np.clip(relative_absolute_bias_x_xz_dev.T, 0, 2) # Transposed here too
 plt.pcolormesh(X_dev_grid, Z_dev_grid, pcm_data, cmap="viridis", shading='gouraud', vmax=1.0, alpha=0.7)
-plt.colorbar(label="Relative Absolute Estimation Bias of $\hat{x}$ (clipped at 200%)")
+# Using raw string for the label to correctly render LaTeX
+plt.colorbar(label=r"Relative Absolute Estimation Bias of $\hat{x}$ (clipped at 200%)")
 
 
 plt.xlabel("True x deviation from nominal ($x_{true}$)")
 plt.ylabel("True z deviation from nominal ($z_{true}$)")
-plt.title(f"Contour Plot of Relative Absolute Bias for $\hat{x}$ Estimation\nWavefront: {wavefront_key_xz_analysis}")
+# Corrected title: using raw string for LaTeX part and f-string for variable part
+plt.title(r"Contour Plot of Relative Absolute Bias for $\hat{x}$ Estimation" + f"\nWavefront: {wavefront_key_xz_analysis}")
 plt.axhline(0, color='k', linestyle='--', linewidth=0.8)
 plt.axvline(0, color='k', linestyle='--', linewidth=0.8)
 plt.scatter([0], [0], marker='o', color='red', s=50, label="Nominal (0,0)")
