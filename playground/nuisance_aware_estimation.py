@@ -81,7 +81,7 @@ movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=6
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=12
+    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=26
 )
 # frozen_dipoles_line = None
 
@@ -297,7 +297,7 @@ N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 31
+N_deviations = 25
 max_deviation = 0.1
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
@@ -445,9 +445,8 @@ for i, theta_dev in enumerate(theta_deviations):
 
 print("\nSimulation loop finished.")
 
+
 # %% 7) Plotting Bias and Precision for X and Z Parameters
-
-
 def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     """
     Plots bias and precision for a given parameter on a set of two axes.
@@ -500,7 +499,9 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     crlb_full_fim_list = []
     crlb_mis_x_list = []
 
-    print("\nRecalculating CRLB for each nuisance deviation...")
+    print(
+        f"\nRecalculating CRLB for each nuisance deviation for {param_name}-parameter..."
+    )
     for i, theta_dev in enumerate(theta_deviations):
         print(
             f"\rCalculating CRLB for deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
@@ -659,44 +660,48 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
     ax2.plot(
         theta_deviations,
-        std_full_fim,
-        marker=styles["FullFIM"]["marker"],
-        linestyle="-",
+        np.mean(std_full_fim)
+        * np.ones_like(
+            theta_deviations
+        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+        linestyle="--",
         label=styles["FullFIM"]["label"],
         color=styles["FullFIM"]["color"],
-        markersize=8,
         lw=2,
     )
     if std_subdet_xz:
         ax2.plot(
             theta_deviations,
-            std_subdet_xz,
-            marker=styles["Subdet_XZ"]["marker"],
-            linestyle="-",
+            np.mean(std_subdet_xz)
+            * np.ones_like(
+                theta_deviations
+            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+            linestyle="--",
             label=styles["Subdet_XZ"]["label"],
             color=styles["Subdet_XZ"]["color"],
-            markersize=8,
             lw=2,
         )
     ax2.plot(
         theta_deviations,
-        std_nuisance_aware,
-        marker=styles["NuisanceAware"]["marker"],
-        linestyle="-",
+        np.mean(std_nuisance_aware)
+        * np.ones_like(
+            theta_deviations
+        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+        linestyle="--",
         label=styles["NuisanceAware"]["label"],
         color=styles["NuisanceAware"]["color"],
-        markersize=8,
         lw=2,
     )
     if std_mis_x:
         ax2.plot(
             theta_deviations,
-            std_mis_x,
-            marker=styles["MIS_x"]["marker"],
-            linestyle="-",
+            np.mean(std_mis_x)
+            * np.ones_like(
+                theta_deviations
+            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+            linestyle="--",
             label=styles["MIS_x"]["label"],
             color=styles["MIS_x"]["color"],
-            markersize=8,
             lw=2,
         )
 
@@ -705,7 +710,8 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         theta_deviations,
         crlb_full_fim / np.sqrt(total_photons),
         color=styles["FullFIM"]["color"],
-        linestyle="--",
+        marker=styles["FullFIM"]["marker"],
+        linestyle="-",
         label=f"CRLB " + styles["FullFIM"]["label"],
     )
     if crlb_subdet_xz is not None:
@@ -713,14 +719,16 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
             theta_deviations,
             crlb_subdet_xz / np.sqrt(total_photons),
             color=styles["Subdet_XZ"]["color"],
-            linestyle="--",
+            marker=styles["Subdet_XZ"]["marker"],
+            linestyle="-",
             label=f"CRLB " + styles["Subdet_XZ"]["label"],
         )
     ax2.plot(
         theta_deviations,
         crlb_nuisance_aware / np.sqrt(total_photons),
         color=styles["NuisanceAware"]["color"],
-        linestyle="--",
+        marker=styles["NuisanceAware"]["marker"],
+        linestyle="-",
         label=f"CRLB " + styles["NuisanceAware"]["label"],
     )
     if crlb_mis_x is not None:
@@ -728,12 +736,13 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
             theta_deviations,
             crlb_mis_x / np.sqrt(total_photons),
             color=styles["MIS_x"]["color"],
-            linestyle="--",
+            marker=styles["MIS_x"]["marker"],
+            linestyle="-",
             label="CRLB " + styles["MIS_x"]["label"],
         )
 
     ax2.set_xlabel(
-        "Nuisance Parameter Deviation ($\theta_{true} - \theta_0$) [rad]",
+        "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
         fontsize=14,
     )
     ax2.set_ylabel(
@@ -748,10 +757,10 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
 
 # Main plotting block
 fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
-fig.suptitle(
-    f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
-    fontsize=16,
-)
+# fig.suptitle(
+#     f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
+#     fontsize=16,
+# )
 
 # Plot for X parameter on the left column
 plot_performance_on_axes(axes[:, 0], "X", idx_x, 0)
@@ -767,6 +776,7 @@ axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
 # Final adjustments
 plt.tight_layout(rect=[0, 0, 1, 0.96])
 plt.show()
+
 
 # %% 8) Print J for one of the optimal states
 # Choose which J to print, e.g., NuisanceAware or Subdet_XZ
