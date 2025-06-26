@@ -10,7 +10,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 
 # %% -1) define functions
-def measure_heterodyne(E, total_photons, nsamples=None):
+def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
     with the quantum mechanical model where the variance of a quadrature
@@ -21,13 +21,17 @@ def measure_heterodyne(E, total_photons, nsamples=None):
     # Therefore, the standard deviation is sqrt(0.5).
     noise_std_dev = np.sqrt(0.5)
     E_real = signal_field.view(np.float64)
+    rng = np.random.RandomState(seed)
     if nsamples is None:
-        field_samples = stats.norm.rvs(loc=E_real, scale=noise_std_dev)
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=noise_std_dev, random_state=rng
+        )
     else:
         field_samples = stats.norm.rvs(
             loc=E_real,
             scale=noise_std_dev,
             size=(nsamples, *E_real.shape),
+            random_state=rng,
         )
     return field_samples.view(np.complex128) / np.sqrt(total_photons)
 
@@ -52,7 +56,7 @@ def best_estimate(E, dE_dtheta, E0):
 
 
 # %% 0) settings
-OPTIMALITY_CRITERION = "D"  # Can be 'D' or 'E', or 'A'
+OPTIMALITY_CRITERION = "D"  # Can be 'D', 'A', or 'E'
 
 verbose_plotting = True
 max_angle = 80
@@ -61,8 +65,8 @@ number_of_output_channels = 300
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3
 photon_budget = 1.0
-multi_run_count = 10
-single_run_iterations = 3000
+multi_run_count = 5
+single_run_iterations = 4000
 
 # %% 1) define dipole configurations
 # movable_dipoles_line = placedipoles.place_line_of_dipoles(
@@ -74,11 +78,12 @@ single_run_iterations = 3000
 
 ### Quasi-random double line
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=6
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=26
 )
+# frozen_dipoles_line = None
 
 # ### Square
 # movable_dipoles_line = placedipoles.place_square_of_dipoles(
@@ -132,7 +137,7 @@ fisher_matrices_for_wavefronts = {}
 
 # %% 5) compute optimal wavefronts
 
-# Add the single-parameter MIS for X as a baseline
+# --- 5.1) Baseline: Single-parameter MIS for X ---
 print("\n--- Calculating Single-Parameter MIS for X ---")
 F_xx_op = optimizer.F_op[0, 0, :, :]
 _, wavefront_mis_x_eig = optimizer.eig_optimize_matrix(
@@ -145,159 +150,167 @@ optimized_wavefronts["MIS_x"] = wavefront_mis_x
 J_for_mis_x = optimizer.J_fisher_info_matrix(wavefront_mis_x)
 fisher_matrices_for_wavefronts["MIS_x"] = J_for_mis_x
 
-# Conditional optimization based on the toggle
-if OPTIMALITY_CRITERION == "D":
-    print("\n--- D-Optimality (Maximize det(J)) ---")
-    opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=lossfunctions.determinant_of_J,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=True,
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Full_FIM_Optimal"] = opt_results["bestvec"]
-    fisher_matrices_for_wavefronts["Full_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(opt_results["bestvec"])
-    )
-
-    print("\n--- D-Optimality for Marginal FIM (Maximize det(J_marginal)) ---")
-    nuisance_param_index_for_marginal = 2
-    loss_fn_marginal = lambda J_full: lossfunctions.determinant_of_marginal_J(
-        optimizer._compute_marginal_fisher_info_matrix(
-            J_full, nuisance_param_index_for_marginal
-        )
-    )
-    marginal_opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=loss_fn_marginal,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=True,
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Marginal_FIM_Optimal"] = marginal_opt_results[
-        "bestvec"
-    ]
-    fisher_matrices_for_wavefronts["Marginal_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(marginal_opt_results["bestvec"])
-    )
-
-elif OPTIMALITY_CRITERION == "A":
-    print("\n--- A-Optimality (Minimize Tr(J_inv)) ---")
-    opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=lossfunctions.minimize_trace_of_J_inv,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=False,  # Note: A-Optimality is a minimization problem
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Full_FIM_Optimal"] = opt_results["bestvec"]
-    fisher_matrices_for_wavefronts["Full_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(opt_results["bestvec"])
-    )
-
-    print(
-        "\n--- A-Optimality for Marginal FIM (Minimize Tr((J_marginal)^-1)) ---"
-    )
-    nuisance_param_index_for_marginal = 2
-    loss_fn_marginal = (
-        lambda J_full: lossfunctions.minimize_trace_of_marginal_J_inv(
+# --- 5.2) Nuisance-Aware (Marginal FIM) Optimization ---
+nuisance_param_index_for_marginal = param_names.index("rotation")
+marginal_criteria_config = {
+    "D": {
+        "loss_fn": lambda J_full: lossfunctions.determinant_of_marginal_J(
             optimizer._compute_marginal_fisher_info_matrix(
                 J_full, nuisance_param_index_for_marginal
             )
-        )
-    )
-    marginal_opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=loss_fn_marginal,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=False,  # Note: A-Optimality is a minimization problem
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Marginal_FIM_Optimal"] = marginal_opt_results[
-        "bestvec"
-    ]
-    fisher_matrices_for_wavefronts["Marginal_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(marginal_opt_results["bestvec"])
-    )
-
-elif OPTIMALITY_CRITERION == "E":
-    print("\n--- E-Optimality (Maximize min_eig(J)) ---")
-    opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=lossfunctions.maximize_min_eig_J,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=True,
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Full_FIM_Optimal"] = opt_results["bestvec"]
-    fisher_matrices_for_wavefronts["Full_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(opt_results["bestvec"])
-    )
-
-    print(
-        "\n--- E-Optimality for Marginal FIM (Maximize min_eig(J_marginal)) ---"
-    )
-    nuisance_param_index_for_marginal = 2
-    loss_fn_marginal = (
-        lambda J_full: lossfunctions.maximize_min_eig_marginal_J(
+        ),
+        "maximize": True,
+        "name": "Maximize det(J_marginal_XZ|theta)",
+    },
+    "A": {
+        "loss_fn": lambda J_full: lossfunctions.minimize_trace_of_marginal_J_inv(
             optimizer._compute_marginal_fisher_info_matrix(
                 J_full, nuisance_param_index_for_marginal
             )
-        )
-    )
-    marginal_opt_results = optimizer.torch_optimize_loss_multirun(
-        loss_function_of_J=loss_fn_marginal,
-        runs=multi_run_count,
-        steps=single_run_iterations,
-        lr=1e-3,
-        verbose=True,
-        maximize=True,
-        photon_budget=photon_budget,
-        base_seed=42,
-    )
-    optimized_wavefronts["Marginal_FIM_Optimal"] = marginal_opt_results[
-        "bestvec"
-    ]
-    fisher_matrices_for_wavefronts["Marginal_FIM_Optimal"] = (
-        optimizer.J_fisher_info_matrix(marginal_opt_results["bestvec"])
-    )
+        ),
+        "maximize": False,
+        "name": "Minimize Tr((J_marginal_XZ|theta)^-1)",
+    },
+    "E": {
+        "loss_fn": lambda J_full: lossfunctions.maximize_min_eig_marginal_J(
+            optimizer._compute_marginal_fisher_info_matrix(
+                J_full, nuisance_param_index_for_marginal
+            )
+        ),
+        "maximize": True,
+        "name": "Maximize min_eig(J_marginal_XZ|theta)",
+    },
+}
+selected_marginal_config = marginal_criteria_config[OPTIMALITY_CRITERION]
+print(
+    f"\n--- {OPTIMALITY_CRITERION}-Optimality for Nuisance-Aware Marginal FIM ({selected_marginal_config['name']}) ---"
+)
+nuisance_aware_opt_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=selected_marginal_config["loss_fn"],
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=1e-3,
+    verbose=True,
+    maximize=selected_marginal_config["maximize"],
+    photon_budget=photon_budget,
+    base_seed=42,
+)
+marginal_result_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+optimized_wavefronts[marginal_result_key] = nuisance_aware_opt_results[
+    "bestvec"
+]
+fisher_matrices_for_wavefronts[marginal_result_key] = (
+    optimizer.J_fisher_info_matrix(nuisance_aware_opt_results["bestvec"])
+)
 
-else:
-    raise ValueError("OPTIMALITY_CRITERION must be 'D', 'A', or 'E'")
+# --- 5.3) Nuisance-Ignorant (Sub-matrix FIM) Optimization ---
+nuisance_param_index_for_subdet = param_names.index("rotation")
+subdet_criteria_config = {
+    "D": {
+        "loss_fn": lambda J_full: lossfunctions.subdet_loss(
+            J_full, nuisance_param_index=nuisance_param_index_for_subdet
+        ),
+        "maximize": False,
+        "name": "Maximize det(J_XZ)",
+    },
+    "A": {
+        "loss_fn": lambda J_full: lossfunctions.trace_of_J_block_inv(
+            lossfunctions.compute_J_SubDet_given_nuisance(
+                J_full, nuisance_param_index_for_subdet
+            )
+        ),
+        "maximize": False,
+        "name": "Minimize Tr((J_XZ)^-1)",
+    },
+    "E": {
+        "loss_fn": lambda J_full: lossfunctions.min_eigenvalue_of_J_block(
+            lossfunctions.compute_J_SubDet_given_nuisance(
+                J_full, nuisance_param_index_for_subdet
+            )
+        ),
+        "maximize": True,
+        "name": "Maximize min_eig(J_XZ)",
+    },
+}
+selected_subdet_config = subdet_criteria_config[OPTIMALITY_CRITERION]
+print(
+    f"\n--- {OPTIMALITY_CRITERION}-Optimality for Sub-determinant FIM ({selected_subdet_config['name']}) ---"
+)
+subdet_xz_opt_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=selected_subdet_config["loss_fn"],
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=1e-3,
+    verbose=True,
+    maximize=selected_subdet_config["maximize"],
+    photon_budget=photon_budget,
+    base_seed=123,
+)
+subdet_result_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
+optimized_wavefronts[subdet_result_key] = subdet_xz_opt_results["bestvec"]
+fisher_matrices_for_wavefronts[subdet_result_key] = (
+    optimizer.J_fisher_info_matrix(subdet_xz_opt_results["bestvec"])
+)
 
-# %% 6) Run simulation with the CORRECT multi-parameter estimator
+# --- 5.4) Measure-Everything (Full FIM) Optimization ---
+full_fim_criteria_config = {
+    "D": {
+        "loss_fn": lossfunctions.determinant_of_J,
+        "maximize": True,
+        "name": "Maximize det(J_full)",
+    },
+    "A": {
+        "loss_fn": lossfunctions.minimize_trace_of_J_inv,
+        "maximize": False,
+        "name": "Minimize Tr(J_full^-1)",
+    },
+    "E": {
+        "loss_fn": lossfunctions.maximize_min_eig_J,
+        "maximize": True,
+        "name": "Maximize min_eig(J_full)",
+    },
+}
+selected_full_fim_config = full_fim_criteria_config[OPTIMALITY_CRITERION]
+print(
+    f"\n--- {OPTIMALITY_CRITERION}-Optimality for Full FIM ({selected_full_fim_config['name']}) ---"
+)
+full_fim_opt_results = optimizer.torch_optimize_loss_multirun(
+    loss_function_of_J=selected_full_fim_config["loss_fn"],
+    runs=multi_run_count,
+    steps=single_run_iterations,
+    lr=1e-3,
+    verbose=True,
+    maximize=selected_full_fim_config["maximize"],
+    photon_budget=photon_budget,
+    base_seed=88,
+)
+full_fim_result_key = f"FullFIM_{OPTIMALITY_CRITERION}opt"
+optimized_wavefronts[full_fim_result_key] = full_fim_opt_results["bestvec"]
+fisher_matrices_for_wavefronts[full_fim_result_key] = (
+    optimizer.J_fisher_info_matrix(full_fim_opt_results["bestvec"])
+)
+
+
+# %% 6) Run simulation with the multi-parameter estimator
 total_photons = 1e6
-N_estimations = 10000
+N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 51
-max_deviation = 0.02 * 5
+N_deviations = 25
+max_deviation = 0.1
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
-all_estimates_full_opt = []
-all_estimates_marginal = []
+# Lists to store results for each strategy
+all_estimates_nuisance_aware = []
+all_estimates_subdet_xz = []
+all_estimates_full_fim = []
 all_estimates_mis_x = []
 
 print("\nPre-calculating estimator components...")
 sim = CoupledDipoleSimulator(**sim_kwargs)
 nominal_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-    movable_dipoles_line, 0, 0, theta0_rad
+    movable_dipoles_line, 0, 0, 0
 )
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
     sim.scatterers = np.hstack((frozen_dipoles_line, nominal_movable_dipoles))
@@ -308,40 +321,59 @@ if verbose_plotting:
     sim.visualize_intensity()
     sim.reset()
 
-# Components for Full FIM optimal wavefront
-wf_full_opt = optimized_wavefronts["Full_FIM_Optimal"]
-dE_vectors_full_opt = [
-    dS_tensor[i] @ wf_full_opt for i in range(len(param_names))
-]
-sim.set_input_field_kx(kx_array, wf_full_opt)
-E0_full_opt = sim.compute_zL_fields_direct()
-J_inv_full_opt = np.linalg.inv(
-    fisher_matrices_for_wavefronts["Full_FIM_Optimal"]
-)
+# Define keys based on optimality criterion
+nuisance_aware_wf_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+subdet_xz_wf_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
+full_fim_wf_key = f"FullFIM_{OPTIMALITY_CRITERION}opt"
 
-# Components for Marginal FIM optimal wavefront
-wf_marginal = optimized_wavefronts["Marginal_FIM_Optimal"]
-dE_vectors_marginal = [
-    dS_tensor[i] @ wf_marginal for i in range(len(param_names))
+# --- Estimator Components Setup ---
+# Nuisance-Aware (Marginal FIM)
+print(f"\nSetting up components for: {nuisance_aware_wf_key}")
+wf_nuisance_aware = optimized_wavefronts[nuisance_aware_wf_key]
+dE_nuisance_aware = [
+    dS_tensor[i] @ wf_nuisance_aware for i in range(len(param_names))
 ]
-sim.set_input_field_kx(kx_array, wf_marginal)
-E0_marginal = sim.compute_zL_fields_direct()
-J_inv_marginal = np.linalg.inv(
-    fisher_matrices_for_wavefronts["Marginal_FIM_Optimal"]
-)
+sim.set_input_field_kx(kx_array, wf_nuisance_aware)
+E0_nuisance_aware = sim.compute_zL_fields_direct()
+J_nuisance_aware = fisher_matrices_for_wavefronts[nuisance_aware_wf_key]
+J_inv_nuisance_aware = np.linalg.inv(J_nuisance_aware)
 
-# Components for MIS_x wavefront
+# Sub-determinant XZ
+print(f"Setting up components for: {subdet_xz_wf_key}")
+wf_subdet_xz = optimized_wavefronts[subdet_xz_wf_key]
+dE_subdet_xz_est = [
+    dS_tensor[param_names.index("shiftX")] @ wf_subdet_xz,
+    dS_tensor[param_names.index("shiftZ")] @ wf_subdet_xz,
+]
+sim.set_input_field_kx(kx_array, wf_subdet_xz)
+E0_subdet_xz = sim.compute_zL_fields_direct()
+J_subdet_xz_full = fisher_matrices_for_wavefronts[subdet_xz_wf_key]
+idx_x, idx_z = param_names.index("shiftX"), param_names.index("shiftZ")
+J_subdet_xz_2x2 = J_subdet_xz_full[np.ix_([idx_x, idx_z], [idx_x, idx_z])]
+J_inv_subdet_xz_2x2 = np.linalg.inv(J_subdet_xz_2x2)
+
+# Full FIM
+print(f"Setting up components for: {full_fim_wf_key}")
+wf_full_fim = optimized_wavefronts[full_fim_wf_key]
+dE_full_fim = [dS_tensor[i] @ wf_full_fim for i in range(len(param_names))]
+sim.set_input_field_kx(kx_array, wf_full_fim)
+E0_full_fim = sim.compute_zL_fields_direct()
+J_full_fim = fisher_matrices_for_wavefronts[full_fim_wf_key]
+J_inv_full_fim = np.linalg.inv(J_full_fim)
+
+# MIS_x
+print("Setting up components for: MIS_x")
 wf_mis_x = optimized_wavefronts["MIS_x"]
-dE_vectors_mis_x = [dS_tensor[i] @ wf_mis_x for i in range(len(param_names))]
+dE_mis_x = dS_tensor[param_names.index("shiftX")] @ wf_mis_x
 sim.set_input_field_kx(kx_array, wf_mis_x)
 E0_mis_x = sim.compute_zL_fields_direct()
-J_inv_mis_x = np.linalg.inv(fisher_matrices_for_wavefronts["MIS_x"])
+J_mis_x_full = fisher_matrices_for_wavefronts["MIS_x"]
 
-print("Starting estimation loop...")
+print("\nStarting estimation loop...")
 for i, theta_dev in enumerate(theta_deviations):
     print(
         f"\rSimulating deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
-        end="",
+        end="     ",
     )
     theta_true = theta0_rad + theta_dev
     true_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
@@ -353,459 +385,412 @@ for i, theta_dev in enumerate(theta_deviations):
         sim.scatterers = true_movable_dipoles
     sim.reset()
 
-    # Full FIM Optimal Estimation
-    sim.set_input_field_kx(kx_array, wf_full_opt)
+    # --- Run Estimations for Each Strategy ---
+    # Nuisance-Aware
+    sim.set_input_field_kx(kx_array, wf_nuisance_aware)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy_samples = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10
     )
     estimates = np.array(
         [
             best_estimate_multi(
-                Z, E0_full_opt, dE_vectors_full_opt, J_inv_full_opt
+                Z, E0_nuisance_aware, dE_nuisance_aware, J_inv_nuisance_aware
             )
-            for Z in Z_noisy_samples
+            for Z in Z_noisy
         ]
     )
-    all_estimates_full_opt.append(estimates)
+    all_estimates_nuisance_aware.append(estimates)
 
-    # Marginal FIM Optimal Estimation
-    sim.set_input_field_kx(kx_array, wf_marginal)
+    # Sub-determinant XZ
+    sim.set_input_field_kx(kx_array, wf_subdet_xz)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy_samples = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 1
     )
     estimates = np.array(
         [
             best_estimate_multi(
-                Z, E0_marginal, dE_vectors_marginal, J_inv_marginal
+                Z, E0_subdet_xz, dE_subdet_xz_est, J_inv_subdet_xz_2x2
             )
-            for Z in Z_noisy_samples
+            for Z in Z_noisy
         ]
     )
-    all_estimates_marginal.append(estimates)
+    all_estimates_subdet_xz.append(estimates)
 
-    # MIS_x Estimation
+    # Full FIM
+    sim.set_input_field_kx(kx_array, wf_full_fim)
+    E_true = sim.compute_zL_fields_direct()
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 2
+    )
+    estimates = np.array(
+        [
+            best_estimate_multi(Z, E0_full_fim, dE_full_fim, J_inv_full_fim)
+            for Z in Z_noisy
+        ]
+    )
+    all_estimates_full_fim.append(estimates)
+
+    # MIS_x
     sim.set_input_field_kx(kx_array, wf_mis_x)
     E_true = sim.compute_zL_fields_direct()
-    Z_noisy_samples = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations
+    Z_noisy = measure_heterodyne(
+        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 3
     )
     estimates = np.array(
-        [
-            best_estimate_multi(Z, E0_mis_x, dE_vectors_mis_x, J_inv_mis_x)
-            for Z in Z_noisy_samples
-        ]
+        [best_estimate(Z, dE_mis_x, E0_mis_x) for Z in Z_noisy]
     )
     all_estimates_mis_x.append(estimates)
 
 print("\nSimulation loop finished.")
 
-# %% 7) Plotting Bias and Precision for X-parameter (Multi-param estimator)
-bias_x_full_opt = [
-    np.mean(estimates[:, 0]) - x_true_pos
-    for estimates in all_estimates_full_opt
-]
-bias_x_marginal = [
-    np.mean(estimates[:, 0]) - x_true_pos
-    for estimates in all_estimates_marginal
-]
-bias_x_mis_x = [
-    np.mean(estimates[:, 0]) - x_true_pos for estimates in all_estimates_mis_x
-]  # NEW
-std_x_full_opt = [
-    np.std(estimates[:, 0]) for estimates in all_estimates_full_opt
-]
-std_x_marginal = [
-    np.std(estimates[:, 0]) for estimates in all_estimates_marginal
-]
-std_x_mis_x = [
-    np.std(estimates[:, 0]) for estimates in all_estimates_mis_x
-]  # NEW
 
-crlb_prefactor = 1 / np.sqrt(2)
-crlb_std_x_full_opt = crlb_prefactor * np.sqrt(J_inv_full_opt[0, 0])
-crlb_std_x_marginal = crlb_prefactor * np.sqrt(J_inv_marginal[0, 0])
-crlb_std_x_mis_x = crlb_prefactor * np.sqrt(J_inv_mis_x[0, 0])  # NEW
+# %% 7) Plotting Bias and Precision for X and Z Parameters
+def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
+    """
+    Plots bias and precision for a given parameter on a set of two axes.
+    `axes` should be a tuple or list of two axes: (ax_bias, ax_precision).
+    """
+    ax1, ax2 = axes
 
-fig_x, (ax1_x, ax2_x) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-fig_x.suptitle(
-    f"Multi-Parameter Estimator Performance for X-Parameter ({OPTIMALITY_CRITERION}-Optimality)",
-    fontsize=16,
-)
+    # Calculate Bias
+    bias_nuisance_aware = [
+        np.mean(est[:, idx_in_3param]) - x_true_pos
+        for est in all_estimates_nuisance_aware
+    ]
+    bias_subdet_xz = [
+        np.mean(est[:, idx_in_2param]) - x_true_pos
+        for est in all_estimates_subdet_xz
+        if idx_in_2param is not None
+    ]
+    bias_full_fim = [
+        np.mean(est[:, idx_in_3param]) - x_true_pos
+        for est in all_estimates_full_fim
+    ]
+    bias_mis_x = (
+        [np.mean(est) - x_true_pos for est in all_estimates_mis_x]
+        if param_name == "X"
+        else None
+    )
 
-ax1_x.plot(
-    theta_deviations,
-    bias_x_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-    lw=2,
-)
-ax1_x.plot(
-    theta_deviations,
-    bias_x_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-    lw=2,
-)
-ax1_x.plot(
-    theta_deviations,
-    bias_x_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-    lw=2,
-)
-ax1_x.axhline(0, color="k", linestyle="--", label="Unbiased")
-ax1_x.set_ylabel("Estimation Bias of $\\hat{x}$", fontsize=14)
-ax1_x.legend(fontsize=12)
-ax1_x.grid(True, which="both", linestyle=":", alpha=0.6)
-ax1_x.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax1_x.set_title("Accuracy (Bias)", fontsize=14)
+    # Calculate Standard Deviation
+    std_nuisance_aware = [
+        np.std(est[:, idx_in_3param]) for est in all_estimates_nuisance_aware
+    ]
+    std_subdet_xz = [
+        np.std(est[:, idx_in_2param])
+        for est in all_estimates_subdet_xz
+        if idx_in_2param is not None
+    ]
+    std_full_fim = [
+        np.std(est[:, idx_in_3param]) for est in all_estimates_full_fim
+    ]
+    std_mis_x = (
+        [np.std(est) for est in all_estimates_mis_x]
+        if param_name == "X"
+        else None
+    )
 
-ax2_x.plot(
-    theta_deviations,
-    std_x_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-    lw=2,
-)
-ax2_x.plot(
-    theta_deviations,
-    std_x_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-    lw=2,
-)
-ax2_x.plot(
-    theta_deviations,
-    std_x_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-    lw=2,
-)
-ax2_x.axhline(
-    y=crlb_std_x_full_opt / np.sqrt(total_photons),
-    color="#1f77b4",
-    linestyle="--",
-    label=f"CRLB for {OPTIMALITY_CRITERION}-Optimal State",
-)
-ax2_x.axhline(
-    y=crlb_std_x_marginal / np.sqrt(total_photons),
-    color="#ff7f0e",
-    linestyle="--",
-    label=f"CRLB for Marginal {OPTIMALITY_CRITERION}-Optimal State",
-)
-ax2_x.axhline(
-    y=crlb_std_x_mis_x / np.sqrt(total_photons),
-    color="#2ca02c",
-    linestyle="--",
-    label="CRLB for MIS_x State",
-)
-ax2_x.set_xlabel(
-    "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
-    fontsize=14,
-)
-ax2_x.set_ylabel("Estimation Error (Std. Dev. of $\\hat{x}$)", fontsize=14)
-ax2_x.legend(fontsize=12)
-ax2_x.grid(True, which="both", linestyle=":", alpha=0.6)
-ax2_x.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax2_x.set_title("Precision (Standard Deviation)", fontsize=14)
-ax2_x.set_ylim(bottom=0)
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-# plt.savefig('out.png', dpi=300)
-plt.show()
+    # Calculate CRLBs for each deviation
+    crlb_prefactor = 1 / np.sqrt(2)
+    crlb_nuisance_aware_list = []
+    crlb_subdet_xz_list = []
+    crlb_full_fim_list = []
+    crlb_mis_x_list = []
 
-# %% 8) Plotting Bias and Precision for Z-parameter (Multi-param estimator)
-bias_z_full_opt = [
-    np.mean(estimates[:, 1]) - z_true_pos
-    for estimates in all_estimates_full_opt
-]
-bias_z_marginal = [
-    np.mean(estimates[:, 1]) - z_true_pos
-    for estimates in all_estimates_marginal
-]
-bias_z_mis_x = [
-    np.mean(estimates[:, 1]) - z_true_pos for estimates in all_estimates_mis_x
-]
-std_z_full_opt = [
-    np.std(estimates[:, 1]) for estimates in all_estimates_full_opt
-]
-std_z_marginal = [
-    np.std(estimates[:, 1]) for estimates in all_estimates_marginal
-]
-std_z_mis_x = [np.std(estimates[:, 1]) for estimates in all_estimates_mis_x]
-
-crlb_std_z_full_opt = crlb_prefactor * np.sqrt(J_inv_full_opt[1, 1])
-crlb_std_z_marginal = crlb_prefactor * np.sqrt(J_inv_marginal[1, 1])
-crlb_std_z_mis_x = crlb_prefactor * np.sqrt(J_inv_mis_x[1, 1])
-
-fig_z, (ax1_z, ax2_z) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-fig_z.suptitle(
-    f"Multi-Parameter Estimator Performance for Z-Parameter ({OPTIMALITY_CRITERION}-Optimality)",
-    fontsize=16,
-)
-
-ax1_z.plot(
-    theta_deviations,
-    bias_z_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-    lw=2,
-)
-ax1_z.plot(
-    theta_deviations,
-    bias_z_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-    lw=2,
-)
-ax1_z.plot(
-    theta_deviations,
-    bias_z_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-    lw=2,
-)
-ax1_z.axhline(0, color="k", linestyle="--", label="Unbiased")
-ax1_z.set_ylabel("Estimation Bias of $\\hat{z}$", fontsize=14)
-ax1_z.legend(fontsize=12)
-ax1_z.grid(True, which="both", linestyle=":", alpha=0.6)
-ax1_z.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax1_z.set_title("Accuracy (Bias)", fontsize=14)
-
-ax2_z.plot(
-    theta_deviations,
-    std_z_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-    lw=2,
-)
-ax2_z.plot(
-    theta_deviations,
-    std_z_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-    lw=2,
-)
-ax2_z.plot(
-    theta_deviations,
-    std_z_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-    lw=2,
-)
-ax2_z.axhline(
-    y=crlb_std_z_full_opt / np.sqrt(total_photons),
-    color="#1f77b4",
-    linestyle="--",
-    label=f"CRLB for {OPTIMALITY_CRITERION}-Optimal State",
-)
-ax2_z.axhline(
-    y=crlb_std_z_marginal / np.sqrt(total_photons),
-    color="#ff7f0e",
-    linestyle="--",
-    label=f"CRLB for Marginal {OPTIMALITY_CRITERION}-Optimal State",
-)
-ax2_z.axhline(
-    y=crlb_std_z_mis_x / np.sqrt(total_photons),
-    color="#2ca02c",
-    linestyle="--",
-    label="CRLB for MIS_x State",
-)
-ax2_z.set_xlabel(
-    "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
-    fontsize=14,
-)
-ax2_z.set_ylabel("Estimation Error (Std. Dev. of $\\hat{z}$)", fontsize=14)
-ax2_z.legend(fontsize=12)
-ax2_z.grid(True, which="both", linestyle=":", alpha=0.6)
-ax2_z.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax2_z.set_title("Precision (Standard Deviation)", fontsize=14)
-ax2_z.set_ylim(bottom=0)
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-plt.savefig("out.png", dpi=300)
-plt.show()
-
-
-# %% 9) Revisiting the Naive Estimator to Visualize its Bias for X and Z
-naive_bias_x_full_opt = []
-naive_bias_x_marginal = []
-naive_bias_x_mis_x = []
-naive_bias_z_full_opt = []
-naive_bias_z_marginal = []
-naive_bias_z_mis_x = []
-
-dEx_full_opt = dE_vectors_full_opt[0]
-dEx_marginal = dE_vectors_marginal[0]
-dEx_mis_x = dE_vectors_mis_x[0]
-dEz_full_opt = dE_vectors_full_opt[1]
-dEz_marginal = dE_vectors_marginal[1]
-dEz_mis_x = dE_vectors_mis_x[1]
-
-
-print(
-    "\nApplying naive single-parameter estimator to noise-free data for both X and Z..."
-)
-for i, theta_dev in enumerate(theta_deviations):
     print(
-        f"\rSimulating deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
-        end="",
+        f"\nRecalculating CRLB for each nuisance deviation for {param_name}-parameter..."
     )
-    theta_true = theta0_rad + theta_dev
-    true_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-        movable_dipoles_line, x_true_pos, z_true_pos, theta_true
-    )
-    if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-        sim.scatterers = np.hstack((frozen_dipoles_line, true_movable_dipoles))
+    for i, theta_dev in enumerate(theta_deviations):
+        print(
+            f"\rCalculating CRLB for deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
+            end="     ",
+        )
+        # Recalculate dS for the current deviation
+        dS_tensor_dev = placedipoles.calculate_dS_for_3_parameters(
+            sim_kwargs,
+            angles_deg,
+            movable_dipoles=placedipoles.shift_and_rotate_dipoles(
+                movable_dipoles_line, 0, 0, theta_dev
+            ),
+            frozen_dipoles=frozen_dipoles_line,
+            delta_param=delta_param,
+            flux_normalize=True,
+        )
+        fisher_calc_dev = FisherMatrix(
+            dS=dS_tensor_dev, param_names=param_names, delta=delta_param
+        )
+        optimizer_dev = Optimizer(
+            F_operator_tensor=fisher_calc_dev.F, device=optimizer_device
+        )
+
+        # Nuisance-Aware
+        J_nuisance_aware_dev = optimizer_dev.J_fisher_info_matrix(
+            wf_nuisance_aware
+        )
+        J_inv_nuisance_aware_dev = np.linalg.inv(J_nuisance_aware_dev)
+        crlb_nuisance_aware_list.append(
+            crlb_prefactor
+            * np.sqrt(J_inv_nuisance_aware_dev[idx_in_3param, idx_in_3param])
+        )
+
+        # Sub-determinant XZ
+        if idx_in_2param is not None:
+            J_subdet_xz_full_dev = optimizer_dev.J_fisher_info_matrix(
+                wf_subdet_xz
+            )
+            J_subdet_xz_2x2_dev = J_subdet_xz_full_dev[
+                np.ix_([idx_x, idx_z], [idx_x, idx_z])
+            ]
+            J_inv_subdet_xz_2x2_dev = np.linalg.inv(J_subdet_xz_2x2_dev)
+            crlb_subdet_xz_list.append(
+                crlb_prefactor
+                * np.sqrt(
+                    J_inv_subdet_xz_2x2_dev[idx_in_2param, idx_in_2param]
+                )
+            )
+
+        # Full FIM
+        J_full_fim_dev = optimizer_dev.J_fisher_info_matrix(wf_full_fim)
+        J_inv_full_fim_dev = np.linalg.inv(J_full_fim_dev)
+        crlb_full_fim_list.append(
+            crlb_prefactor
+            * np.sqrt(J_inv_full_fim_dev[idx_in_3param, idx_in_3param])
+        )
+
+        # MIS_x
+        if param_name == "X":
+            J_mis_x_full_dev = optimizer_dev.J_fisher_info_matrix(wf_mis_x)
+            crlb_mis_x_list.append(
+                crlb_prefactor * np.sqrt(1 / J_mis_x_full_dev[idx_x, idx_x])
+            )
+    if crlb_subdet_xz_list:
+        crlb_subdet_xz = np.array(crlb_subdet_xz_list)
     else:
-        sim.scatterers = true_movable_dipoles
-    sim.reset()
+        crlb_subdet_xz = None
 
-    # Full FIM Optimal
-    sim.set_input_field_kx(kx_array, wf_full_opt)
-    E_true = sim.compute_zL_fields_direct()
-    naive_bias_x_full_opt.append(
-        best_estimate(E_true, dEx_full_opt, E0_full_opt) - x_true_pos
+    if crlb_mis_x_list:
+        crlb_mis_x = np.array(crlb_mis_x_list)
+    else:
+        crlb_mis_x = None
+
+    crlb_nuisance_aware = np.array(crlb_nuisance_aware_list)
+    crlb_full_fim = np.array(crlb_full_fim_list)
+
+    # --- Define Plotting Styles ---
+    # Inspired by result_Pareto_frontier.py
+    opt_criterion_label = f"{OPTIMALITY_CRITERION}-Opt."
+    styles = {
+        "FullFIM": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
+            "color": "#1f77b4",  # Blue
+            "marker": "o",
+        },
+        "Subdet_XZ": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi}})$",
+            "color": "#ff7f0e",  # Orange
+            "marker": "s",
+        },
+        "NuisanceAware": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
+            "color": "#2ca02c",  # Green
+            "marker": "d",
+        },
+        "MIS_x": {
+            "label": r"MIS$_x$",
+            "color": "#d62728",  # Red
+            "marker": "^",
+        },
+    }
+
+    # --- Bias Plot ---
+    # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
+    ax1.plot(
+        theta_deviations,
+        bias_full_fim,
+        marker=styles["FullFIM"]["marker"],
+        linestyle="-",
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
+        markersize=8,
+        lw=2,
     )
-    naive_bias_z_full_opt.append(
-        best_estimate(E_true, dEz_full_opt, E0_full_opt) - z_true_pos
+    if bias_subdet_xz:
+        ax1.plot(
+            theta_deviations,
+            bias_subdet_xz,
+            marker=styles["Subdet_XZ"]["marker"],
+            linestyle="-",
+            label=styles["Subdet_XZ"]["label"],
+            color=styles["Subdet_XZ"]["color"],
+            markersize=8,
+            lw=2,
+        )
+    ax1.plot(
+        theta_deviations,
+        bias_nuisance_aware,
+        marker=styles["NuisanceAware"]["marker"],
+        linestyle="-",
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
+        markersize=8,
+        lw=2,
     )
-
-    # Marginal FIM Optimal
-    sim.set_input_field_kx(kx_array, wf_marginal)
-    E_true = sim.compute_zL_fields_direct()
-    naive_bias_x_marginal.append(
-        best_estimate(E_true, dEx_marginal, E0_marginal) - x_true_pos
+    if bias_mis_x:
+        ax1.plot(
+            theta_deviations,
+            bias_mis_x,
+            marker=styles["MIS_x"]["marker"],
+            linestyle="-",
+            label=styles["MIS_x"]["label"],
+            color=styles["MIS_x"]["color"],
+            markersize=8,
+            lw=2,
+        )
+    ax1.axhline(0, color="k", linestyle="--", label="Unbiased")
+    ax1.set_ylabel(
+        f"Estimation Bias of $\hat{{{param_name.lower()}}}$", fontsize=14
     )
-    naive_bias_z_marginal.append(
-        best_estimate(E_true, dEz_marginal, E0_marginal) - z_true_pos
+    ax1.legend(fontsize=11)
+    ax1.grid(True, which="both", linestyle=":", alpha=0.6)
+    ax1.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
+
+    # --- Precision Plot ---
+    # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
+    ax2.plot(
+        theta_deviations,
+        np.mean(std_full_fim)
+        * np.ones_like(
+            theta_deviations
+        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+        linestyle="--",
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
+        lw=2,
     )
-
-    # NEW: MIS_x
-    sim.set_input_field_kx(kx_array, wf_mis_x)
-    E_true = sim.compute_zL_fields_direct()
-    naive_bias_x_mis_x.append(
-        best_estimate(E_true, dEx_mis_x, E0_mis_x) - x_true_pos
+    if std_subdet_xz:
+        ax2.plot(
+            theta_deviations,
+            np.mean(std_subdet_xz)
+            * np.ones_like(
+                theta_deviations
+            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+            linestyle="--",
+            label=styles["Subdet_XZ"]["label"],
+            color=styles["Subdet_XZ"]["color"],
+            lw=2,
+        )
+    ax2.plot(
+        theta_deviations,
+        np.mean(std_nuisance_aware)
+        * np.ones_like(
+            theta_deviations
+        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+        linestyle="--",
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
+        lw=2,
     )
-    naive_bias_z_mis_x.append(
-        best_estimate(E_true, dEz_mis_x, E0_mis_x) - z_true_pos
+    if std_mis_x:
+        ax2.plot(
+            theta_deviations,
+            np.mean(std_mis_x)
+            * np.ones_like(
+                theta_deviations
+            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+            linestyle="--",
+            label=styles["MIS_x"]["label"],
+            color=styles["MIS_x"]["color"],
+            lw=2,
+        )
+
+    # --- CRLB Plotting ---
+    ax2.plot(
+        theta_deviations,
+        crlb_full_fim / np.sqrt(total_photons),
+        color=styles["FullFIM"]["color"],
+        marker=styles["FullFIM"]["marker"],
+        linestyle="-",
+        label=f"CRLB " + styles["FullFIM"]["label"],
     )
+    if crlb_subdet_xz is not None:
+        ax2.plot(
+            theta_deviations,
+            crlb_subdet_xz / np.sqrt(total_photons),
+            color=styles["Subdet_XZ"]["color"],
+            marker=styles["Subdet_XZ"]["marker"],
+            linestyle="-",
+            label=f"CRLB " + styles["Subdet_XZ"]["label"],
+        )
+    ax2.plot(
+        theta_deviations,
+        crlb_nuisance_aware / np.sqrt(total_photons),
+        color=styles["NuisanceAware"]["color"],
+        marker=styles["NuisanceAware"]["marker"],
+        linestyle="-",
+        label=f"CRLB " + styles["NuisanceAware"]["label"],
+    )
+    if crlb_mis_x is not None:
+        ax2.plot(
+            theta_deviations,
+            crlb_mis_x / np.sqrt(total_photons),
+            color=styles["MIS_x"]["color"],
+            marker=styles["MIS_x"]["marker"],
+            linestyle="-",
+            label="CRLB " + styles["MIS_x"]["label"],
+        )
 
-print("\nBias calculation for naive estimators finished.")
+    ax2.set_xlabel(
+        "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
+        fontsize=14,
+    )
+    ax2.set_ylabel(
+        f"Estimation Error (Std. Dev. of $\hat{{{param_name.lower()}}}$)",
+        fontsize=14,
+    )
+    ax2.legend(fontsize=12)
+    ax2.grid(True, which="both", linestyle=":", alpha=0.6)
+    ax2.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
+    ax2.set_ylim(bottom=0)
 
-fig_naive, (ax_x, ax_z) = plt.subplots(1, 2, figsize=(14, 6))
-fig_naive.suptitle(
-    f"Bias of Naive Single-Parameter Estimator vs. Nuisance Mismatch ({OPTIMALITY_CRITERION}-Optimality)",
-    fontsize=16,
-)
-plt.subplots_adjust(wspace=0.05)
 
-# --- Left Plot: Bias of X-hat ---
-ax_x.plot(
-    theta_deviations,
-    naive_bias_x_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-)
-ax_x.plot(
-    theta_deviations,
-    naive_bias_x_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-)
-ax_x.plot(
-    theta_deviations,
-    naive_bias_x_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-)  # NEW
-ax_x.axhline(0, color="k", linestyle="--")
-ax_x.grid(True, linestyle=":")
-ax_x.set_title("Bias of $\\hat{x}$ Estimate", fontsize=14)
-ax_x.set_xlabel(
-    "Nuisance Deviation ($\\theta_{true} - \\theta_0$) [rad]", fontsize=12
-)
-ax_x.set_ylabel("Systematic Estimation Bias of $\\hat{x}$", fontsize=12)
-ax_x.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax_x.legend(fontsize=10)
+# Main plotting block
+fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
+# fig.suptitle(
+#     f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
+#     fontsize=16,
+# )
 
-# --- Right Plot: Bias of Z-hat ---
-ax_z.plot(
-    theta_deviations,
-    naive_bias_z_full_opt,
-    "o-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Full)",
-    color="#1f77b4",
-    markersize=8,
-)
-ax_z.plot(
-    theta_deviations,
-    naive_bias_z_marginal,
-    "s-",
-    label=f"{OPTIMALITY_CRITERION}-Optimal (Marginal)",
-    color="#ff7f0e",
-    markersize=8,
-)
-ax_z.plot(
-    theta_deviations,
-    naive_bias_z_mis_x,
-    "^-",
-    label="MIS_x",
-    color="#2ca02c",
-    markersize=8,
-)  # NEW
-ax_z.axhline(0, color="k", linestyle="--")
-ax_z.grid(True, linestyle=":")
-ax_z.set_title("Bias of $\\hat{z}$ Estimate", fontsize=14)
-ax_z.set_xlabel(
-    "Nuisance Deviation ($\\theta_{true} - \\theta_0$) [rad]", fontsize=12
-)
-ax_z.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-ax_z.yaxis.tick_right()
-ax_z.yaxis.set_label_position("right")
-ax_z.set_ylabel("Systematic Estimation Bias of $\\hat{z}$", fontsize=12)
-ax_z.legend(fontsize=10)
+# Plot for X parameter on the left column
+plot_performance_on_axes(axes[:, 0], "X", idx_x, 0)
+axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)
+axes[1, 0].set_title("Precision (X-parameter)", fontsize=14)
 
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-# plt.savefig('out.png', dpi=300)
+# Plot for Z parameter on the right column
+plot_performance_on_axes(axes[:, 1], "Z", idx_z, 1)
+axes[0, 1].set_title("Bias (Z-parameter)", fontsize=14)
+axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
 
+
+# Final adjustments
+plt.tight_layout(rect=[0, 0, 1, 0.96])
 plt.show()
 
-# %% 10) Print J for one of the optimal states
-J_to_print = fisher_matrices_for_wavefronts["Full_FIM_Optimal"]
-print("\\n" + "=" * 50)
+
+# %% 8) Print J for one of the optimal states
+# Choose which J to print, e.g., NuisanceAware or Subdet_XZ
+# For example, printing the NuisanceAware FIM:
+# J_to_print_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+# Or the Subdet_XZ FIM
+J_to_print_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
+# J_to_print_key = 'FullFIM_Dopt'
+
+J_to_print = fisher_matrices_for_wavefronts[J_to_print_key]
+# J_to_print = np.linalg.inv(J_to_print)
+print("\n" + "=" * 50)
 print(
-    f"Fisher Information Matrix J for the {OPTIMALITY_CRITERION}-Optimal Wavefront:"
+    f"Fisher Information Matrix J for the {OPTIMALITY_CRITERION}-Optimal Wavefront: {J_to_print_key}"
 )
 print("=" * 50)
 print(f"{'':>6} | {'x':^12} | {'z':^12} | {'theta':^12}")
@@ -816,9 +801,9 @@ for i, row in enumerate(J_to_print):
     )
 print("=" * 50)
 
-# %% 11) produce nuisance wiggle animation
+# %% 9) produce nuisance wiggle animation
 
-if False:
+if False:  # false because it's very slow to generate
     import matplotlib.pyplot as plt
     import numpy as np
     from matplotlib.animation import FuncAnimation, PillowWriter
