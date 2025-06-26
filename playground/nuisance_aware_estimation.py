@@ -74,11 +74,12 @@ single_run_iterations = 3000
 
 ### Quasi-random double line
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=6
 )
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=15
 )
+frozen_dipoles_line = None
 
 # ### Square
 # movable_dipoles_line = placedipoles.place_square_of_dipoles(
@@ -288,12 +289,13 @@ fisher_matrices_for_wavefronts[full_fim_result_key] = (
 
 # %% 6) Run simulation with the multi-parameter estimator
 total_photons = 1e6
-N_estimations = 10000
+N_estimations = int(1e6)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
 N_deviations = 31
 max_deviation = 0.02 * 5
+max_deviation = 1.5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
 # Lists to store results for each strategy
@@ -305,7 +307,7 @@ all_estimates_mis_x = []
 print("\nPre-calculating estimator components...")
 sim = CoupledDipoleSimulator(**sim_kwargs)
 nominal_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-    movable_dipoles_line, 0, 0, theta0_rad
+    movable_dipoles_line, 0, 0, 0
 )
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
     sim.scatterers = np.hstack((frozen_dipoles_line, nominal_movable_dipoles))
@@ -368,7 +370,7 @@ print("\nStarting estimation loop...")
 for i, theta_dev in enumerate(theta_deviations):
     print(
         f"\rSimulating deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
-        end="",
+        end="     ",
     )
     theta_true = theta0_rad + theta_dev
     true_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
@@ -432,10 +434,16 @@ for i, theta_dev in enumerate(theta_deviations):
 
 print("\nSimulation loop finished.")
 
-# %% 7 & 8) Plotting Bias and Precision for X and Z Parameters
+# %% 7) Plotting Bias and Precision for X and Z Parameters
 
 
-def plot_performance(param_name, idx_in_3param, idx_in_2param):
+def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
+    """
+    Plots bias and precision for a given parameter on a set of two axes.
+    `axes` should be a tuple or list of two axes: (ax_bias, ax_precision).
+    """
+    ax1, ax2 = axes
+
     # Calculate Bias
     bias_nuisance_aware = [
         np.mean(est[:, idx_in_3param]) - x_true_pos
@@ -494,13 +502,6 @@ def plot_performance(param_name, idx_in_3param, idx_in_2param):
         else None
     )
 
-    # Plotting
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-    fig.suptitle(
-        f"Estimator Performance for {param_name}-Parameter ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
-        fontsize=16,
-    )
-
     # Bias Plot
     ax1.plot(
         theta_deviations,
@@ -529,7 +530,7 @@ def plot_performance(param_name, idx_in_3param, idx_in_2param):
         color="#d62728",
         markersize=8,
         lw=2,
-    )  # Red
+    )
     if bias_mis_x:
         ax1.plot(
             theta_deviations,
@@ -547,7 +548,6 @@ def plot_performance(param_name, idx_in_3param, idx_in_2param):
     ax1.legend(fontsize=11)
     ax1.grid(True, which="both", linestyle=":", alpha=0.6)
     ax1.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-    ax1.set_title("Accuracy (Bias)", fontsize=14)
 
     # Precision Plot
     ax2.plot(
@@ -627,28 +627,44 @@ def plot_performance(param_name, idx_in_3param, idx_in_2param):
     ax2.legend(fontsize=12)
     ax2.grid(True, which="both", linestyle=":", alpha=0.6)
     ax2.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-    ax2.set_title("Precision (Standard Deviation)", fontsize=14)
     ax2.set_ylim(bottom=0)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.show()
 
 
-# Generate plots for X and Z
-plot_performance("X", idx_x, 0)
-plot_performance("Z", idx_z, 1)
+# Main plotting block
+fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
+fig.suptitle(
+    f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
+    fontsize=16,
+)
+
+# Plot for X parameter on the left column
+plot_performance_on_axes(axes[:, 0], "X", idx_x, 0)
+axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)
+axes[1, 0].set_title("Precision (X-parameter)", fontsize=14)
+
+# Plot for Z parameter on the right column
+plot_performance_on_axes(axes[:, 1], "Z", idx_z, 1)
+axes[0, 1].set_title("Bias (Z-parameter)", fontsize=14)
+axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
 
 
-# %% 9) Print J for one of the optimal states
+# Final adjustments
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.show()
+
+# %% 8) Print J for one of the optimal states
 # Choose which J to print, e.g., NuisanceAware or Subdet_XZ
 # For example, printing the NuisanceAware FIM:
 # J_to_print_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
 # Or the Subdet_XZ FIM
 J_to_print_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
+# J_to_print_key = 'FullFIM_Dopt'
 
 J_to_print = fisher_matrices_for_wavefronts[J_to_print_key]
+# J_to_print = np.linalg.inv(J_to_print)
 print("\\n" + "=" * 50)
 print(
-    f"Fisher Information Matrix J for the {OPTIMALITY_CRITERION}-Optimal Wavefront:"
+    f"Fisher Information Matrix J for the {OPTIMALITY_CRITERION}-Optimal Wavefront: {J_to_print_key}"
 )
 print("=" * 50)
 print(f"{'':>6} | {'x':^12} | {'z':^12} | {'theta':^12}")
@@ -659,7 +675,7 @@ for i, row in enumerate(J_to_print):
     )
 print("=" * 50)
 
-# %% 10) produce nuisance wiggle animation
+# %% 9) produce nuisance wiggle animation
 
 if False:  # false because it's very slow to generate
     import matplotlib.pyplot as plt
