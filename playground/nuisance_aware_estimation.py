@@ -924,3 +924,147 @@ if False:  # false because it's very slow to generate
     plt.close(fig_anim)
 
     print(f"Animation successfully saved as '{animation_filename}'")
+
+
+# %% 10) Data Preparation for XZ Deviation Impact
+# Settings for the XZ deviation analysis
+N_xz_deviations = 15  # Number of points for x and z deviation
+max_xz_deviation = 0.1  # Max deviation for x and z
+x_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
+z_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
+
+# We will use the NuisanceAware Marginal FIM optimized wavefront for this analysis
+# Its components were calculated in step 6.
+# wavefront_key_xz_analysis = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+# Using the specific key from the script for clarity
+wavefront_key_xz_analysis = nuisance_aware_wf_key # Defined in step 6
+
+wf_xz_analysis = optimized_wavefronts[wavefront_key_xz_analysis]
+E0_estimator = E0_nuisance_aware # Nominal E-field for the estimator
+dE_vectors_estimator = dE_nuisance_aware # Nominal dE/dparams for the estimator
+J_inv_estimator = J_inv_nuisance_aware # Nominal J_inv for the estimator
+
+# Store results: bias of x for each (x_dev, z_dev)
+estimated_x_means_xz_dev = np.zeros((N_xz_deviations, N_xz_deviations))
+
+print(f"\nStarting XZ deviation simulation for wavefront: {wavefront_key_xz_analysis}...")
+# Loop through x and z deviations
+for i, x_dev in enumerate(x_dev_range):
+    for j, z_dev in enumerate(z_dev_range):
+        print(
+            f"\rSimulating XZ deviation: x={x_dev:.3f}, z={z_dev:.3f} ({i*N_xz_deviations + j + 1}/{N_xz_deviations**2})",
+            end=" ",
+        )
+
+        # Update scatterer positions for the TRUE state
+        # Nuisance parameter (rotation) is kept at its nominal value (0)
+        current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
+            movable_dipoles_line, x_dev, z_dev, 0.0  # theta_true is 0
+        )
+        if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+            sim.scatterers = np.hstack(
+                (frozen_dipoles_line, current_movable_dipoles)
+            )
+        else:
+            sim.scatterers = current_movable_dipoles
+        sim.reset()
+
+        # Calculate the true electric field for this deviated state
+        sim.set_input_field_kx(kx_array, wf_xz_analysis)
+        E_true_xz_dev = sim.compute_zL_fields_direct()
+
+        # Measure noisy field
+        # Using a combined seed based on i and j to ensure reproducibility if needed
+        Z_noisy_xz_dev = measure_heterodyne(
+            E_true_xz_dev, total_photons, nsamples=N_estimations, seed=(i * N_xz_deviations + j) * 100
+        )
+
+        # Estimate parameters using the estimator calibrated at nominal conditions
+        estimates_xz_dev = np.array(
+            [
+                best_estimate_multi(
+                    Z, E0_estimator, dE_vectors_estimator, J_inv_estimator
+                )
+                for Z in Z_noisy_xz_dev
+            ]
+        )
+
+        # Store the mean of the estimated x parameter
+        # The estimator returns [x_est, z_est, theta_est]
+        estimated_x_means_xz_dev[i, j] = np.mean(estimates_xz_dev[:, param_names.index("shiftX")])
+
+print("\nXZ deviation simulation finished.")
+
+# Calculate Bias and Relative Absolute Bias for x
+bias_x_xz_dev = np.zeros_like(estimated_x_means_xz_dev)
+relative_absolute_bias_x_xz_dev = np.zeros_like(estimated_x_means_xz_dev)
+
+for i, x_dev in enumerate(x_dev_range):
+    for j, z_dev in enumerate(z_dev_range): # z_dev is not directly used here but defines the grid point
+        current_bias = estimated_x_means_xz_dev[i, j] - x_dev
+        bias_x_xz_dev[i, j] = current_bias
+        if x_dev == 0:
+            # If x_dev is 0, relative bias is tricky.
+            # We can define it as abs(bias) / a small_number or look at absolute bias.
+            # For contour plotting, we are interested in levels like 0.05.
+            # If x_dev is 0, a non-zero bias means infinite relative error.
+            # Let's use absolute bias if x_dev is zero, assuming the "target" for relative error is based on the deviation.
+            # Or, more practically for plotting contours, if x_dev is 0, any bias means it's "off".
+            # The user wants contours at 5% and 50%. If x_dev is 0, bias is x_est.
+            # Relative bias abs(x_est / x_dev) would blow up.
+            # Let's consider the case where x_dev is very small.
+            # A simple solution for now: if x_dev is 0, the relative bias is 0 if bias is also 0, otherwise very large.
+            if np.isclose(current_bias, 0):
+                relative_absolute_bias_x_xz_dev[i, j] = 0.0
+            else:
+                # Assign a large value if bias is non-zero when x_dev is zero,
+                # so it likely falls outside typical contour levels like 0.05, 0.5.
+                relative_absolute_bias_x_xz_dev[i, j] = np.inf
+        else:
+            relative_absolute_bias_x_xz_dev[i, j] = np.abs(current_bias / x_dev)
+
+
+# %% 11) Plot XZ Deviation Impact
+X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
+
+plt.figure(figsize=(10, 8))
+# Note: contour function expects Z values to be (row, column) which corresponds to (z_dev, x_dev)
+# if x_dev_range is the first varying index and z_dev_range is the second.
+# Our `estimated_x_means_xz_dev` is indexed as [index_for_x_dev, index_for_z_dev].
+# So, `relative_absolute_bias_x_xz_dev` is also [i_x_dev, j_z_dev].
+# For contour plot: X should be x_dev_range, Y should be z_dev_range.
+# Data Z should be `relative_absolute_bias_x_xz_dev.T` if X is x_dev and Y is z_dev.
+# Let's verify:
+# X_dev_grid[j,i] = x_dev_range[i]
+# Z_dev_grid[j,i] = z_dev_range[j]
+# We want to plot `relative_absolute_bias_x_xz_dev[i,j]` at `(x_dev_range[i], z_dev_range[j])`
+# So, if X = X_dev_grid and Y = Z_dev_grid, then Z should be `relative_absolute_bias_x_xz_dev.T`
+
+contour_levels = [0.05, 0.50]
+cs = plt.contour(X_dev_grid, Z_dev_grid, relative_absolute_bias_x_xz_dev.T, levels=contour_levels, cmap="viridis")
+plt.clabel(cs, inline=True, fontsize=10, fmt=lambda x: f"{x*100:.0f}%%")
+
+# Add a color fill for better visualization, even though contours are primary
+# Use a sensible vmax, perhaps 1 (100% relative error)
+# Replace inf with a large number for plotting with contourf, or ensure colormap handles it.
+# A simple way is to clip values or use a masked array.
+plot_data_for_contourf = relative_absolute_bias_x_xz_dev.T.copy()
+# plot_data_for_contourf[plot_data_for_contourf == np.inf] = 2.0 # Replace inf with a value slightly above max contour
+# plt.contourf(X_dev_grid, Z_dev_grid, plot_data_for_contourf, levels=np.linspace(0, 1, 50), cmap="viridis", alpha=0.7, extend='max')
+
+# Let's try a pcolormesh for the background heatmap/color fill
+# Clip infinity to a large value for visualization, e.g., 2 (200% error)
+pcm_data = np.clip(relative_absolute_bias_x_xz_dev.T, 0, 2)
+plt.pcolormesh(X_dev_grid, Z_dev_grid, pcm_data, cmap="viridis", shading='gouraud', vmax=1.0, alpha=0.7)
+plt.colorbar(label="Relative Absolute Estimation Bias of $\hat{x}$ (clipped at 200%)")
+
+
+plt.xlabel("True x deviation from nominal ($x_{true}$)")
+plt.ylabel("True z deviation from nominal ($z_{true}$)")
+plt.title(f"Contour Plot of Relative Absolute Bias for $\hat{x}$ Estimation\nWavefront: {wavefront_key_xz_analysis}")
+plt.axhline(0, color='k', linestyle='--', linewidth=0.8)
+plt.axvline(0, color='k', linestyle='--', linewidth=0.8)
+plt.scatter([0], [0], marker='o', color='red', s=50, label="Nominal (0,0)")
+plt.legend()
+plt.gca().set_aspect('equal', adjustable='box')
+plt.show()
