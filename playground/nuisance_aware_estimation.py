@@ -65,8 +65,8 @@ number_of_output_channels = 300
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3
 photon_budget = 1.0
-multi_run_count = 10
-single_run_iterations = 3000
+multi_run_count = 5
+single_run_iterations = 2000
 
 # %% 1) define dipole configurations
 # movable_dipoles_line = placedipoles.place_line_of_dipoles(
@@ -297,7 +297,7 @@ N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 11
+N_deviations = 21
 max_deviation = 0.02 * 5
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
@@ -493,25 +493,84 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         else None
     )
 
-    # Calculate CRLBs
+    # Calculate CRLBs for each deviation
     crlb_prefactor = 1 / np.sqrt(2)
-    crlb_nuisance_aware = crlb_prefactor * np.sqrt(
-        J_inv_nuisance_aware[idx_in_3param, idx_in_3param]
-    )
-    crlb_subdet_xz = (
-        crlb_prefactor
-        * np.sqrt(J_inv_subdet_xz_2x2[idx_in_2param, idx_in_2param])
-        if idx_in_2param is not None
-        else None
-    )
-    crlb_full_fim = crlb_prefactor * np.sqrt(
-        J_inv_full_fim[idx_in_3param, idx_in_3param]
-    )
-    crlb_mis_x = (
-        crlb_prefactor * np.sqrt(1 / J_mis_x_full[idx_x, idx_x])
-        if param_name == "X"
-        else None
-    )
+    crlb_nuisance_aware_list = []
+    crlb_subdet_xz_list = []
+    crlb_full_fim_list = []
+    crlb_mis_x_list = []
+
+    for theta_dev in theta_deviations:
+        # Recalculate dS for the current deviation
+        dS_tensor_dev = placedipoles.calculate_dS_for_3_parameters(
+            sim_kwargs,
+            angles_deg,
+            movable_dipoles=placedipoles.shift_and_rotate_dipoles(
+                movable_dipoles_line, 0, 0, theta_dev
+            ),
+            frozen_dipoles=frozen_dipoles_line,
+            delta_param=delta_param,
+            flux_normalize=True,
+        )
+        fisher_calc_dev = FisherMatrix(
+            dS=dS_tensor_dev, param_names=param_names, delta=delta_param
+        )
+        optimizer_dev = Optimizer(
+            F_operator_tensor=fisher_calc_dev.F, device=optimizer_device
+        )
+
+        # Nuisance-Aware
+        J_nuisance_aware_dev = optimizer_dev.J_fisher_info_matrix(
+            wf_nuisance_aware
+        )
+        J_inv_nuisance_aware_dev = np.linalg.inv(J_nuisance_aware_dev)
+        crlb_nuisance_aware_list.append(
+            crlb_prefactor
+            * np.sqrt(J_inv_nuisance_aware_dev[idx_in_3param, idx_in_3param])
+        )
+
+        # Sub-determinant XZ
+        if idx_in_2param is not None:
+            J_subdet_xz_full_dev = optimizer_dev.J_fisher_info_matrix(
+                wf_subdet_xz
+            )
+            J_subdet_xz_2x2_dev = J_subdet_xz_full_dev[
+                np.ix_([idx_x, idx_z], [idx_x, idx_z])
+            ]
+            J_inv_subdet_xz_2x2_dev = np.linalg.inv(J_subdet_xz_2x2_dev)
+            crlb_subdet_xz_list.append(
+                crlb_prefactor
+                * np.sqrt(
+                    J_inv_subdet_xz_2x2_dev[idx_in_2param, idx_in_2param]
+                )
+            )
+
+        # Full FIM
+        J_full_fim_dev = optimizer_dev.J_fisher_info_matrix(wf_full_fim)
+        J_inv_full_fim_dev = np.linalg.inv(J_full_fim_dev)
+        crlb_full_fim_list.append(
+            crlb_prefactor
+            * np.sqrt(J_inv_full_fim_dev[idx_in_3param, idx_in_3param])
+        )
+
+        # MIS_x
+        if param_name == "X":
+            J_mis_x_full_dev = optimizer_dev.J_fisher_info_matrix(wf_mis_x)
+            crlb_mis_x_list.append(
+                crlb_prefactor * np.sqrt(1 / J_mis_x_full_dev[idx_x, idx_x])
+            )
+    if crlb_subdet_xz_list:
+        crlb_subdet_xz = np.array(crlb_subdet_xz_list)
+    else:
+        crlb_subdet_xz = None
+
+    if crlb_mis_x_list:
+        crlb_mis_x = np.array(crlb_mis_x_list)
+    else:
+        crlb_mis_x = None
+
+    crlb_nuisance_aware = np.array(crlb_nuisance_aware_list)
+    crlb_full_fim = np.array(crlb_full_fim_list)
 
     # Bias Plot
     ax1.plot(
@@ -600,28 +659,32 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
             lw=2,
         )
 
-    ax2.axhline(
-        y=crlb_nuisance_aware / np.sqrt(total_photons),
+    ax2.plot(
+        theta_deviations,
+        crlb_nuisance_aware / np.sqrt(total_photons),
         color="#ff7f0e",
         linestyle="--",
         label=f"CRLB Nuisance-Aware",
     )
-    if crlb_subdet_xz:
-        ax2.axhline(
-            y=crlb_subdet_xz / np.sqrt(total_photons),
+    if crlb_subdet_xz is not None:
+        ax2.plot(
+            theta_deviations,
+            crlb_subdet_xz / np.sqrt(total_photons),
             color="#1f77b4",
             linestyle="--",
             label=f"CRLB Subdet XZ",
         )
-    ax2.axhline(
-        y=crlb_full_fim / np.sqrt(total_photons),
+    ax2.plot(
+        theta_deviations,
+        crlb_full_fim / np.sqrt(total_photons),
         color="#d62728",
         linestyle="--",
         label=f"CRLB Full FIM",
     )
-    if crlb_mis_x:
-        ax2.axhline(
-            y=crlb_mis_x / np.sqrt(total_photons),
+    if crlb_mis_x is not None:
+        ax2.plot(
+            theta_deviations,
+            crlb_mis_x / np.sqrt(total_photons),
             color="#2ca02c",
             linestyle="--",
             label="CRLB MIS_x",
