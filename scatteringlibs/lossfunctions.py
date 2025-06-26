@@ -349,26 +349,54 @@ def subdet_loss(
     J_full: torch.Tensor, nuisance_param_index: int, eps: float = 1e-12
 ) -> torch.Tensor:
     """
-    Computes -log(det(J_interest)).
+    Computes -log(det(J_sub)), where J_sub is the sub-matrix of J_full
+    with the nuisance parameter row/column dropped.
     This corresponds to the "SubDet" strategy.
-    Loss should be minimized (equivalent to maximizing det(J_interest)).
+    Loss should be minimized (equivalent to maximizing det(J_sub)).
 
     Args:
         J_full (torch.Tensor): The full Fisher Information Matrix (typically 3x3).
-        nuisance_param_index (int): Index of the nuisance parameter.
+        nuisance_param_index (int): Index of the nuisance parameter to drop.
         eps (float): Small epsilon for numerical stability in log.
 
     Returns:
         torch.Tensor: The computed loss value.
     """
-    J_interest = compute_J_interest_given_nuisance(
-        J_full, nuisance_param_index
-    )
-    det_J_interest = torch.linalg.det(J_interest)
+    J_sub = compute_J_SubDet_given_nuisance(J_full, nuisance_param_index)
+    det_J_sub = torch.linalg.det(J_sub)
 
     # Add epsilon before log to ensure argument is positive
-    loss = -torch.log(det_J_interest + eps)
+    loss = -torch.log(det_J_sub + eps)
     return loss
+
+
+def compute_J_SubDet_given_nuisance(
+    J_full: torch.Tensor, nuisance_param_index: int
+) -> torch.Tensor:
+    """
+    Computes a sub-matrix of the Fisher Information Matrix by dropping the
+    row and column corresponding to the nuisance parameter.
+
+    Args:
+        J_full (torch.Tensor): The full Fisher Information Matrix.
+        nuisance_param_index (int): The index of the nuisance parameter to drop.
+
+    Returns:
+        torch.Tensor: The resulting sub-matrix (e.g., 2x2 if J_full was 3x3).
+    """
+    # Get all indices from 0 to n-1
+    all_indices = list(range(J_full.shape[0]))
+
+    # Keep indices that are not the nuisance parameter
+    interest_indices = [i for i in all_indices if i != nuisance_param_index]
+
+    # Use advanced indexing to select the rows and columns for the sub-matrix
+    J_SubDet = J_full[
+        torch.tensor(interest_indices, device=J_full.device)[:, None],
+        torch.tensor(interest_indices, device=J_full.device),
+    ]
+
+    return J_SubDet
 
 
 def maximize_min_eig_J(J_matrix):
