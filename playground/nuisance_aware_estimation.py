@@ -66,7 +66,7 @@ param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3
 photon_budget = 1.0
 multi_run_count = 5
-single_run_iterations = 2000
+single_run_iterations = 4000
 
 # %% 1) define dipole configurations
 # movable_dipoles_line = placedipoles.place_line_of_dipoles(
@@ -297,8 +297,8 @@ N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
-N_deviations = 21
-max_deviation = 0.02 * 5
+N_deviations = 31
+max_deviation = 0.1
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
 # Lists to store results for each strategy
@@ -581,8 +581,8 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     # Inspired by result_Pareto_frontier.py
     opt_criterion_label = f"{OPTIMALITY_CRITERION}-Opt."
     styles = {
-        "NuisanceAware": {
-            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
+        "FullFIM": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
             "color": "#1f77b4",  # Blue
             "marker": "o",
         },
@@ -591,8 +591,8 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
             "color": "#ff7f0e",  # Orange
             "marker": "s",
         },
-        "FullFIM": {
-            "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
+        "NuisanceAware": {
+            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
             "color": "#2ca02c",  # Green
             "marker": "d",
         },
@@ -604,14 +604,14 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     }
 
     # --- Bias Plot ---
-    # Order: Nuisance-Aware, Subdet, FullFIM, MIS_x
+    # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
     ax1.plot(
         theta_deviations,
-        bias_nuisance_aware,
-        marker=styles["NuisanceAware"]["marker"],
+        bias_full_fim,
+        marker=styles["FullFIM"]["marker"],
         linestyle="-",
-        label=styles["NuisanceAware"]["label"],
-        color=styles["NuisanceAware"]["color"],
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
         markersize=8,
         lw=2,
     )
@@ -628,11 +628,11 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         )
     ax1.plot(
         theta_deviations,
-        bias_full_fim,
-        marker=styles["FullFIM"]["marker"],
+        bias_nuisance_aware,
+        marker=styles["NuisanceAware"]["marker"],
         linestyle="-",
-        label=styles["FullFIM"]["label"],
-        color=styles["FullFIM"]["color"],
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
         markersize=8,
         lw=2,
     )
@@ -656,14 +656,14 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     ax1.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 
     # --- Precision Plot ---
-    # Order: Nuisance-Aware, Subdet, FullFIM, MIS_x
+    # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
     ax2.plot(
         theta_deviations,
-        std_nuisance_aware,
-        marker=styles["NuisanceAware"]["marker"],
+        std_full_fim,
+        marker=styles["FullFIM"]["marker"],
         linestyle="-",
-        label=styles["NuisanceAware"]["label"],
-        color=styles["NuisanceAware"]["color"],
+        label=styles["FullFIM"]["label"],
+        color=styles["FullFIM"]["color"],
         markersize=8,
         lw=2,
     )
@@ -680,11 +680,11 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         )
     ax2.plot(
         theta_deviations,
-        std_full_fim,
-        marker=styles["FullFIM"]["marker"],
+        std_nuisance_aware,
+        marker=styles["NuisanceAware"]["marker"],
         linestyle="-",
-        label=styles["FullFIM"]["label"],
-        color=styles["FullFIM"]["color"],
+        label=styles["NuisanceAware"]["label"],
+        color=styles["NuisanceAware"]["color"],
         markersize=8,
         lw=2,
     )
@@ -703,10 +703,10 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     # --- CRLB Plotting ---
     ax2.plot(
         theta_deviations,
-        crlb_nuisance_aware / np.sqrt(total_photons),
-        color=styles["NuisanceAware"]["color"],
+        crlb_full_fim / np.sqrt(total_photons),
+        color=styles["FullFIM"]["color"],
         linestyle="--",
-        label=f"CRLB " + styles["NuisanceAware"]["label"],
+        label=f"CRLB " + styles["FullFIM"]["label"],
     )
     if crlb_subdet_xz is not None:
         ax2.plot(
@@ -718,10 +718,10 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
         )
     ax2.plot(
         theta_deviations,
-        crlb_full_fim / np.sqrt(total_photons),
-        color=styles["FullFIM"]["color"],
+        crlb_nuisance_aware / np.sqrt(total_photons),
+        color=styles["NuisanceAware"]["color"],
         linestyle="--",
-        label=f"CRLB " + styles["FullFIM"]["label"],
+        label=f"CRLB " + styles["NuisanceAware"]["label"],
     )
     if crlb_mis_x is not None:
         ax2.plot(
