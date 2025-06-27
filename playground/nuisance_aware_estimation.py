@@ -8,7 +8,6 @@ from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
-
 # %% -1) define functions
 def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
     """
@@ -1006,7 +1005,7 @@ for i, x_dev in enumerate(x_dev_range):
 print("\nXZ deviation simulation for both wavefronts finished.")
 
 
-# % 11) Combined Contour Plot of Absolute Estimation Bias for X and Z
+# %% 11) Combined Contour Plot of Absolute Estimation Bias for X and Z
 
 # Prepare meshgrid and data for plotting
 X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
@@ -1081,12 +1080,13 @@ plt.tight_layout(rect=[0, 0, 1, 0.95]) # Adjust rect to make space for the legen
 plt.show()
 
 
-# %% 12) Data Preparation for Statistical Ensemble Analysis
+# %% 12) Data Preparation for Statistical Ensemble Analysis (incl. Plane Waves)
 
 # --- Settings for the ensemble analysis ---
-N_random_waves_ensemble = 200  # Number of random wavefronts to test
-N_points_on_ring = 36  # Number of points to sample on the deviation circle
-deviation_radius = 0.01  # Radius of the deviation circle in units of lambda
+N_random_waves_ensemble = 100
+N_plane_waves_ensemble = number_of_input_channels # Use all available plane waves
+N_points_on_ring = 36
+deviation_radius = 0.05
 
 # Generate the points on the circle for averaging the bias
 thetas_ring = np.linspace(0, 2 * np.pi, N_points_on_ring, endpoint=False)
@@ -1100,20 +1100,16 @@ E0_estimator_optimal = E0_nuisance_aware
 dE_vectors_estimator_optimal = dE_nuisance_aware
 J_inv_estimator_optimal = J_inv_nuisance_aware
 
-bias_values_optimal_x = []
-bias_values_optimal_z = []
-
+bias_values_optimal_x, bias_values_optimal_z = [], []
 print(f"\nCalculating robustness metric for the optimal wavefront: {wavefront_key_optimal}...")
 for i in range(N_points_on_ring):
     x_dev, z_dev = x_dev_ring[i], z_dev_ring[i]
     current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(movable_dipoles_line, x_dev, z_dev, 0.0)
     sim.scatterers = np.hstack((frozen_dipoles_line, current_movable_dipoles)) if frozen_dipoles_line is not None else current_movable_dipoles
-    sim.reset()
-    sim.set_input_field_kx(kx_array, wf_optimal)
+    sim.reset(); sim.set_input_field_kx(kx_array, wf_optimal)
     E_true = sim.compute_zL_fields_direct()
     Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations, seed=i)
     estimates = np.array([best_estimate_multi(Z, E0_estimator_optimal, dE_vectors_estimator_optimal, J_inv_estimator_optimal) for Z in Z_noisy])
-
     bias_values_optimal_x.append(np.abs(np.mean(estimates[:, param_names.index("shiftX")]) - x_dev))
     bias_values_optimal_z.append(np.abs(np.mean(estimates[:, param_names.index("shiftZ")]) - z_dev))
 
@@ -1123,9 +1119,7 @@ print(f"  -> Average absolute bias for optimal WF: x={avg_bias_optimal_x:.4f}, z
 
 
 # --- 2. Calculate Robustness Metric for the Ensemble of Random Wavefronts ---
-avg_biases_random_x = []
-avg_biases_random_z = []
-
+avg_biases_random_x, avg_biases_random_z = [], []
 print(f"\nCalculating robustness metrics for an ensemble of {N_random_waves_ensemble} random wavefronts...")
 for k in range(N_random_waves_ensemble):
     print(f"\rProcessing random wavefront {k+1}/{N_random_waves_ensemble}", end="")
@@ -1138,10 +1132,7 @@ for k in range(N_random_waves_ensemble):
     E0_estimator_random = sim.compute_zL_fields_direct()
     dE_vectors_estimator_random = [dS_tensor[i] @ wf_random for i in range(len(param_names))]
     J_inv_estimator_random = np.linalg.inv(optimizer.J_fisher_info_matrix(wf_random))
-
-    bias_values_random_x_run = []
-    bias_values_random_z_run = []
-
+    bias_values_random_x_run, bias_values_random_z_run = [], []
     for i in range(N_points_on_ring):
         x_dev, z_dev = x_dev_ring[i], z_dev_ring[i]
         current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(movable_dipoles_line, x_dev, z_dev, 0.0)
@@ -1158,49 +1149,136 @@ for k in range(N_random_waves_ensemble):
     avg_biases_random_x.append(np.mean(bias_values_random_x_run))
     avg_biases_random_z.append(np.mean(bias_values_random_z_run))
 
-print("\nEnsemble analysis finished.")
 
-# %% 13) Statistical Comparison of Optimal vs. Random Wavefront Robustness
+# --- 3. Calculate Robustness Metric for the Ensemble of Plane Waves ---
+avg_biases_planewave_x, avg_biases_planewave_z = [], []
+print(f"\nCalculating robustness metrics for an ensemble of {N_plane_waves_ensemble} plane waves...")
+for k in range(N_plane_waves_ensemble):
+    print(f"\rProcessing plane wave {k+1}/{N_plane_waves_ensemble}", end="")
+    wf_plane = np.zeros(number_of_input_channels, dtype=complex); wf_plane[k] = 1.0
+    wf_plane = optimizer.normalize_wavefront(wf_plane, photon_budget)
+    sim.reset(); sim.set_input_field_kx(kx_array, wf_plane)
+    E0_estimator_plane = sim.compute_zL_fields_direct()
+    dE_vectors_estimator_plane = [dS_tensor[i] @ wf_plane for i in range(len(param_names))]
+    J_inv_estimator_plane = np.linalg.inv(optimizer.J_fisher_info_matrix(wf_plane))
+    bias_values_plane_x_run, bias_values_plane_z_run = [], []
+    for i in range(N_points_on_ring):
+        x_dev, z_dev = x_dev_ring[i], z_dev_ring[i]
+        current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(movable_dipoles_line, x_dev, z_dev, 0.0)
+        sim.scatterers = np.hstack((frozen_dipoles_line, current_movable_dipoles)) if frozen_dipoles_line is not None else current_movable_dipoles
+        sim.reset(); sim.set_input_field_kx(kx_array, wf_plane)
+        E_true = sim.compute_zL_fields_direct()
+        Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations, seed=(k+N_random_waves_ensemble)*1000 + i)
+        estimates = np.array([best_estimate_multi(Z, E0_estimator_plane, dE_vectors_estimator_plane, J_inv_estimator_plane) for Z in Z_noisy])
+        bias_values_plane_x_run.append(np.abs(np.mean(estimates[:, param_names.index("shiftX")]) - x_dev))
+        bias_values_plane_z_run.append(np.abs(np.mean(estimates[:, param_names.index("shiftZ")]) - z_dev))
 
-fig, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
-fig.suptitle(f'Statistical Comparison of Wavefront Robustness (N={N_random_waves_ensemble} random waves, Radius R={deviation_radius})$\lambda$', fontsize=16)
+    avg_biases_planewave_x.append(np.mean(bias_values_plane_x_run))
+    avg_biases_planewave_z.append(np.mean(bias_values_plane_z_run))
+
+print("\nAll ensemble analyses finished.")
+
+
+# %% 13) Final Statistical Comparison: Optimal vs. Random vs. Plane Wave Ensembles
+
+# --- Plotting Control Variables ---
+inset_x_position = 0.15         # Adjust from 0.0 (left) to 1.0 (right)
+inset_y_position = 1.35         # Adjust from 0.0 (bottom) to 1.0 (top)
+x_axis_margin_factor = 0.04     # e.g., 0.04 means a 4% margin on the left
+# -----------------------------
+
+fig, axes = plt.subplots(1, 2, figsize=(22, 9), sharey=True)
+fig.suptitle(f'Statistical Comparison of Wavefront Robustness (Radius R={deviation_radius})$\lambda$', fontsize=18)
 
 # --- Left Subplot: Histogram for X-parameter Bias ---
 ax_x = axes[0]
-ax_x.hist(avg_biases_random_x, bins=30, color='skyblue', edgecolor='black', alpha=0.7, label='Random Wavefront Ensemble', density=True)
-ax_x.axvline(avg_bias_optimal_x, color='red', linestyle='--', linewidth=3,
-             label=f'Nuisance-Aware Optimal WF\n(Bias = {avg_bias_optimal_x:.4f} $\\lambda$)')
+ax_x.hist(avg_biases_random_x, bins=30, color='skyblue', edgecolor='black', alpha=0.7, label=f'Random Ensemble (N={N_random_waves_ensemble})')
+ax_x.hist(avg_biases_planewave_x, bins=30, color='salmon', edgecolor='black', alpha=0.7, label=f'Plane Wave Ensemble (N={N_plane_waves_ensemble})')
+ax_x.axvline(avg_bias_optimal_x, color='black', linestyle='--', linewidth=3,
+             label=f'Mean Bias of Nuisance-Aware Optimal WF\n(Bias = {avg_bias_optimal_x:.4f} $\\lambda$)')
 
-# Calculate and annotate improvement factor for X
+mean_planewave_bias_x = np.mean(avg_biases_planewave_x)
+improvement_factor_plane_x = mean_planewave_bias_x / avg_bias_optimal_x
 mean_random_bias_x = np.mean(avg_biases_random_x)
-improvement_factor_x = mean_random_bias_x / avg_bias_optimal_x
-ax_x.text(0.95, 0.95, f'Improvement: {improvement_factor_x:.2f}x',
+improvement_factor_random_x = mean_random_bias_x / avg_bias_optimal_x
+
+annotation_text_x = (
+    f"Optimal WF Improvement:\n"
+    f"---------------------------------\n"
+    f"vs. Mean Plane Wave: {improvement_factor_plane_x:.2f}x\n"
+    f"vs. Mean Random Wave: {improvement_factor_random_x:.2f}x"
+)
+ax_x.text(0.95, 0.95, annotation_text_x,
           transform=ax_x.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='right',
-          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
 
 ax_x.set_xlabel(r'Average Absolute Bias for $\hat{x}$ on Deviation Ring [$\lambda$]', fontsize=14)
-ax_x.set_ylabel('Probability Density', fontsize=14)
+ax_x.set_ylabel('Frequency', fontsize=14)
 ax_x.set_title(r'Robustness Distribution for $\hat{x}$ Estimation', fontsize=16)
-ax_x.legend(fontsize=12)
+ax_x.legend(fontsize=12, loc='upper right', bbox_to_anchor=(0.95, 0.8))
 ax_x.grid(True, which="both", linestyle=":", linewidth=0.5)
+
+# Automatically adjust x-axis for margin
+current_xlim_x = ax_x.get_xlim()
+x_range_x = current_xlim_x[1] - current_xlim_x[0]
+ax_x.set_xlim(left=current_xlim_x[0] - x_range_x * x_axis_margin_factor)
+
+
+# --- Inset plot explaining the deviation ring ---
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+ax_inset = inset_axes(ax_x, width="30%", height="30%", loc='center left',
+                      bbox_to_anchor=(inset_x_position, 0, 1, inset_y_position),
+                      bbox_transform=ax_x.transAxes, borderpad=0)
+
+ax_inset.patch.set_facecolor('white')
+ax_inset.patch.set_alpha(0.85)
+for spine in ax_inset.spines.values():
+    spine.set_edgecolor('black')
+    spine.set_linewidth(1.5)
+
+thetas_circle = np.linspace(0, 2 * np.pi, 100)
+ax_inset.plot(deviation_radius * np.cos(thetas_circle), deviation_radius * np.sin(thetas_circle), 'k-')
+ax_inset.scatter([0], [0], c='k', marker='+')
+ax_inset.set_title(f'Deviation Ring\n$R = \\sqrt{{\\Delta x^2 + \\Delta z^2}} = {deviation_radius}\\lambda$', fontsize=10)
+ax_inset.set_xlabel('$\\Delta x$', fontsize=10)
+ax_inset.set_ylabel('$\\Delta z$', fontsize=10)
+ax_inset.set_aspect('equal', adjustable='box')
+ax_inset.set_xticks([-deviation_radius, 0, deviation_radius])
+ax_inset.set_yticks([-deviation_radius, 0, deviation_radius])
+ax_inset.tick_params(axis='both', which='major', labelsize=8)
+
 
 # --- Right Subplot: Histogram for Z-parameter Bias ---
 ax_z = axes[1]
-ax_z.hist(avg_biases_random_z, bins=30, color='lightgreen', edgecolor='black', alpha=0.7, label='Random Wavefront Ensemble', density=True)
-ax_z.axvline(avg_bias_optimal_z, color='red', linestyle='--', linewidth=3,
-             label=f'Nuisance-Aware Optimal WF\n(Bias = {avg_bias_optimal_z:.4f} $\\lambda$)')
+ax_z.hist(avg_biases_random_z, bins=40, color='lightgreen', edgecolor='black', alpha=0.7, label=f'Random Ensemble (N={N_random_waves_ensemble})')
+ax_z.hist(avg_biases_planewave_z, bins=40, color='orchid', edgecolor='black', alpha=0.7, label=f'Plane Wave Ensemble (N={N_plane_waves_ensemble})')
+ax_z.axvline(avg_bias_optimal_z, color='black', linestyle='--', linewidth=3,
+             label=f'Mean Bias of Nuisance-Aware Optimal WF\n(Bias = {avg_bias_optimal_z:.4f} $\\lambda$)')
 
-# Calculate and annotate improvement factor for Z
+mean_planewave_bias_z = np.mean(avg_biases_planewave_z)
+improvement_factor_plane_z = mean_planewave_bias_z / avg_bias_optimal_z
 mean_random_bias_z = np.mean(avg_biases_random_z)
-improvement_factor_z = mean_random_bias_z / avg_bias_optimal_z
-ax_z.text(0.95, 0.95, f'Improvement: {improvement_factor_z:.2f}x',
+improvement_factor_random_z = mean_random_bias_z / avg_bias_optimal_z
+
+annotation_text_z = (
+    f"Optimal WF Improvement:\n"
+    f"---------------------------------\n"
+    f"vs. Mean Plane Wave: {improvement_factor_plane_z:.2f}x\n"
+    f"vs. Mean Random Wave: {improvement_factor_random_z:.2f}x"
+)
+ax_z.text(0.95, 0.95, annotation_text_z,
           transform=ax_z.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='right',
-          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
 
 ax_z.set_xlabel(r'Average Absolute Bias for $\hat{z}$ on Deviation Ring [$\lambda$]', fontsize=14)
 ax_z.set_title(r'Robustness Distribution for $\hat{z}$ Estimation', fontsize=16)
-ax_z.legend(fontsize=12)
+ax_z.legend(fontsize=12, loc='upper right', bbox_to_anchor=(0.95, 0.8))
 ax_z.grid(True, which="both", linestyle=":", linewidth=0.5)
+
+# Automatically adjust x-axis for margin
+current_xlim_z = ax_z.get_xlim()
+x_range_z = current_xlim_z[1] - current_xlim_z[0]
+ax_z.set_xlim(left=current_xlim_z[0] - x_range_z * x_axis_margin_factor)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
