@@ -1188,7 +1188,7 @@ x_axis_margin_factor = 0.04     # e.g., 0.04 means a 4% margin on the left
 # -----------------------------
 
 fig, axes = plt.subplots(1, 2, figsize=(22, 9), sharey=True)
-fig.suptitle(f'Statistical Comparison of Wavefront Robustness (Radius R={deviation_radius})$\lambda$', fontsize=18)
+# fig.suptitle(f'Statistical Comparison of Wavefront Robustness (Radius R={deviation_radius})$\lambda$', fontsize=18)
 
 # --- Left Subplot: Histogram for X-parameter Bias ---
 ax_x = axes[0]
