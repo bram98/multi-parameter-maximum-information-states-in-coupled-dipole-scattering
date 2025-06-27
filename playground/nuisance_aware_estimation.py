@@ -926,11 +926,12 @@ if False:  # false because it's very slow to generate
     print(f"Animation successfully saved as '{animation_filename}'")
 
 
-# %% 10) Data Preparation for XZ Deviation Impact (Optimal vs. Random with Fair Estimators for X and Z)
+# %% 10) Data Preparation for XZ Deviation Impact
+# (Optimal vs. Random with Fair Estimators for X and Z)
 
 # Settings for the XZ deviation analysis
 N_xz_deviations = 41
-max_xz_deviation = 0.12
+max_xz_deviation = 0.012
 x_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
 z_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
 
@@ -944,7 +945,7 @@ absolute_bias_grid_optimal_x = np.zeros((N_xz_deviations, N_xz_deviations))
 absolute_bias_grid_optimal_z = np.zeros((N_xz_deviations, N_xz_deviations))
 
 # --- 2. Components for Flux-Normalized Random Wavefront ---
-np.random.seed(424)  # for reproducibility
+np.random.seed(5)  # for reproducibility
 wf_random = np.random.randn(number_of_input_channels) + 1j * np.random.randn(number_of_input_channels)
 wf_random = optimizer.normalize_wavefront(wf_random, photon_budget)
 absolute_bias_grid_random_x = np.zeros((N_xz_deviations, N_xz_deviations))
@@ -1005,7 +1006,7 @@ for i, x_dev in enumerate(x_dev_range):
 print("\nXZ deviation simulation for both wavefronts finished.")
 
 
-# %% 11) Combined Contour Plot of Absolute Estimation Bias for X and Z
+# % 11) Combined Contour Plot of Absolute Estimation Bias for X and Z
 
 # Prepare meshgrid and data for plotting
 X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
@@ -1025,7 +1026,7 @@ fig, axes = plt.subplots(1, 2, figsize=(24, 10))
 
 # --- Left Subplot: X-parameter ---
 ax_x = axes[0]
-vmax_diff = 0.01
+vmax_diff = 0.0001
 pcm_x = ax_x.pcolormesh(X_dev_grid, Z_dev_grid, performance_difference_x, cmap="RdYlGn", shading="gouraud", vmin=-vmax_diff, vmax=vmax_diff)
 fig.colorbar(pcm_x, ax=ax_x, extend="both", label=r"Bias Reduction for $\hat{x}$: $\epsilon_{random} - \epsilon_{optimal}$ [$\lambda$]")
 
@@ -1085,7 +1086,7 @@ plt.show()
 # --- Settings for the ensemble analysis ---
 N_random_waves_ensemble = 200  # Number of random wavefronts to test
 N_points_on_ring = 36  # Number of points to sample on the deviation circle
-deviation_radius = 0.01 * 100  # Radius of the deviation circle in units of lambda
+deviation_radius = 0.01  # Radius of the deviation circle in units of lambda
 
 # Generate the points on the circle for averaging the bias
 thetas_ring = np.linspace(0, 2 * np.pi, N_points_on_ring, endpoint=False)
@@ -1200,6 +1201,119 @@ ax_z.set_xlabel(r'Average Absolute Bias for $\hat{z}$ on Deviation Ring [$\lambd
 ax_z.set_title(r'Robustness Distribution for $\hat{z}$ Estimation', fontsize=16)
 ax_z.legend(fontsize=12)
 ax_z.grid(True, which="both", linestyle=":", linewidth=0.5)
+
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
+# %% 14) Data Preparation for Optimal vs. Median Random Wavefront
+
+# --- 1. Identify the Median-Performing Random Wavefront ---
+# We use the average biases for the x-parameter to find the median performer.
+median_idx = np.argsort(avg_biases_random_x)[len(avg_biases_random_x) // 2]
+print(f"Identifying median random wavefront (seed={median_idx}) for detailed comparison...")
+
+# --- 2. Create and Calibrate the Estimator for the Median Random Wavefront ---
+np.random.seed(median_idx)
+wf_median_random = np.random.randn(number_of_input_channels) + 1j * np.random.randn(number_of_input_channels)
+wf_median_random = optimizer.normalize_wavefront(wf_median_random, photon_budget)
+
+sim.scatterers = (np.hstack((frozen_dipoles_line, movable_dipoles_line)) if frozen_dipoles_line is not None else movable_dipoles_line)
+sim.reset()
+sim.set_input_field_kx(kx_array, wf_median_random)
+E0_estimator_median_random = sim.compute_zL_fields_direct()
+dE_vectors_estimator_median_random = [dS_tensor[i] @ wf_median_random for i in range(len(param_names))]
+J_inv_estimator_median_random = np.linalg.inv(optimizer.J_fisher_info_matrix(wf_median_random))
+
+# --- 3. Run Grid Simulation for the Median Random Wavefront ---
+absolute_bias_grid_median_random_x = np.zeros((N_xz_deviations, N_xz_deviations))
+absolute_bias_grid_median_random_z = np.zeros((N_xz_deviations, N_xz_deviations))
+
+print("Starting XZ deviation simulation for the median random wavefront...")
+for i, x_dev in enumerate(x_dev_range):
+    for j, z_dev in enumerate(z_dev_range):
+        print(f"\rSimulating XZ deviation: x={x_dev:.3f}, z={z_dev:.3f} ({i*N_xz_deviations + j + 1}/{N_xz_deviations**2})", end="")
+
+        current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(movable_dipoles_line, x_dev, z_dev, 0.0)
+        sim.scatterers = (np.hstack((frozen_dipoles_line, current_movable_dipoles)) if frozen_dipoles_line is not None else current_movable_dipoles)
+        sim.reset()
+        sim.set_input_field_kx(kx_array, wf_median_random)
+        E_true_median_random = sim.compute_zL_fields_direct()
+        Z_noisy_median_random = measure_heterodyne(E_true_median_random, total_photons, nsamples=N_estimations, seed=(i * N_xz_deviations + j) + 2*N_xz_deviations**2) # New seed block
+
+        estimates_median_random = np.array([best_estimate_multi(Z, E0_estimator_median_random, dE_vectors_estimator_median_random, J_inv_estimator_median_random) for Z in Z_noisy_median_random])
+
+        absolute_bias_grid_median_random_x[i, j] = np.abs(np.mean(estimates_median_random[:, param_names.index("shiftX")]) - x_dev)
+        absolute_bias_grid_median_random_z[i, j] = np.abs(np.mean(estimates_median_random[:, param_names.index("shiftZ")]) - z_dev)
+
+print("\nSimulation for median random wavefront finished.")
+# Note: The data for the optimal wavefront (`absolute_bias_grid_optimal_x` and `_z`) is reused from Block 10.
+
+# %% 15) Final Comparison Plot: Optimal vs. Median Random Wavefront
+
+# Prepare meshgrid and data for plotting
+X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
+
+# Data for X-parameter plot
+plot_data_optimal_x = absolute_bias_grid_optimal_x.T
+plot_data_median_random_x = absolute_bias_grid_median_random_x.T
+performance_difference_x = plot_data_median_random_x - plot_data_optimal_x
+
+# Data for Z-parameter plot
+plot_data_optimal_z = absolute_bias_grid_optimal_z.T
+plot_data_median_random_z = absolute_bias_grid_median_random_z.T
+performance_difference_z = plot_data_median_random_z - plot_data_optimal_z
+
+fig, axes = plt.subplots(1, 2, figsize=(24, 10))
+
+# --- Left Subplot: X-parameter ---
+ax_x = axes[0]
+vmax_diff = 0.01
+pcm_x = ax_x.pcolormesh(X_dev_grid, Z_dev_grid, performance_difference_x, cmap="RdYlGn", shading="gouraud", vmin=-vmax_diff, vmax=vmax_diff)
+fig.colorbar(pcm_x, ax=ax_x, extend="both", label=r"Bias Reduction for $\hat{x}$: $\epsilon_{median\_random} - \epsilon_{optimal}$ [$\lambda$]")
+
+contour_levels = [0.001, 0.01]
+fmt_dict = {level: f"{level:.3f} $\\lambda$" for level in contour_levels}
+
+cs_optimal_x = ax_x.contour(X_dev_grid, Z_dev_grid, plot_data_optimal_x, levels=contour_levels, colors="grey", linewidths=2.5, linestyles="solid")
+ax_x.clabel(cs_optimal_x, inline=True, fontsize=12, fmt=fmt_dict, colors="grey")
+cs_random_x = ax_x.contour(X_dev_grid, Z_dev_grid, plot_data_median_random_x, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
+ax_x.clabel(cs_random_x, inline=True, fontsize=12, fmt=fmt_dict, colors="black")
+
+ax_x.set_xlabel(r"True Deviation in x-position ($\Delta x$) [$\lambda$]", fontsize=14)
+ax_x.set_ylabel(r"True Deviation in z-position ($\Delta z$) [$\lambda$]", fontsize=14)
+ax_x.set_title(r"Absolute Estimation Bias ($\epsilon$) for $\hat{x}$", fontsize=16)
+ax_x.axhline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+ax_x.axvline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+ax_x.scatter([0], [0], marker="o", color="magenta", s=80, zorder=5, edgecolors="black")
+ax_x.set_aspect('equal', adjustable='box')
+ax_x.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+
+# --- Right Subplot: Z-parameter ---
+ax_z = axes[1]
+pcm_z = ax_z.pcolormesh(X_dev_grid, Z_dev_grid, performance_difference_z, cmap="RdYlGn", shading="gouraud", vmin=-vmax_diff, vmax=vmax_diff)
+fig.colorbar(pcm_z, ax=ax_z, extend="both", label=r"Bias Reduction for $\hat{z}$: $\epsilon_{median\_random} - \epsilon_{optimal}$ [$\lambda$]")
+
+cs_optimal_z = ax_z.contour(X_dev_grid, Z_dev_grid, plot_data_optimal_z, levels=contour_levels, colors="grey", linewidths=2.5, linestyles="solid")
+ax_z.clabel(cs_optimal_z, inline=True, fontsize=12, fmt=fmt_dict, colors="grey")
+cs_random_z = ax_z.contour(X_dev_grid, Z_dev_grid, plot_data_median_random_z, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
+ax_z.clabel(cs_random_z, inline=True, fontsize=12, fmt=fmt_dict, colors="black")
+
+ax_z.set_xlabel(r"True Deviation in x-position ($\Delta x$) [$\lambda$]", fontsize=14)
+ax_z.set_ylabel(r"True Deviation in z-position ($\Delta z$) [$\lambda$]", fontsize=14)
+ax_z.set_title(r"Absolute Estimation Bias ($\epsilon$) for $\hat{z}$", fontsize=16)
+ax_z.axhline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+ax_z.axvline(0, color="k", linestyle=":", linewidth=1.0, alpha=0.7)
+ax_z.scatter([0], [0], marker="o", color="magenta", s=80, zorder=5, edgecolors="black")
+ax_z.set_aspect('equal', adjustable='box')
+ax_z.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
+
+# --- Final Figure Legend ---
+from matplotlib.lines import Line2D
+legend_elements = [
+    Line2D([0], [0], color="grey", lw=2.5, linestyle="-", label='Optimal WF'),
+    Line2D([0], [0], color="black", lw=2.5, linestyle="--", label='Median Random WF'),
+    plt.scatter([], [], marker="o", color="magenta", s=80, edgecolors="black", label="Nominal (0,0)"),
+]
+fig.legend(handles=legend_elements, loc='upper center', ncol=3, fontsize=12, bbox_to_anchor=(0.5, 0.98))
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
