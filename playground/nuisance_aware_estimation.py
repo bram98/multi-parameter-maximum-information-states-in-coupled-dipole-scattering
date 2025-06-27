@@ -1204,80 +1204,110 @@ ax_z.grid(True, which="both", linestyle=":", linewidth=0.5)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
-# %% 14) Data Preparation for Optimal vs. Median Random Wavefront
 
-# --- 1. Identify the Median-Performing Random Wavefront ---
-# We use the average biases for the x-parameter to find the median performer.
-median_idx = np.argsort(avg_biases_random_x)[len(avg_biases_random_x) // 2]
-print(f"Identifying median random wavefront (seed={median_idx}) for detailed comparison...")
+# %% 14) Data Preparation and Plotting for Optimal vs. ENSEMBLE AVERAGE
 
-# --- 2. Create and Calibrate the Estimator for the Median Random Wavefront ---
-np.random.seed(median_idx)
-wf_median_random = np.random.randn(number_of_input_channels) + 1j * np.random.randn(number_of_input_channels)
-wf_median_random = optimizer.normalize_wavefront(wf_median_random, photon_budget)
+# --- Settings ---
+N_xz_deviations = 11  # Using the 11x11 grid for a feasible computation
+N_random_ensemble = 100
+max_xz_deviation = 0.12
+x_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
+z_dev_range = np.linspace(-max_xz_deviation, max_xz_deviation, N_xz_deviations)
 
-sim.scatterers = (np.hstack((frozen_dipoles_line, movable_dipoles_line)) if frozen_dipoles_line is not None else movable_dipoles_line)
-sim.reset()
-sim.set_input_field_kx(kx_array, wf_median_random)
-E0_estimator_median_random = sim.compute_zL_fields_direct()
-dE_vectors_estimator_median_random = [dS_tensor[i] @ wf_median_random for i in range(len(param_names))]
-J_inv_estimator_median_random = np.linalg.inv(optimizer.J_fisher_info_matrix(wf_median_random))
+# --- 1. Pre-calibrate estimators for the entire random ensemble ---
+wf_random_ensemble = []
+E0_estimators_random = []
+dE_estimators_random = []
+J_inv_estimators_random = []
 
-# --- 3. Run Grid Simulation for the Median Random Wavefront ---
-absolute_bias_grid_median_random_x = np.zeros((N_xz_deviations, N_xz_deviations))
-absolute_bias_grid_median_random_z = np.zeros((N_xz_deviations, N_xz_deviations))
+print(f"\nPre-calibrating estimators for an ensemble of {N_random_ensemble} random wavefronts...")
+for k in range(N_random_ensemble):
+    print(f"\rCalibrating random wavefront {k+1}/{N_random_ensemble}", end="")
+    np.random.seed(k)
+    wf_rand = np.random.randn(number_of_input_channels) + 1j * np.random.randn(number_of_input_channels)
+    wf_rand = optimizer.normalize_wavefront(wf_rand, photon_budget)
+    wf_random_ensemble.append(wf_rand)
 
-print("Starting XZ deviation simulation for the median random wavefront...")
+    sim.reset()
+    sim.set_input_field_kx(kx_array, wf_rand)
+    E0_estimators_random.append(sim.compute_zL_fields_direct())
+    dE_estimators_random.append([dS_tensor[i] @ wf_rand for i in range(len(param_names))])
+    J_inv_estimators_random.append(np.linalg.inv(optimizer.J_fisher_info_matrix(wf_rand)))
+print("\nEnsemble calibration finished.")
+
+# --- 2. Run Grid Simulation for Both Optimal and Ensemble Average ---
+absolute_bias_grid_optimal_x = np.zeros((N_xz_deviations, N_xz_deviations))
+absolute_bias_grid_optimal_z = np.zeros((N_xz_deviations, N_xz_deviations))
+avg_absolute_bias_grid_random_x = np.zeros((N_xz_deviations, N_xz_deviations))
+avg_absolute_bias_grid_random_z = np.zeros((N_xz_deviations, N_xz_deviations))
+
+# Get Optimal WF components
+wavefront_key_optimal = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+wf_optimal = optimized_wavefronts[wavefront_key_optimal]
+E0_estimator_optimal = E0_nuisance_aware
+dE_vectors_estimator_optimal = dE_nuisance_aware
+J_inv_estimator_optimal = J_inv_nuisance_aware
+
+
+print(f"\nStarting XZ deviation simulation for optimal and ensemble average...")
 for i, x_dev in enumerate(x_dev_range):
     for j, z_dev in enumerate(z_dev_range):
-        print(f"\rSimulating XZ deviation: x={x_dev:.3f}, z={z_dev:.3f} ({i*N_xz_deviations + j + 1}/{N_xz_deviations**2})", end="")
+        print(f"\rSimulating grid point ({i+1}, {j+1}) / ({N_xz_deviations}, {N_xz_deviations})", end="")
 
         current_movable_dipoles = placedipoles.shift_and_rotate_dipoles(movable_dipoles_line, x_dev, z_dev, 0.0)
         sim.scatterers = (np.hstack((frozen_dipoles_line, current_movable_dipoles)) if frozen_dipoles_line is not None else current_movable_dipoles)
+
+        # --- Process Optimal Wavefront (re-calculating on the new grid) ---
         sim.reset()
-        sim.set_input_field_kx(kx_array, wf_median_random)
-        E_true_median_random = sim.compute_zL_fields_direct()
-        Z_noisy_median_random = measure_heterodyne(E_true_median_random, total_photons, nsamples=N_estimations, seed=(i * N_xz_deviations + j) + 2*N_xz_deviations**2) # New seed block
+        sim.set_input_field_kx(kx_array, wf_optimal)
+        E_true_optimal = sim.compute_zL_fields_direct()
+        Z_noisy_optimal = measure_heterodyne(E_true_optimal, total_photons, nsamples=N_estimations, seed=(i * N_xz_deviations + j))
+        estimates_optimal = np.array([best_estimate_multi(Z, E0_estimator_optimal, dE_vectors_estimator_optimal, J_inv_estimator_optimal) for Z in Z_noisy_optimal])
+        absolute_bias_grid_optimal_x[i, j] = np.abs(np.mean(estimates_optimal[:, param_names.index("shiftX")]) - x_dev)
+        absolute_bias_grid_optimal_z[i, j] = np.abs(np.mean(estimates_optimal[:, param_names.index("shiftZ")]) - z_dev)
 
-        estimates_median_random = np.array([best_estimate_multi(Z, E0_estimator_median_random, dE_vectors_estimator_median_random, J_inv_estimator_median_random) for Z in Z_noisy_median_random])
+        # --- Process Ensemble Average ---
+        biases_at_this_point_x = []
+        biases_at_this_point_z = []
+        for k in range(N_random_ensemble):
+            sim.reset()
+            sim.set_input_field_kx(kx_array, wf_random_ensemble[k])
+            E_true = sim.compute_zL_fields_direct()
+            Z_noisy = measure_heterodyne(E_true, total_photons, nsamples=N_estimations, seed=(i*N_xz_deviations + j)*N_random_ensemble + k)
+            estimates = np.array([best_estimate_multi(Z, E0_estimators_random[k], dE_estimators_random[k], J_inv_estimators_random[k]) for Z in Z_noisy])
+            biases_at_this_point_x.append(np.abs(np.mean(estimates[:, param_names.index("shiftX")]) - x_dev))
+            biases_at_this_point_z.append(np.abs(np.mean(estimates[:, param_names.index("shiftZ")]) - z_dev))
 
-        absolute_bias_grid_median_random_x[i, j] = np.abs(np.mean(estimates_median_random[:, param_names.index("shiftX")]) - x_dev)
-        absolute_bias_grid_median_random_z[i, j] = np.abs(np.mean(estimates_median_random[:, param_names.index("shiftZ")]) - z_dev)
+        avg_absolute_bias_grid_random_x[i, j] = np.mean(biases_at_this_point_x)
+        avg_absolute_bias_grid_random_z[i, j] = np.mean(biases_at_this_point_z)
 
-print("\nSimulation for median random wavefront finished.")
-# Note: The data for the optimal wavefront (`absolute_bias_grid_optimal_x` and `_z`) is reused from Block 10.
+print("\nEnsemble grid simulation finished.")
 
-# %% 15) Final Comparison Plot: Optimal vs. Median Random Wavefront
 
-# Prepare meshgrid and data for plotting
+# %% 15) plot using the newly computed data...
+
 X_dev_grid, Z_dev_grid = np.meshgrid(x_dev_range, z_dev_range)
-
-# Data for X-parameter plot
 plot_data_optimal_x = absolute_bias_grid_optimal_x.T
-plot_data_median_random_x = absolute_bias_grid_median_random_x.T
-performance_difference_x = plot_data_median_random_x - plot_data_optimal_x
+plot_data_avg_random_x = avg_absolute_bias_grid_random_x.T
+performance_difference_x = plot_data_avg_random_x - plot_data_optimal_x
 
-# Data for Z-parameter plot
 plot_data_optimal_z = absolute_bias_grid_optimal_z.T
-plot_data_median_random_z = absolute_bias_grid_median_random_z.T
-performance_difference_z = plot_data_median_random_z - plot_data_optimal_z
+plot_data_avg_random_z = avg_absolute_bias_grid_random_z.T
+performance_difference_z = plot_data_avg_random_z - plot_data_optimal_z
 
 fig, axes = plt.subplots(1, 2, figsize=(24, 10))
 
 # --- Left Subplot: X-parameter ---
 ax_x = axes[0]
-vmax_diff = 0.01
+vmax_diff = 0.1
 pcm_x = ax_x.pcolormesh(X_dev_grid, Z_dev_grid, performance_difference_x, cmap="RdYlGn", shading="gouraud", vmin=-vmax_diff, vmax=vmax_diff)
-fig.colorbar(pcm_x, ax=ax_x, extend="both", label=r"Bias Reduction for $\hat{x}$: $\epsilon_{median\_random} - \epsilon_{optimal}$ [$\lambda$]")
-
+fig.colorbar(pcm_x, ax=ax_x, extend="both", label=r"Bias Reduction for $\hat{x}$: $\epsilon_{avg\_random} - \epsilon_{optimal}$ [$\lambda$]")
 contour_levels = [0.001, 0.01]
 fmt_dict = {level: f"{level:.3f} $\\lambda$" for level in contour_levels}
-
 cs_optimal_x = ax_x.contour(X_dev_grid, Z_dev_grid, plot_data_optimal_x, levels=contour_levels, colors="grey", linewidths=2.5, linestyles="solid")
 ax_x.clabel(cs_optimal_x, inline=True, fontsize=12, fmt=fmt_dict, colors="grey")
-cs_random_x = ax_x.contour(X_dev_grid, Z_dev_grid, plot_data_median_random_x, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
+cs_random_x = ax_x.contour(X_dev_grid, Z_dev_grid, plot_data_avg_random_x, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
 ax_x.clabel(cs_random_x, inline=True, fontsize=12, fmt=fmt_dict, colors="black")
-
 ax_x.set_xlabel(r"True Deviation in x-position ($\Delta x$) [$\lambda$]", fontsize=14)
 ax_x.set_ylabel(r"True Deviation in z-position ($\Delta z$) [$\lambda$]", fontsize=14)
 ax_x.set_title(r"Absolute Estimation Bias ($\epsilon$) for $\hat{x}$", fontsize=16)
@@ -1290,13 +1320,11 @@ ax_x.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
 # --- Right Subplot: Z-parameter ---
 ax_z = axes[1]
 pcm_z = ax_z.pcolormesh(X_dev_grid, Z_dev_grid, performance_difference_z, cmap="RdYlGn", shading="gouraud", vmin=-vmax_diff, vmax=vmax_diff)
-fig.colorbar(pcm_z, ax=ax_z, extend="both", label=r"Bias Reduction for $\hat{z}$: $\epsilon_{median\_random} - \epsilon_{optimal}$ [$\lambda$]")
-
+fig.colorbar(pcm_z, ax=ax_z, extend="both", label=r"Bias Reduction for $\hat{z}$: $\epsilon_{avg\_random} - \epsilon_{optimal}$ [$\lambda$]")
 cs_optimal_z = ax_z.contour(X_dev_grid, Z_dev_grid, plot_data_optimal_z, levels=contour_levels, colors="grey", linewidths=2.5, linestyles="solid")
 ax_z.clabel(cs_optimal_z, inline=True, fontsize=12, fmt=fmt_dict, colors="grey")
-cs_random_z = ax_z.contour(X_dev_grid, Z_dev_grid, plot_data_median_random_z, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
+cs_random_z = ax_z.contour(X_dev_grid, Z_dev_grid, plot_data_avg_random_z, levels=contour_levels, colors="black", linewidths=2.5, linestyles="dashed")
 ax_z.clabel(cs_random_z, inline=True, fontsize=12, fmt=fmt_dict, colors="black")
-
 ax_z.set_xlabel(r"True Deviation in x-position ($\Delta x$) [$\lambda$]", fontsize=14)
 ax_z.set_ylabel(r"True Deviation in z-position ($\Delta z$) [$\lambda$]", fontsize=14)
 ax_z.set_title(r"Absolute Estimation Bias ($\epsilon$) for $\hat{z}$", fontsize=16)
@@ -1310,7 +1338,7 @@ ax_z.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.6)
 from matplotlib.lines import Line2D
 legend_elements = [
     Line2D([0], [0], color="grey", lw=2.5, linestyle="-", label='Optimal WF'),
-    Line2D([0], [0], color="black", lw=2.5, linestyle="--", label='Median Random WF'),
+    Line2D([0], [0], color="black", lw=2.5, linestyle="--", label='Ensemble Average Random WF'),
     plt.scatter([], [], marker="o", color="magenta", s=80, edgecolors="black", label="Nominal (0,0)"),
 ]
 fig.legend(handles=legend_elements, loc='upper center', ncol=3, fontsize=12, bbox_to_anchor=(0.5, 0.98))
