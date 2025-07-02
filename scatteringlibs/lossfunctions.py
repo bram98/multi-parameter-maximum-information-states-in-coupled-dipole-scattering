@@ -54,6 +54,7 @@ class LossFunction(Storable):
         maximize=True,
         method="eig",
         steps=2000,
+        lr=1e-3,
         multiruns=None,
     ):
         self.loss_function = loss_function
@@ -78,6 +79,7 @@ class LossFunction(Storable):
         self.loss_history = None
 
         self.steps = steps
+        self.lr = lr
         self.multiruns = multiruns
 
     @staticmethod
@@ -102,7 +104,7 @@ class LossFunction(Storable):
         multiruns=None,
         num_eig=1,
         verbose=True,
-        lr=1e-3,
+        lr=None,
         photon_budget=1.0,
     ):
         """
@@ -141,6 +143,7 @@ class LossFunction(Storable):
         elif self.method == "torch":
             steps = steps or self.steps
             multiruns = multiruns or self.multiruns
+            lr = lr or self.lr
 
             if multiruns is None:
                 result = optimizer.torch_optimize_loss(

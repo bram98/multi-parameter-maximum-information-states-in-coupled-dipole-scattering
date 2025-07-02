@@ -20,14 +20,14 @@ sys.exit()
 # %%
 
 data_folder = "../data/quasirandom"  # Where to save state
-save_state = True  # If True, save state to disk
+save_state = False  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.0, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
 )
 
 frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3.0, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(3, 0.0), number=6, small_dist=0.786, start_index=22
 )
 
 # %% 2) simulator geometry and input space
@@ -92,6 +92,11 @@ base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
 base_sim_for_vis.movable_scatterers = movable_dipoles_line
 base_sim_for_vis.frozen_scatterers = frozen_dipoles_line
 
+ampl_init = np.zeros_like(angles_deg)
+ampl_init[len(angles_deg) // 2] = 1
+base_sim_for_vis.set_input_field_amplitudes(ampl_init)
+base_sim_for_vis.visualize_intensity(title="Dipole Configuration")
+
 # Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
 optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device for Optimizer: {optimizer_device}")
@@ -118,7 +123,7 @@ if save_state:
 loss_functions_dict = LossFunctionsDict()
 
 # Single parameters
-for i, param in enumerate(["x", "z", r"\theta"]):
+for i, param in enumerate(["x", "z", r"\phi"]):
     name = param.replace("\\", "")
     loss_functions_dict[name] = LossFunction(
         # lambda F, i_=i: F[i_, i_],
@@ -182,7 +187,7 @@ loss_functions_dict["tr_norm_nuissance"] = LossFunction(
 loss_functions_dict["det"] = LossFunction(
     lambda J: torch.linalg.det(J),
     "det",
-    displayname="Determinant",
+    displayname="D-optimality",
     shortname=r"$\operatorname{det} J$",
     maximize=True,
     method="torch",
@@ -190,21 +195,27 @@ loss_functions_dict["det"] = LossFunction(
 )
 
 
-# Spectral Radius
-def spectral_radius(J):
-    eigvals = torch.linalg.eigvalsh(J)
-    return eigvals[0]  # return smallest eigenvalue
-
-
 loss_functions_dict["spec_rad"] = LossFunction(
-    spectral_radius,
+    lossfunctions.min_eigenvalue_of_J,
     "spec_rad",
-    displayname="Spectral Radius",
+    displayname="E-optimality",
     shortname=r"$\rho(J)$",
     maximize=True,
     method="torch",
     steps=4000,
     multiruns=None,
+)
+
+loss_functions_dict["tr_inv"] = LossFunction(
+    lossfunctions.minimize_trace_of_J_inv,
+    "tr_inv",
+    displayname="A-optimality",
+    shortname=r"$\operatorname{tr}(J^{-1})$",
+    maximize=False,
+    method="torch",
+    steps=2000,
+    multiruns=3,
+    lr=1e-2,
 )
 
 # %%
@@ -214,7 +225,9 @@ Optimize
 
 for loss_function in loss_functions_dict.values():
     loss_function.optimize(
-        optimizer, seed=2025, steps=None, verbose=True, multiruns=None
+        optimizer,
+        seed=2025,
+        verbose=True,
     )
 
 # %%
@@ -237,11 +250,14 @@ Visualize optimized wavefronts and scatterers
 
 
 for loss_function in loss_functions_dict.values():
+    if loss_function.name != "det":
+        continue
+    loss_function.displayname = "Determinant"
     loss_function.visualize(
         base_sim_for_vis,
         base_sim_for_vis.k_x_array,
         title=f"Maximum Information State for {loss_function.displayname}",
-        dpi=200,
+        dpi=300,
     )
 
 # %%

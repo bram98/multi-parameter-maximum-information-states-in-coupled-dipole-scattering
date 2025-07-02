@@ -270,7 +270,7 @@ class Optimizer(Storable):
             plt.plot(steps_array[first_step:], loss_history[i, first_step:])
         plt.xlabel("Optimization Steps")
         plt.ylabel("Loss Value")
-        plt.yscale("log")
+        # plt.yscale("log")
         plt.title(title)
         plt.grid(True, linestyle=":")
         plt.tight_layout()
