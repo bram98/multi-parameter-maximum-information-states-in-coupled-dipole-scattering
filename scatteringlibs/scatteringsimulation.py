@@ -192,6 +192,30 @@ class CoupledDipoleSimulator(Storable):
         k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
+    def set_scatterers(self, movable_scatterers=None, frozen_scatterers=None):
+
+        if movable_scatterers is not None:
+            try:
+                movable_scatterers = np.asarray(movable_scatterers)
+                assert movable_scatterers.shape[0] == 2
+            except Exception as e:
+                print(
+                    f"Expected array of shape (2, N) where N is the number of movable scatters. Instead got movable_scatterers={movable_scatterers}"
+                )
+                raise e
+            self.movable_scatterers = movable_scatterers
+
+        if frozen_scatterers is not None:
+            try:
+                frozen_scatterers = np.asarray(frozen_scatterers)
+                assert frozen_scatterers.shape[0] == 2
+            except Exception as e:
+                print(
+                    f"Expected array of shape (2, N) where N is the number of frozen_scatterers scatters. Instead got frozen_scatterers={movable_scatterers}"
+                )
+                raise e
+            self.frozen_scatterers = frozen_scatterers
+
     def set_input_field_angles(
         self, k_x_array=None, theta_inc=None, theta_inc_deg=None
     ):
@@ -439,13 +463,23 @@ class CoupledDipoleSimulator(Storable):
             cmap="viridis",
         )
         plt.colorbar(label=r"$|E|^2$  (a.u.)")
-        plt.scatter(
-            self.scatterers[0, :] / self.lambda_0,
-            self.scatterers[1, :] / self.lambda_0,
-            c="red",
-            s=100,
-            label="Scatterers",
-        )
+        if self.movable_scatterers is not None:
+            plt.scatter(
+                self.movable_scatterers[0, :] / self.lambda_0,
+                self.movable_scatterers[1, :] / self.lambda_0,
+                c="red",
+                marker="x",
+                s=100,
+                label="Scatterers",
+            )
+        if self.frozen_scatterers is not None:
+            plt.scatter(
+                self.frozen_scatterers[0, :] / self.lambda_0,
+                self.frozen_scatterers[1, :] / self.lambda_0,
+                c="r",
+                s=100,
+                label="Static scatterers",
+            )
         plt.title(title)
         plt.xlabel(r"$z/\lambda$")
         plt.ylabel(r"$x/\lambda$")

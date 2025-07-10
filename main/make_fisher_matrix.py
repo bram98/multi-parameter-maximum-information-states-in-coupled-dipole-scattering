@@ -10,7 +10,11 @@ import torch
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
-from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
+from scatteringlibs.lossfunctions import (
+    LossFunction,
+    LossFunctionsDict,
+    partial_lossfunction,
+)
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
@@ -220,6 +224,63 @@ loss_functions_dict["tr_inv"] = LossFunction(
 
 # %%
 """
+All partial fisher loss functions. Used to optimize under presence of nuisance
+parameters
+"""
+
+nuisance_index = 2  # rotations are considered nuisance
+partial_fisher_latex = r"{\vartheta|\xi}"
+
+# Single parameters
+for i, param in enumerate(["x", "z"]):
+    loss_functions_dict[f"partial_{param}"] = LossFunction(
+        partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
+        "partial_det",
+        displayname="Single parameter {param} (partial)",
+        shortname=rf"$\operatorname{{det}} J_{partial_fisher_latex}$",
+        maximize=True,
+        method="torch",
+        steps=2000,
+    )
+
+# Determinant
+loss_functions_dict["partial_det"] = LossFunction(
+    partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
+    "partial_det",
+    displayname="D-optimality (partial)",
+    shortname=rf"$\operatorname{{det}} J_{partial_fisher_latex}$",
+    maximize=True,
+    method="torch",
+    steps=2000,
+)
+
+# Spectral Radius
+loss_functions_dict["partial_spec_rad"] = LossFunction(
+    partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
+    "partial_spec_rad",
+    displayname="E-optimality (partial) ",
+    shortname=rf"$\rho(J_{partial_fisher_latex})$",
+    maximize=True,
+    method="torch",
+    steps=4000,
+    multiruns=None,
+)
+
+
+# Sub Determinant
+loss_functions_dict["partial_spec_rad"] = LossFunction(
+    partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
+    "partial_spec_rad",
+    displayname="E-optimality (partial) ",
+    shortname=rf"$\rho(J_{partial_fisher_latex})$",
+    maximize=True,
+    method="torch",
+    steps=4000,
+    multiruns=None,
+)
+
+# %%
+"""
 Optimize
 """
 
@@ -250,9 +311,9 @@ Visualize optimized wavefronts and scatterers
 
 
 for loss_function in loss_functions_dict.values():
-    if loss_function.name != "det":
-        continue
-    loss_function.displayname = "Determinant"
+    # if loss_function.name != "det":
+    #     continue
+    # loss_function.displayname = "Determinant"
     loss_function.visualize(
         base_sim_for_vis,
         base_sim_for_vis.k_x_array,

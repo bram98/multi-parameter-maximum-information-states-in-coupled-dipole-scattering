@@ -1,4 +1,6 @@
 # scatteringlibs/lossfunctions.py
+from typing import Callable
+
 import numpy as np
 import torch
 
@@ -233,7 +235,7 @@ class LossFunction(Storable):
         return f"<LossFunction {self.name}>"
 
 
-def single_param_F(i: int) -> np.ndarray:
+def single_param_F(i: int) -> Callable:
     """
     Used for calculating the single parameter Fisher information.
     Args:
@@ -324,6 +326,38 @@ def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
 # Helper function for Nuisance Parameter Scenarios
 # (Ported from playground/calc_fisher_info_and_MIS_3params.py)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def dropped_lossfunction(
+    loss_function, nuisance_param_index: int = 2
+) -> Callable:
+    return lambda J: loss_function(
+        compute_J_interest_drop_nuisance(J, nuisance_param_index)
+    )
+
+
+def partial_lossfunction(
+    loss_function, nuisance_param_index: int = 2
+) -> Callable:
+    return lambda J: loss_function(
+        compute_J_interest_given_nuisance(J, nuisance_param_index)
+    )
+
+
+def compute_J_interest_drop_nuisance(
+    J_full: torch.tensor, nuisance_param_index: int = 2
+) -> torch.Tensor:
+    # Get all indices from 0 to n-1
+    all_indices = list(range(J_full.shape[0]))
+
+    # Keep indices that are not the nuisance parameter
+    interest_indices = [i for i in all_indices if i != nuisance_param_index]
+
+    # Use advanced indexing to select the rows and columns for the sub-matrix
+    J_drop = J_full[
+        torch.tensor(interest_indices, device=J_full.device)[:, None],
+        torch.tensor(interest_indices, device=J_full.device),
+    ]
+
+    return J_drop
 
 
 def compute_J_interest_given_nuisance(
