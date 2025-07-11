@@ -1,5 +1,6 @@
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.collections import PathCollection
 from matplotlib.patches import ConnectionPatch, Rectangle
 from matplotlib.transforms import Affine2D
 
@@ -91,3 +92,14 @@ def make_leftax_look_like_inset(
     # Add the patches to the figure
     fig.add_artist(con_top)
     fig.add_artist(con_bottom)
+
+
+def combine_path_collections(pathcollections: PathCollection):
+    # https://stackoverflow.com/a/76212772/3502079
+    paths = []
+    sizes = []
+    for pathcollection in pathcollections:
+        paths += pathcollection.get_paths()
+        sizes += list(pathcollection.get_sizes())
+
+    return PathCollection(paths, sizes)

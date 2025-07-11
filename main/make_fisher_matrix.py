@@ -13,6 +13,7 @@ from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import (
     LossFunction,
     LossFunctionsDict,
+    dropped_lossfunction,
     partial_lossfunction,
 )
 from scatteringlibs.optimizer import Optimizer
@@ -24,7 +25,7 @@ sys.exit()
 # %%
 
 data_folder = "../data/quasirandom"  # Where to save state
-save_state = False  # If True, save state to disk
+save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
@@ -187,7 +188,7 @@ loss_functions_dict["tr_norm_nuissance"] = LossFunction(
     method="eig",
 )
 
-# Determinant
+# Determinant - D-optimality
 loss_functions_dict["det"] = LossFunction(
     lambda J: torch.linalg.det(J),
     "det",
@@ -199,6 +200,7 @@ loss_functions_dict["det"] = LossFunction(
 )
 
 
+# Spectral radius - E-optimality
 loss_functions_dict["spec_rad"] = LossFunction(
     lossfunctions.min_eigenvalue_of_J,
     "spec_rad",
@@ -210,6 +212,7 @@ loss_functions_dict["spec_rad"] = LossFunction(
     multiruns=None,
 )
 
+# Trace of inverse - A-optimality
 loss_functions_dict["tr_inv"] = LossFunction(
     lossfunctions.minimize_trace_of_J_inv,
     "tr_inv",
@@ -229,12 +232,19 @@ parameters
 """
 
 nuisance_index = 2  # rotations are considered nuisance
-partial_fisher_latex = r"{\vartheta|\xi}"
+parameter_of_interest_latex = r"\vartheta"
+nuisance_parameter_latex = r"\xi"
+partial_fisher_latex = (
+    rf"{{{parameter_of_interest_latex}|{nuisance_parameter_latex}}}"
+)
+dropped_fisher_latex = (
+    rf"{{{parameter_of_interest_latex}{parameter_of_interest_latex}}}"
+)
 
 # Single parameters
 for i, param in enumerate(["x", "z"]):
     loss_functions_dict[f"partial_{param}"] = LossFunction(
-        partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
+        partial_lossfunction(lossfunctions.single_param_F(i), nuisance_index),
         "partial_det",
         displayname="Single parameter {param} (partial)",
         shortname=rf"$\operatorname{{det}} J_{partial_fisher_latex}$",
@@ -243,7 +253,7 @@ for i, param in enumerate(["x", "z"]):
         steps=2000,
     )
 
-# Determinant
+# Partial Determinant
 loss_functions_dict["partial_det"] = LossFunction(
     partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
     "partial_det",
@@ -254,7 +264,7 @@ loss_functions_dict["partial_det"] = LossFunction(
     steps=2000,
 )
 
-# Spectral Radius
+# Partial Spectral Radius
 loss_functions_dict["partial_spec_rad"] = LossFunction(
     partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
     "partial_spec_rad",
@@ -267,18 +277,79 @@ loss_functions_dict["partial_spec_rad"] = LossFunction(
 )
 
 
-# Sub Determinant
-loss_functions_dict["partial_spec_rad"] = LossFunction(
-    partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
-    "partial_spec_rad",
-    displayname="E-optimality (partial) ",
-    shortname=rf"$\rho(J_{partial_fisher_latex})$",
+# Partial Trace of inverse
+loss_functions_dict["partial_tr_inv"] = LossFunction(
+    partial_lossfunction(lossfunctions.trace_of_J_inv, nuisance_index),
+    "partial_tr_inv",
+    displayname="A-optimality (partial) ",
+    shortname=rf"$\operatorname{{tr}}(J_{partial_fisher_latex}^{-1})$",
+    maximize=False,
+    method="torch",
+    steps=2000,
+    multiruns=3,
+    lr=1e-2,
+)
+
+
+# %%
+"""
+All fisher loss functions where all information on the nuisance parameter is 
+dropped. This is to compare with partial fisher information
+"""
+
+
+dropped_fisher_latex = (
+    rf"{{{parameter_of_interest_latex}{parameter_of_interest_latex}}}"
+)
+
+# Single parameters
+for i, param in enumerate(["x", "z"]):
+    loss_functions_dict[f"dropped_{param}"] = LossFunction(
+        dropped_lossfunction(lossfunctions.single_param_F(i), nuisance_index),
+        "dropped_det",
+        displayname="Single parameter {param} (dropped)",
+        shortname=rf"$\operatorname{{det}} J_{dropped_fisher_latex}$",
+        maximize=True,
+        method="torch",
+        steps=2000,
+    )
+
+# dropped Determinant
+loss_functions_dict["dropped_det"] = LossFunction(
+    dropped_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
+    "dropped_det",
+    displayname="D-optimality (dropped)",
+    shortname=rf"$\operatorname{{det}} J_{dropped_fisher_latex}$",
+    maximize=True,
+    method="torch",
+    steps=2000,
+)
+
+# dropped Spectral Radius
+loss_functions_dict["dropped_spec_rad"] = LossFunction(
+    dropped_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
+    "dropped_spec_rad",
+    displayname="E-optimality (dropped) ",
+    shortname=rf"$\rho(J_{dropped_fisher_latex})$",
     maximize=True,
     method="torch",
     steps=4000,
     multiruns=None,
 )
 
+
+# dropped Trace of inverse
+loss_functions_dict["dropped_tr_inv"] = LossFunction(
+    dropped_lossfunction(lossfunctions.trace_of_J_inv, nuisance_index),
+    "dropped_tr_inv",
+    displayname="A-optimality (dropped) ",
+    shortname=rf"$\operatorname{{tr}}(J_{dropped_fisher_latex}^{-1})$",
+    maximize=False,
+    method="torch",
+    steps=2000,
+    multiruns=3,
+    lr=1e-2,
+)
 # %%
 """
 Optimize

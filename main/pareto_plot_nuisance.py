@@ -10,6 +10,7 @@ from adjustText import adjust_text
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
+from scatteringlibs.matplotlibmagic import combine_path_collections
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
@@ -27,14 +28,17 @@ loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
 
 
 def pareto_plot(
-    loss_function_names,
-    optimized_crlbs_joint,
-    param_indices=(0, 1),
+    point_labels,
+    x_data,
+    y_data,
+    legend_label: str,
     xmax=None,
     ymax=None,
-    lowerisbetter=True,
     dpi=100,
     ax=None,
+    marker: str = "x",
+    color: str = "k",
+    use_logscale: bool = False,
 ):
     if ax is None:
         fig, ax = plt.subplots(dpi=dpi)
@@ -43,105 +47,181 @@ def pareto_plot(
     texts = []
     # p_front = calc_pareto_front(results, lowerisbetter=lowerisbetter)
     # p_front_names = [result[0].name for result in p_front]
-    paramx, paramy = param_indices
-    for name, crlb in zip(loss_function_names, optimized_crlbs_joint):
-        # loss_function, data = result
-        x = crlb[paramx]  # x
-        y = crlb[paramy]  # z
+    # paramx, paramy = param_indices
 
-        marker = "x"
-        color = "blue"
-        label = "Non-efficient"
+    points = ax.scatter(
+        x_data,
+        y_data,
+        s=50,
+        marker=marker,
+        color=color,
+        label=legend_label,
+    )
+
+    for point_label, x, y in zip(point_labels, x_data, y_data):
+        # loss_function, data = result
 
         # if loss_function.name in p_front_names:
         #     color = "r"
         #     label = "Efficient"
 
-        x_out_bounds = not xmax is None and x > xmax
-        y_out_bounds = not ymax is None and y > ymax
+        # x_out_bounds = not xmax is None and x > xmax
+        # y_out_bounds = not ymax is None and y > ymax
 
-        if x_out_bounds:
-            x = xmax
-            marker = matplotlib.markers.CARETRIGHT
-            color = "black"
-            label = None
-        if y_out_bounds:
-            y = ymax
-            marker = matplotlib.markers.CARETUP
-            color = "black"
-            label = None
-        if x_out_bounds and y_out_bounds:
-            marker = "D"
+        # if x_out_bounds:
+        #     x = xmax
+        #     marker = matplotlib.markers.CARETRIGHT
+        #     color = "black"
+        #     label = None
+        # if y_out_bounds:
+        #     y = ymax
+        #     marker = matplotlib.markers.CARETUP
+        #     color = "black"
+        #     label = None
+        # if x_out_bounds and y_out_bounds:
+        #     marker = "D"
 
-        point = ax.scatter(x, y, s=80, marker=marker, color=color, label=label)
         text = ax.annotate(
-            name,
+            point_label,
             (x, y),
             fontsize=11,
-            bbox=dict(
-                boxstyle="round,pad=0.3", fc="white", ec="grey", alpha=1.0
-            ),
+            color=color,
+            # bbox=dict(
+            #     boxstyle="round,pad=0.3", fc="white", ec=color, alpha=1.0
+            # ),
             zorder=10,
         )
-        points.append(point)
+        #     points.append(point)
         texts.append(text)
-    # plt.scatter(4e-5, 6e-5, color='red', marker='v')
-    ax.set_xlabel("joint CRLB of x")
-    ax.set_ylabel("joint CRLB of z")
-    plt.xlim(None, xmax)
-    plt.ylim(None, ymax)
-    ax.set_title("Pareto Front of Cramér-Rao Lower bounds")
+    # # plt.scatter(4e-5, 6e-5, color='red', marker='v')
+    # ax.set_xlabel("joint CRLB of x")
+    # ax.set_ylabel("joint CRLB of z")
+    # plt.xlim(None, xmax)
+    # plt.ylim(None, ymax)
+    # ax.set_title("Pareto Front of Cramér-Rao Lower bounds")
 
-    ax.grid(True)
+    if use_logscale:
+        plt.xscale("log")
+        plt.yscale("log")
 
-    # delete duplicate labels
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys())
+    # ax.grid(True)
 
-    plt.tight_layout()
-    adjust_text(
-        texts,
-        ax=ax,
-        # only_move={'text':'xy', 'explode':'xy'}, # allow text to move in both directions, points only in y
-        arrowprops=dict(arrowstyle="-", lw=0.5, alpha=1.0, zorder=0),
-        expand=(2.5, 2.5),  # how much to "inflate" the text boxes,
-        avoid_self=True,
-        force_text=0.5,  # strength of repulsion
-        force_static=0.1,
-        lim=10,  # max iterations
-    )
+    # # delete duplicate labels
+    # handles, labels = plt.gca().get_legend_handles_labels()
+    # by_label = dict(zip(labels, handles))
+    # plt.legend(by_label.values(), by_label.keys())
 
-    plt.show()
+    # plt.tight_layout()
+
+    # plt.show()
+    return texts, points
 
 
 # %%
-include_lossfunctions = [
-    "x",
-    "z",
-    "phi",
-    "tr",
-    "tr_norm",
-    "det",
-    "spec_rad",
-    "tr_inv",
-]
 
-loss_functions_dict_plotting = {
-    key: value
-    for key, value in loss_functions_dict.items()
-    if key in include_lossfunctions
-}
+lf_dict_single_param = loss_functions_dict.select_only(["x", "z", "phi"])
+lf_dict_dropped = loss_functions_dict.select_only(
+    ["dropped_det", "dropped_spec_rad", "dropped_tr_inv"]
+)
+lf_dict_full = loss_functions_dict.select_only(["det", "spec_rad", "tr_inv"])
+lf_dict_partial = loss_functions_dict.select_only(
+    ["partial_det", "partial_spec_rad", "partial_tr_inv"]
+)
+# include_lossfunctions = [
+#     "x",
+#     "z",
+#     "phi",
+#     "tr",
+#     "tr_norm",
+#     "det",
+#     "spec_rad",
+#     "tr_inv",
+# ]
 
-optimized_crlbs = crlbanalysis.compute_crlb_for_optimized(
-    loss_functions_dict_plotting
+
+crlbs_joint_single_param, _ = crlbanalysis.compute_crlb_for_optimized(
+    lf_dict_single_param
+)
+crlbs_joint_dropped, _ = crlbanalysis.compute_crlb_for_optimized(
+    lf_dict_dropped
+)
+crlbs_joint_full, _ = crlbanalysis.compute_crlb_for_optimized(lf_dict_full)
+crlbs_joint_partial, _ = crlbanalysis.compute_crlb_for_optimized(
+    lf_dict_partial
 )
 
-optimized_crlbs_joint, optimized_crlbs_scalar = optimized_crlbs
-loss_function_names = [
-    lf.shortname for lf in loss_functions_dict_plotting.values()
-]
-pareto_plot(loss_function_names, optimized_crlbs_joint)
+fig, ax = plt.subplots()
+
+all_texts = []
+all_points = []
+texts, points = pareto_plot(
+    lf_dict_single_param.shortnames(),
+    x_data=crlbs_joint_single_param[:, 0],
+    y_data=crlbs_joint_single_param[:, 1],
+    marker=".",
+    legend_label="single param",
+    color="purple",
+    ax=ax,
+    # use_logscale=True,
+)
+all_texts += texts
+all_points.append(points)
+
+texts, points = pareto_plot(
+    lf_dict_dropped.shortnames(),
+    x_data=crlbs_joint_dropped[:, 0],
+    y_data=crlbs_joint_dropped[:, 1],
+    marker="x",
+    legend_label="two param",
+    color="red",
+    ax=ax,
+)
+all_texts += texts
+all_points.append(points)
+
+texts, points = pareto_plot(
+    lf_dict_full.shortnames(),
+    x_data=crlbs_joint_full[:, 0],
+    y_data=crlbs_joint_full[:, 1],
+    marker="^",
+    legend_label="multi param",
+    color="green",
+    ax=ax,
+)
+all_texts += texts
+all_points.append(points)
+
+texts, points = pareto_plot(
+    lf_dict_partial.shortnames(),
+    x_data=crlbs_joint_partial[:, 0],
+    y_data=crlbs_joint_partial[:, 1],
+    marker="3",
+    legend_label="two param nuisance aware",
+    color="blue",
+    ax=ax,
+    use_logscale=True,
+)
+all_texts += texts
+all_points.append(points)
+
+
+point_collection = combine_path_collections(all_points)
+adjust_text(
+    all_texts,
+    ax=ax,
+    objects=points,
+    # only_move={'text':'xy', 'explode':'xy'}, # allow text to move in both directions, points only in y
+    arrowprops=dict(arrowstyle="-", lw=0.5, alpha=1.0, zorder=0),
+    min_arrow_len=15,
+    expand=(1.2, 1.2),  # how much to "inflate" the text boxes,
+    avoid_self=True,
+    force_text=0.5,  # strength of repulsion
+    force_static=0.1,
+    lim=0,  # max iterations
+)
+
+plt.legend()
+plt.show()
 
 # %% 10) Assessment of CRLB
 

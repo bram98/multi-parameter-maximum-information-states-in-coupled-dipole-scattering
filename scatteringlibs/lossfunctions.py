@@ -14,7 +14,24 @@ from scatteringlibs.storable import Storable
 
 
 class LossFunctionsDict(Storable, dict):
-    pass
+    """
+    Helper class to save LossFunction objects in. Behaves exactly like a dict().
+    Can store itself using the .save() method from the Storable class. It can
+    also select a subset using the .select_only() method.
+    """
+
+    def select_only(self, keys):
+        selection = {key: value for key, value in self.items() if key in keys}
+        return LossFunctionsDict(**selection)
+
+    def names(self):
+        return [lf.name for lf in self.values()]
+
+    def displaynames(self):
+        return [lf.displayname for lf in self.values()]
+
+    def shortnames(self):
+        return [lf.shortname for lf in self.values()]
 
 
 class LossFunction(Storable):
@@ -327,7 +344,7 @@ def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
 # (Ported from playground/calc_fisher_info_and_MIS_3params.py)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def dropped_lossfunction(
-    loss_function, nuisance_param_index: int = 2
+    loss_function: Callable, nuisance_param_index: int = 2
 ) -> Callable:
     return lambda J: loss_function(
         compute_J_interest_drop_nuisance(J, nuisance_param_index)
@@ -335,7 +352,7 @@ def dropped_lossfunction(
 
 
 def partial_lossfunction(
-    loss_function, nuisance_param_index: int = 2
+    loss_function: Callable, nuisance_param_index: int = 2
 ) -> Callable:
     return lambda J: loss_function(
         compute_J_interest_given_nuisance(J, nuisance_param_index)
