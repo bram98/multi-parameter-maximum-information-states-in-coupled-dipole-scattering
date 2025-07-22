@@ -74,6 +74,8 @@ class LossFunction(Storable):
         method="eig",
         steps=2000,
         lr=1e-3,
+        lr_decay=None,
+        lr_decay_step_size: int = 500,
         multiruns=None,
     ):
         self.loss_function = loss_function
@@ -99,6 +101,8 @@ class LossFunction(Storable):
 
         self.steps = steps
         self.lr = lr
+        self.lr_decay = lr_decay
+        self.lr_decay_step_size = lr_decay_step_size
         self.multiruns = multiruns
 
     @staticmethod
@@ -124,6 +128,8 @@ class LossFunction(Storable):
         num_eig=1,
         verbose=True,
         lr=None,
+        lr_decay=None,
+        lr_decay_step_size=None,
         photon_budget=1.0,
     ):
         """
@@ -163,12 +169,16 @@ class LossFunction(Storable):
             steps = steps or self.steps
             multiruns = multiruns or self.multiruns
             lr = lr or self.lr
+            lr_decay = lr_decay or self.lr_decay
+            lr_decay_step_size = lr_decay_step_size or self.lr_decay_step_size
 
             if multiruns is None:
                 result = optimizer.torch_optimize_loss(
                     self.loss_function,
                     steps=steps,
                     lr=lr,
+                    lr_decay=lr_decay,
+                    lr_decay_step_size=lr_decay_step_size,
                     verbose=verbose,
                     maximize=self.maximize,
                     photon_budget=photon_budget,
@@ -181,6 +191,8 @@ class LossFunction(Storable):
                     runs=multiruns,
                     steps=steps,
                     lr=lr,
+                    lr_decay=lr_decay,
+                    lr_decay_step_size=lr_decay_step_size,
                     verbose=verbose,
                     maximize=self.maximize,
                     photon_budget=photon_budget,
@@ -252,6 +264,213 @@ class LossFunction(Storable):
         return f"<LossFunction {self.name}>"
 
 
+class LossFunctionSweep(LossFunction):
+    def __init__(
+        self,
+        loss_function,
+        name,
+        displayname=None,
+        shortname=None,
+        maximize=True,
+        method="eig",
+        steps=2000,
+        steps_init=2000,
+        lr=1e-3,
+        lr_decay=None,
+        lr_decay_step_size: int = 500,
+        multiruns=None,
+        n_sweep: int = 10,
+    ):
+        super().__init__(
+            loss_function=loss_function,
+            name=name,
+            displayname=displayname,
+            shortname=shortname,
+            maximize=maximize,
+            method=method,
+            steps=steps,
+            lr=lr,
+            lr_decay=lr_decay,
+            lr_decay_step_size=lr_decay_step_size,
+            multiruns=multiruns,
+        )
+
+        self.alpha = np.linspace(0, 1, num=n_sweep)
+        self._wavefronts = None
+        self._Js = None
+        self.steps_init = steps_init
+
+    def optimize(
+        self,
+        optimizer: Optimizer,
+        seed=None,
+        steps=None,
+        steps_init=None,
+        multiruns=None,
+        num_eig=1,
+        verbose=True,
+        lr=None,
+        lr_decay=None,
+        lr_decay_step_size=None,
+        photon_budget=1.0,
+    ):
+        """
+        Performs the optimization. If method == 'eig', the optimizer finds the
+        eigenvectors and eigenvalues of the matrix returned by loss_function.
+        If method == 'torch', the loss_function is optimized using torch. The
+        loss_function should return a scalar and for calculations, torch
+        methods should be used.
+
+        Parameters
+        ----------
+        optimizer: Optimizer
+            The optimizer from the libraries.optimizer class
+        seed: int, default: None
+            Provide a seed for torch optimizer to make the run deterministic.
+        steps: int, default: None
+            Number of steps for torch optimizer. When not given, uses the steps
+            attribute, which has default 2000.
+        multiruns: int, default: None
+            How many times to repeat the torch optimization. When not given,
+            uses the instance attribute. When that is also None, the optimizer
+            runs once.
+        num_eig: int, default: 1
+            How many eigenvalues/eigenvectors to return for the eig optimizer
+        verbose: bool, default: True
+            Enable printing.
+        """
+        self._wavefronts = []
+
+        if self.method == "eig":
+            self.bestvals = []
+
+            for alpha in self.alpha:
+                bestval, wavefront = optimizer.eig_optimize_F_general(
+                    self.loss_function(alpha),
+                    maximize=self.maximize,
+                    num=num_eig,
+                )
+                wavefront = LossFunction.normalize_wavefront(wavefront)
+                self._wavefronts.append(wavefront)
+                self.bestvals.append(bestval)
+
+            self._wavefronts = np.array(self._wavefronts)
+            self.bestvals = np.array(self.bestvals)
+
+            if verbose:
+                print(
+                    f"\rOptimization sweep. alpha={alpha:.2f}/{self.alpha[-1]}"
+                )
+
+        elif self.method == "torch":
+            steps_init = steps_init or self.steps_init
+            steps = steps or self.steps
+            multiruns = multiruns or self.multiruns
+
+            optimize_kwargs = dict(
+                lr=lr or self.lr,
+                lr_decay=lr_decay or self.lr_decay,
+                lr_decay_step_size=lr_decay_step_size
+                or self.lr_decay_step_size,
+                verbose=verbose,
+                maximize=self.maximize,
+                photon_budget=photon_budget,
+            )
+            optimize_multirun_kwargs = optimize_kwargs.copy()
+            optimize_kwargs["seed"] = seed
+            optimize_multirun_kwargs["base_seed"] = seed
+
+            self._wavefronts = []
+            self.loss_history = []
+            self.bestvals = []
+            # print(multiruns)
+            if multiruns is None:
+                result = optimizer.torch_optimize_loss(
+                    self.loss_function(self.alpha[0]),
+                    steps=steps_init,
+                    print_prepend=f"Alpha: {self.alpha[0]}/{alpha[-1]}, ",
+                    **optimize_kwargs,
+                )
+                self.loss_history.append(result["loss_history"])
+                wavefront_init = result["bestvec"]
+                self._wavefronts.append(wavefront_init)
+
+                for alpha in self.alpha[1:]:
+                    result = optimizer.torch_optimize_loss(
+                        self.loss_function(alpha),
+                        steps=steps,
+                        print_prepend=f"Alpha: {alpha}/{self.alpha[-1]}, ",
+                        E_init=wavefront_init,
+                        **optimize_kwargs,
+                    )
+                    self.loss_history.append(result["loss_history"])
+                    self._wavefronts.append(result["bestvec"])
+                    self.bestvals.append(result["bestval"])
+
+            else:
+                result = optimizer.torch_optimize_loss_multirun(
+                    self.loss_function(self.alpha[0]),
+                    steps=steps_init,
+                    runs=multiruns,
+                    print_prepend=f"Alpha: {self.alpha[0]}/{self.alpha[-1]}, ",
+                    **optimize_multirun_kwargs,
+                )
+                self.loss_history.append(result["all_loss_histories"])
+                wavefront_init = result["bestvec"]
+                self._wavefronts.append(wavefront_init)
+                self.bestvals.append(result["bestval"])
+
+                for alpha in self.alpha[1:]:
+                    result = optimizer.torch_optimize_loss_multirun(
+                        self.loss_function(alpha),
+                        steps=steps,
+                        runs=multiruns,
+                        print_prepend=f"Alpha: {alpha}/{self.alpha[-1]}, ",
+                        E_init=wavefront_init,
+                        **optimize_multirun_kwargs,
+                    )
+                    self.loss_history.append(result["all_loss_histories"])
+                    self._wavefronts.append(result["bestvec"])
+                    self.bestvals.append(result["bestval"])
+                    # print(
+                    #     f'Optimization sweep alpha={alpha}/{alpha[-1]}  Best loss: {result["bestval"]}'
+                    # )
+
+            # self._wavefront = LossFunction.normalize_wavefront(
+            #     result["bestvec"]
+            # )
+            # self.bestval = result["bestval"]
+            # print(result)
+
+        self._Js = []
+        for wavefront in self._wavefronts:
+            self._Js.append(optimizer.J_fisher_info_matrix(wavefront))
+
+        if verbose:
+            print(
+                f"Optimized {self.name: <30} over {self.n_sweep} interpolations"
+            )
+
+    @property
+    def n_sweep(self):
+        return len(self.alpha)
+
+    @property
+    def wavefronts(self):
+        if self._wavefronts is None:
+            raise ValueError(
+                "Wavefronts not defined. Please run optimizer first."
+            )
+
+        return self._wavefronts
+
+    @property
+    def Js(self):
+        if self._Js is None:
+            raise ValueError("Js not defined. Please run optimizer first.")
+        return self._Js
+
+
 def single_param_F(i: int) -> Callable:
     """
     Used for calculating the single parameter Fisher information.
@@ -261,6 +480,18 @@ def single_param_F(i: int) -> Callable:
         lambda: function that takes in F and returns F[i, i]
     """
     return lambda F: F[i, i]
+
+
+def single_param_inv_J(i: int) -> Callable:
+    """
+    Used for calculating the single parameter Fisher information using the
+    joint Cramer-Rao lower bound, i.e. by calculating the inverse.
+    Args:
+        i (int): the parameter to optimize for
+    Returns:
+        lambda: function that takes in J and returns torch.linalg.inv(J)[i, i]
+    """
+    return lambda J: torch.linalg.inv(J)[i, i]
 
 
 def determinant_of_J(J_mat: torch.Tensor) -> torch.Tensor:
@@ -748,3 +979,23 @@ def minimize_trace_of_J_inv(J_matrix):
 
     trace_J_inv = torch.trace(J_inv)
     return trace_J_inv
+
+
+def sweep_xz_F(alpha):
+    # def xz_F(F):
+    #     return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
+    def xz_F(F):
+        if alpha < 0.5:
+            return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
+        else:
+            return 100 * ((1 - alpha) * F[0, 0] + alpha * F[1, 1])
+
+    return xz_F
+
+
+def sweep_xz_inv_J(alpha):
+    def xz_inv_J(J):
+        J_inv = torch.linalg.inv(J)
+        return (1 - alpha) * J_inv[0, 0] + alpha * J_inv[1, 1]
+
+    return xz_inv_J

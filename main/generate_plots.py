@@ -7,18 +7,23 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from pareto_plot_nuisance import ParetoGroup, pareto_plot
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
-from scatteringlibs.matplotlibmagic import make_leftax_look_like_inset
+from scatteringlibs.matplotlibmagic import (
+    PlotGroup,
+    make_leftax_look_like_inset,
+)
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 sys.exit()
 
 # %% Loading in data
-data_folder = "../data/quasirandom"
+project_name = "quasirandom_longrun"
+data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 fisher_calc = FisherMatrix.load(folder=data_folder)
@@ -33,6 +38,8 @@ FONTSIZE = 10
 TITLE_FONTSIZE = 14
 YLABEL_FONTSIZE = 12
 SUBPLOT_ANNOTATION_FONTSIZE = 24
+
+GRID_KWARGS = dict(which="both", linestyle=":")
 
 save_plots = True
 save_folder = Path("../figures")
@@ -60,23 +67,25 @@ def annotate_subplots_abc(axes, format_str="{})"):
 # %% 1) Bar plot of CRLBs
 
 
-include_lossfunctions = [
+barplot_lossfunctions = [
     "x",
     "z",
     "phi",
     # "tr",
-    "tr_norm",
+    # "tr_norm",
     "det",
-    "tr_inv",
+    # "tr_inv",
     "spec_rad",
+    "dropped_spec_rad",
+    "partial_spec_rad",
 ]
 
-loss_functions_dict_plotting = {
-    key: loss_functions_dict[key] for key in include_lossfunctions
-}
+loss_functions_dict_bar = loss_functions_dict.select_only(
+    barplot_lossfunctions
+)
 
 optimized_crlbs = crlbanalysis.compute_crlb_for_optimized(
-    loss_functions_dict_plotting
+    loss_functions_dict_bar
 )
 plane_wave_crlbs = crlbanalysis.compute_crlb_for_planewaves(
     sim_kwargs=sim.get_kwargs(),
@@ -97,9 +106,7 @@ random_wavefronts_crlbs_joint, random_wavefronts_crlbs_scalar = (
     random_wavefronts_crlbs
 )
 
-loss_function_names = [
-    lf.displayname for lf in loss_functions_dict_plotting.values()
-]
+loss_function_names = loss_functions_dict_bar.displaynames()
 
 fig, axes = plt.subplots(
     ncols=2,
@@ -165,5 +172,90 @@ make_leftax_look_like_inset(
 fig.set_constrained_layout_pads(wspace=0.1)
 
 if save_plots:
-    plt.savefig(save_folder / "crlb_barplot.png")
+    plt.savefig(save_folder / f"{project_name}_crlb_barplot.png")
+    plt.savefig(save_folder / f"{project_name}_crlb_barplot.pdf")
+    print(f"Saved CRLB bar plot to '{data_folder}'")
+plt.show()
+
+
+# %% 2) Pareto plot
+
+"""
+Select the different loss functions (optimality criteria) from the 
+loss_functions_dict
+"""
+
+lf_dict_single_param = loss_functions_dict.select_only(["x", "z"])
+lf_dict_dropped = loss_functions_dict.select_only(
+    ["dropped_det", "dropped_spec_rad", "dropped_tr_inv"]
+)
+lf_dict_full = loss_functions_dict.select_only(
+    ["det", "spec_rad", "tr_inv", "x_inv", "z_inv"]
+)
+lf_dict_partial = loss_functions_dict.select_only(
+    [
+        "partial_det",
+        "partial_spec_rad",
+        "partial_tr_inv",
+    ]
+)
+
+
+fig, ax = plt.subplots(figsize=(7, 5), dpi=DPI)
+
+"""
+Control the formatting of the different groups here.
+"""
+pareto_groups = [
+    PlotGroup(
+        lf_dict_single_param,
+        legend_label="Single-param. optimality",
+        color="purple",
+        marker=".",
+    ),
+    PlotGroup(
+        lf_dict_dropped,
+        legend_label="Two-param. optimality",
+        color="red",
+        marker="x",
+    ),
+    PlotGroup(
+        lf_dict_full,
+        legend_label="Three-param. optimality",
+        color="green",
+        marker="^",
+    ),
+    PlotGroup(
+        lf_dict_partial,
+        legend_label="Two-param. optimality (partial)",
+        color="blue",
+        marker="s",
+    ),
+]
+
+x_idx = 1  # Display Z on x-axis
+y_idx = 0  # Display X on y-axis
+
+pareto_plot(
+    pareto_groups,
+    x_idx,
+    y_idx,
+    xlabel=r"CRLB for $z$ (wavelenghts)",
+    ylabel=r"CRLB for $x$ (wavelenghts)",
+    title=r"Nuisance Aware Optimality Criteria",
+    ax=ax,
+    grid_kwargs=GRID_KWARGS,
+    use_logscale=True,
+    adjust_text_kwargs=dict(
+        force_static=0.1, force_text=0.9, expand=(1.1, 1.1), min_arrow_len=40
+    ),
+)
+
+
+if save_plots:
+    fig_name = f"{project_name}_pareto_plot_nuisance"
+    plt.savefig(save_folder / f"{fig_name}.png")
+    plt.savefig(save_folder / f"{fig_name}.pdf")
+    print(f"Saved pareto plot to '{fig_name}'")
+
 plt.show()

@@ -1,8 +1,24 @@
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import PathCollection
 from matplotlib.patches import ConnectionPatch, Rectangle
+from matplotlib.path import get_path_collection_extents
 from matplotlib.transforms import Affine2D
+
+
+class PlotGroup:
+    def __init__(
+        self,
+        data,
+        legend_label: str,
+        marker: str = None,
+        color: str = None,
+    ):
+        self.data = data
+        self.legend_label = legend_label
+        self.marker = marker
+        self.color = color
 
 
 class DoubleHatchHandler(matplotlib.legend_handler.HandlerPatch):
@@ -94,12 +110,84 @@ def make_leftax_look_like_inset(
     fig.add_artist(con_bottom)
 
 
-def combine_path_collections(pathcollections: PathCollection):
-    # https://stackoverflow.com/a/76212772/3502079
-    paths = []
-    sizes = []
-    for pathcollection in pathcollections:
-        paths += pathcollection.get_paths()
-        sizes += list(pathcollection.get_sizes())
+def get_bounding_boxes_scatter_plot(sc, ax):
+    """Function to return a list of bounding boxes in data coordinates
+    for a scatter plot
+    https://stackoverflow.com/a/55007838/3502079
+    """
+    ax.figure.canvas.draw()  # need to draw before the transforms are set.
+    transform = sc.get_transform()
+    transOffset = sc.get_offset_transform()
+    offsets = sc._offsets
+    paths = sc.get_paths()
+    transforms = sc.get_transforms()
 
-    return PathCollection(paths, sizes)
+    if not transform.is_affine:
+        paths = [transform.transform_path_non_affine(p) for p in paths]
+        transform = transform.get_affine()
+    if not transOffset.is_affine:
+        offsets = transOffset.transform_non_affine(offsets)
+        transOffset = transOffset.get_affine()
+
+    if isinstance(offsets, np.ma.MaskedArray):
+        offsets = offsets.filled(np.nan)
+
+    bboxes = []
+
+    if len(paths) and len(offsets):
+        if len(paths) < len(offsets):
+            # for usual scatters you have one path, but several offsets
+            paths = [paths[0]] * len(offsets)
+        if len(transforms) < len(offsets):
+            # often you may have a single scatter size, but several offsets
+            transforms = [transforms[0]] * len(offsets)
+
+        for p, o, t in zip(paths, offsets, transforms):
+            result = get_path_collection_extents(
+                transform.frozen(), [p], [t], [o], transOffset.frozen()
+            )
+
+            bboxes.append(result.transformed(ax.transData.inverted()))
+            # bboxes.append(result.inverse_transformed(ax.transData))
+
+    return bboxes
+
+
+def combine_path_collections(
+    pathcollections: list[PathCollection],
+) -> PathCollection:
+    """
+    Correctly combines multiple PathCollection objects into a single one.
+
+    This function gathers not only paths and sizes but also the crucial
+    offsets (coordinates) and colors.
+    """
+    # Initialize lists to store all properties
+    all_paths = []
+    all_sizes = []
+    all_offsets = []
+    all_facecolors = []
+    all_edgecolors = []
+
+    # Loop through each collection and gather its properties
+    for pc in pathcollections:
+        # It's possible a collection is empty, so we check
+        if pc.get_paths():
+            all_paths.extend(pc.get_paths() * len(pc.get_offsets()))
+            all_sizes.extend(pc.get_sizes())
+            all_offsets.extend(pc.get_offsets())
+            all_facecolors.extend(pc.get_facecolors())
+            all_edgecolors.extend(pc.get_edgecolors())
+
+    # Create the new collection with the visual properties
+    combined_pc = PathCollection(
+        all_paths,
+        sizes=all_sizes,
+        facecolors=all_facecolors,
+        edgecolors=all_edgecolors,
+    )
+
+    # **Crucially, set the offsets on the new collection**
+    combined_pc.set_offsets(np.array(all_offsets))
+
+    return combined_pc

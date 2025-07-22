@@ -72,6 +72,8 @@ class CoupledDipoleSimulator(Storable):
         seed=0,
         k_x_array=None,
         E_kx_array=None,
+        movable_scatterers=None,
+        frozen_scatterers=None,
     ):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters.
 
@@ -119,8 +121,13 @@ class CoupledDipoleSimulator(Storable):
         self.Z_grid, self.X_grid = np.meshgrid(self.z, self.x)
 
         # Initialize scatterer positions
-        self.movable_scatterers = self._generate_scatterers()
-        self.frozen_scatterers = None
+        if movable_scatterers is None:
+            self.movable_scatterers = self._generate_scatterers()
+        else:
+            self.movable_scatterers = None
+
+        if frozen_scatterers is not None:
+            self.frozen_scatterers = frozen_scatterers
         #   Note: self.scatterers is defined via a getter
 
         # Initialize fields as None; compute when needed
@@ -418,7 +425,7 @@ class CoupledDipoleSimulator(Storable):
         return self.E_output
 
     def reset(self):
-        """Resets computed fields."""
+        """Resets computed fields: the fields, E_output and E_total properties."""
         self.fields = None
         self.E_output = None
         self.E_total = None
@@ -468,7 +475,7 @@ class CoupledDipoleSimulator(Storable):
                 self.movable_scatterers[0, :] / self.lambda_0,
                 self.movable_scatterers[1, :] / self.lambda_0,
                 c="red",
-                marker="x",
+                marker="o",
                 s=100,
                 label="Scatterers",
             )
@@ -477,6 +484,7 @@ class CoupledDipoleSimulator(Storable):
                 self.frozen_scatterers[0, :] / self.lambda_0,
                 self.frozen_scatterers[1, :] / self.lambda_0,
                 c="r",
+                marker="s",
                 s=100,
                 label="Static scatterers",
             )
