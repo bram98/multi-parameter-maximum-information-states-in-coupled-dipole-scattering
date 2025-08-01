@@ -14,11 +14,13 @@ class PlotGroup:
         legend_label: str,
         marker: str = None,
         color: str = None,
+        linestyle: str = None,
     ):
         self.data = data
         self.legend_label = legend_label
         self.marker = marker
         self.color = color
+        self.linestyle = linestyle
 
 
 class DoubleHatchHandler(matplotlib.legend_handler.HandlerPatch):

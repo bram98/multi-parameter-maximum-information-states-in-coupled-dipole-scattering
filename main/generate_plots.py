@@ -7,7 +7,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from pareto_plot_nuisance import ParetoGroup, pareto_plot
+from pareto_plot_nuisance import ParetoGroup, pareto_plot, pareto_plot_sweep
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
@@ -28,10 +28,17 @@ data_folder = f"../data/{project_name}"
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 fisher_calc = FisherMatrix.load(folder=data_folder)
 loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
+loss_functions_sweep_dict = LossFunctionsDict.load(
+    name="LossFunctionsSweepDict", folder=data_folder
+)
 
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
     print(f"\t- {lf_name}")
+
+# %%
+for loss_function in loss_functions_dict.values():
+    loss_function._J *= 4
 # %% Plotting parameters
 DPI = 300
 FONTSIZE = 10
@@ -232,9 +239,27 @@ pareto_groups = [
         marker="s",
     ),
 ]
+pareto_groups_sweep = [
+    PlotGroup(
+        loss_functions_sweep_dict.select_only("xz_joint"),
+        legend_label="Single-param. optimality",
+        color="green",
+        linestyle="",
+        # marker=".",
+    ),
+    PlotGroup(
+        loss_functions_sweep_dict.select_only("xz_scalar"),
+        legend_label="Two-param. optimality",
+        color="purple",
+        linestyle="",
+        # marker="x",
+    ),
+]
 
 x_idx = 1  # Display Z on x-axis
 y_idx = 0  # Display X on y-axis
+
+pareto_plot_sweep(pareto_groups_sweep, x_idx, y_idx, ax=ax)
 
 pareto_plot(
     pareto_groups,
@@ -245,7 +270,7 @@ pareto_plot(
     title=r"Nuisance Aware Optimality Criteria",
     ax=ax,
     grid_kwargs=GRID_KWARGS,
-    use_logscale=True,
+    use_logscale=False,
     adjust_text_kwargs=dict(
         force_static=0.1, force_text=0.9, expand=(1.1, 1.1), min_arrow_len=40
     ),
@@ -257,5 +282,54 @@ if save_plots:
     plt.savefig(save_folder / f"{fig_name}.png")
     plt.savefig(save_folder / f"{fig_name}.pdf")
     print(f"Saved pareto plot to '{fig_name}'")
+
+plt.show()
+
+
+# %%
+
+
+DPI = 300
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+sim_kwargs = sim.get_kwargs()
+# sim_kwargs["grid_points_x"] = 40
+# sim_kwargs["k_x_array"] = None
+# sim_kwargs["theta_inc_deg"] = np.linspace(-70, 70, num=20)
+
+sim = CoupledDipoleSimulator(**sim_kwargs)
+E_kx_array = np.zeros_like(sim.theta_inc)
+E_kx_array[0] = 1
+sim.set_input_field_amplitudes(E_kx_array, flux_normalize=True)
+
+fig, ax = sim.visualize_intensity(dpi=DPI)
+
+n_frames = 2 * len(E_kx_array) - 2
+
+
+def init():
+    pass
+
+
+def update(i):
+    global E_kx_array
+    print(f"\rAnimating frame {i+1:>2} / {n_frames} ", end="")
+    # Boomerang effect, quite wasteful to redo the computations but oh well
+    # i = i + 1
+    i = min(2 * len(E_kx_array) - 2 - i, i)
+    E_kx_array *= 0
+    E_kx_array[i] = 1
+    sim.set_input_field_amplitudes(E_kx_array)
+
+    sim.visualize_intensity(dpi=DPI, ax=ax, title="Field Intensity Over Slab")
+
+
+ani = matplotlib.animation.FuncAnimation(
+    fig, update, init_func=init, frames=n_frames
+)
+
+if save_plots:
+    fig_name = f"{project_name}_scattering_angles_animation"
+    ani.save(save_folder / f"{fig_name}.gif")
+    ani.save(save_folder / f"{fig_name}.mp4")
 
 plt.show()

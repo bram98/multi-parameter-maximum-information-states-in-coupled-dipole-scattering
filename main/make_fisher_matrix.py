@@ -26,7 +26,7 @@ sys.exit()
 # %%
 
 data_folder = "../data/quasirandom"  # Where to save state
-save_state = False  # If True, save state to disk
+save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
@@ -428,10 +428,11 @@ if save_state:
     print(f"Saved loss functions to '{data_folder}'")
 
 
-# %%
+# %% Lossfunctions that contain a sweep over a parameter
 """
 Lossfunctions that contain a sweep over a parameter
 """
+# %%
 loss_functions_sweep_dict = LossFunctionsDict()
 
 # sweep_dict["xz_inv"]
@@ -442,26 +443,44 @@ loss_functions_sweep_dict = LossFunctionsDict()
 #     name="xz_scalar",
 #     displayname=f"Interpolation x-z (scalar)",
 #     # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-#     shortname=rf"${param}$ (joint)",
+#     shortname=rf"$x\leftrightarrow z$ (scalar)",
 #     maximize=True,
 #     method="eig",
 #     n_sweep=50,
 # )
+
 
 loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
     lossfunctions.sweep_xz_inv_J,
     name="xz_joint",
     displayname=f"Interpolation x-z (joint)",
     # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-    shortname=rf"${param}$ (joint)",
+    shortname=rf"$x\leftrightarrow z$ (joint)",
     maximize=False,
     method="torch",
     n_sweep=50,
-    steps_init=5000,
-    steps=50,
+    steps_init=2000,
+    steps=1000,
     lr=1e-2,
     multiruns=3,
+    E_init_strength=0.5,
 )
+for eps in [0.1, -0.1]:
+    loss_functions_sweep_dict[f"xz_joint_eps{eps}"] = LossFunctionSweep(
+        lossfunctions.sweep_xz_inv_J_eps(eps),
+        name=f"xz_joint_eps{eps}",
+        displayname=f"Interpolation x-z (joint)",
+        # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
+        shortname=rf"$x\leftrightarrow z$ (joint)",
+        maximize=False,
+        method="torch",
+        n_sweep=50,
+        steps_init=2000,
+        steps=1000,
+        lr=1e-2,
+        multiruns=3,
+        E_init_strength=0.5,
+    )
 # %%
 """
 Optimize sweeps
@@ -477,7 +496,7 @@ for loss_function in loss_functions_sweep_dict.values():
         verbose=True,
     )
 
-# %%
+# %% Loss history plots for sweep
 """
 Check convergence by showing loss histories of sweeps
 """
@@ -486,23 +505,49 @@ for loss_function in loss_functions_sweep_dict.values():
     if loss_function.method == "torch" and loss_function._Js is not None:
         optimizer.plot_torch_loss_sweep(
             loss_function.loss_history,
-            first_step=-50,
+            first_step=100,
             title=f"{loss_function.displayname} Optimization Loss",
         )
 
+# %%
+"""
+Save results of sweep to be used in other scripts
+"""
+
+if save_state:
+    loss_functions_sweep_dict.save(
+        name="LossFunctionsSweepDict", folder=data_folder
+    )
+    print(f"Saved sweep loss functions to '{data_folder}'")
+
 
 # %%
+from scipy.optimize import curve_fit
+
 ss = [
-    loss_functions_sweep_dict["xz_scalar"],
+    # loss_functions_sweep_dict["xz_scalar"],
     loss_functions_sweep_dict["xz_joint"],
 ]
-for s in ss:
+for name, s in loss_functions_sweep_dict.items():
     J_invs = [np.linalg.inv(J) for J in s.Js]
-    z = [J_inv[1, 1] for J_inv in J_invs]
-    x = [J_inv[0, 0] for J_inv in J_invs]
-    plt.plot(z[:], x[:])
+    z = np.array([J_inv[1, 1] for J_inv in J_invs])
+    x = np.array([J_inv[0, 0] for J_inv in J_invs])
+    plt.plot(z[:], x[:], label=name)
 plt.xlabel("z")
 plt.ylabel("x")
+# plt.xlim()
+
+
+def f(z, m, n, c, z0, x0):
+    return (c / (z - z0) ** m) ** (1 / n) + x0
+
+
+# p, cov = curve_fit(f, z, x, p0=(1, 1, 1e-6, 0, 0))
+
+# plt.plot(z, f(z, *p), label="fit")
+# plt.xscale("log")
+# plt.yscale("log")
+plt.legend()
 plt.title(
     r"Interpolation of Scalar CRLB: $\langle E|\left((1-\alpha)F_{xx} + \alpha F_{zz}\right)|E\rangle$"
 )

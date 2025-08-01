@@ -40,8 +40,9 @@ def compute_joint_crlb_from_J(J_matrix: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Array of CRLB values for each parameter (nparams,).
     """
-    if J_matrix.shape[0] != J_matrix.shape[1]:
-        raise ValueError("J_matrix must be square.")
+    J_matrix = np.asarray(J_matrix)
+    if J_matrix.shape[-2] != J_matrix.shape[-1]:
+        raise ValueError("J_matrix must be square in its last two dimensions.")
     try:
         J_inv = np.linalg.inv(J_matrix)
         crlb_values = np.sqrt(np.diagonal(J_inv, axis1=-2, axis2=-1))

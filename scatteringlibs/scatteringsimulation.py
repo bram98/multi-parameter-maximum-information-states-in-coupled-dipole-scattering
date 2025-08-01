@@ -124,7 +124,7 @@ class CoupledDipoleSimulator(Storable):
         if movable_scatterers is None:
             self.movable_scatterers = self._generate_scatterers()
         else:
-            self.movable_scatterers = None
+            self.movable_scatterers = movable_scatterers
 
         if frozen_scatterers is not None:
             self.frozen_scatterers = frozen_scatterers
@@ -450,28 +450,35 @@ class CoupledDipoleSimulator(Storable):
         plt.tight_layout()
         plt.show()
 
-    def _visualize(self, display_function, title, dpi=100, figsize=(10, 8)):
+    def _visualize(
+        self, display_function, title, dpi=100, figsize=(10, 8), ax=None
+    ):
         """
         Helper function that applies `display_function` to the entire field
         before plotting it.
         """
+        newfig = ax is None
+        if newfig:
+            fig, ax = plt.subplots(
+                figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
+            )
+
         # Ensure that E_total is computed
         if self.E_total is None:
             self.compute_total_field()
 
-        plt.figure(
-            figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
-        )
-        plt.pcolormesh(
+        # plt.figure(
+        #     figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
+        # )
+        field_img = ax.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
             display_function(self.E_total),
             shading="auto",
             cmap="viridis",
         )
-        plt.colorbar(label=r"$|E|^2$  (a.u.)")
         if self.movable_scatterers is not None:
-            plt.scatter(
+            ax.scatter(
                 self.movable_scatterers[0, :] / self.lambda_0,
                 self.movable_scatterers[1, :] / self.lambda_0,
                 c="red",
@@ -480,7 +487,7 @@ class CoupledDipoleSimulator(Storable):
                 label="Scatterers",
             )
         if self.frozen_scatterers is not None:
-            plt.scatter(
+            ax.scatter(
                 self.frozen_scatterers[0, :] / self.lambda_0,
                 self.frozen_scatterers[1, :] / self.lambda_0,
                 c="r",
@@ -488,15 +495,21 @@ class CoupledDipoleSimulator(Storable):
                 s=100,
                 label="Static scatterers",
             )
-        plt.title(title)
-        plt.xlabel(r"$z/\lambda$")
-        plt.ylabel(r"$x/\lambda$")
-        plt.legend()
-        plt.gca().set_aspect("equal")
-        plt.tight_layout()
-        plt.show()
+        ax.set_title(title)
 
-    def visualize_intensity(self, title="Custom Input State", dpi=100.0):
+        if newfig:
+            ax.legend()
+            ax.set_xlabel(r"$z/\lambda$")
+            ax.set_ylabel(r"$x/\lambda$")
+            ax.set_aspect("equal")
+            plt.colorbar(field_img, ax=ax, label=r"$|E|^2$  (a.u.)")
+            plt.tight_layout()
+            plt.show()
+            return fig, ax
+
+    def visualize_intensity(
+        self, title="Custom Input State", dpi=100.0, ax=None
+    ):
         """Visualizes the intensity distribution over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -504,13 +517,14 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=lambda field: np.abs(field) ** 2,
             title=title,
             dpi=dpi,
+            ax=ax,
         )
 
-    def visualize_abs(self):
+    def visualize_abs(self, ax=None):
         """Visualizes the absolute value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -518,12 +532,13 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=np.abs,
             title=title,
+            ax=ax,
         )
 
-    def visualize_real(self):
+    def visualize_real(self, ax=None):
         """Visualizes the real value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -531,9 +546,10 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=np.real,
             title=title,
+            ax=ax,
         )
 
     def visualize_output_field(

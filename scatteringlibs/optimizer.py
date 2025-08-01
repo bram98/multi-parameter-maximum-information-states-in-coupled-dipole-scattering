@@ -270,7 +270,7 @@ class Optimizer(Storable):
 
         newfig = ax is None
         if newfig:
-            fig, ax = plt.subplot()
+            fig, ax = plt.subplots()
 
         for lh in loss_history:
             lh = np.array(lh)
@@ -280,6 +280,7 @@ class Optimizer(Storable):
         ax.set_xlabel("Optimization Steps")
         ax.set_ylabel("Loss Value")
         # plt.yscale("log")
+        ax.get_yaxis().get_major_formatter().set_useOffset(False)
         if newfig:
             plt.title(title)
             plt.grid(True, linestyle=":")
@@ -296,11 +297,16 @@ class Optimizer(Storable):
         self.plot_torch_loss(
             loss_history[0], first_step=first_step, ax=axes[0]
         )
-        self.plot_torch_loss(
-            np.transpose(np.array(loss_history[1:]), (0, 2, 1)),
-            first_step=first_step,
-            ax=axes[1],
-        )
+        loss_history_not_first = np.array(loss_history[1:])
+        if len(loss_history_not_first.shape) < 3:
+            loss_history_not_first = loss_history_not_first[np.newaxis]
+
+        for loss_history_cur in loss_history_not_first:
+            self.plot_torch_loss(
+                loss_history_cur,
+                first_step=first_step,
+                ax=axes[1],
+            )
         plt.title(title)
         plt.grid(True, linestyle=":")
         plt.tight_layout()
@@ -320,6 +326,7 @@ class Optimizer(Storable):
         lr_decay: int = None,
         lr_decay_step_size: int = 500,
         E_init: np.ndarray = None,
+        E_init_strength: float = 0.1,
     ):
         if seed is not None:
             torch.manual_seed(seed)
@@ -330,39 +337,40 @@ class Optimizer(Storable):
             )
         self.Ft.requires_grad = False  # F_op is fixed
 
-        if E_init is None:
+        E_param_real = torch.randn(
+            self.n_input_modes, dtype=torch.float64, device=self.device
+        )
+        E_param_imag = torch.randn(
+            self.n_input_modes, dtype=torch.float64, device=self.device
+        )
+
+        # Initial normalization
+        current_norm = torch.linalg.norm(E_param_real + 1j * E_param_imag)
+        scale = np.sqrt(photon_budget) / current_norm
+
+        E_param_real *= scale
+        E_param_imag *= scale
+
+        if E_init is not None:
             # Initialize E_param (wavefront coefficients)
-            E_param_real = torch.randn(
-                self.n_input_modes, dtype=torch.float64, device=self.device
-            )
-            E_param_imag = torch.randn(
-                self.n_input_modes, dtype=torch.float64, device=self.device
-            )
-            E_param_real.requires_grad = True
-            E_param_imag.requires_grad = True
+            E_init_real = torch.tensor(E_init.real, device=self.device)
+            E_init_imag = torch.tensor(E_init.imag, device=self.device)
 
-            current_E_complex = torch.complex(E_param_real, E_param_imag)
-        else:
-            E_param_real = torch.tensor(
-                E_init.real, requires_grad=True, device=self.device
+            E_param_real = (
+                E_init_strength * E_init_real
+                + (1 - E_init_strength) * E_param_real
             )
-            E_param_imag = torch.tensor(
-                E_init.imag, requires_grad=True, device=self.device
+            E_param_imag = (
+                E_init_strength * E_init_imag
+                + (1 - E_init_strength) * E_param_imag
             )
+            current_norm = torch.linalg.norm(E_param_real + 1j * E_param_imag)
+            scale = np.sqrt(photon_budget) / current_norm
 
-            current_E_complex = torch.complex(E_param_real, E_param_imag)
+        E_param_real.requires_grad = True
+        E_param_imag.requires_grad = True
 
-        with torch.no_grad():
-            # Initial normalization
-            current_norm_sq = torch.sum(torch.abs(current_E_complex) ** 2)
-            scale = torch.sqrt(
-                torch.tensor(
-                    photon_budget, dtype=torch.float64, device=self.device
-                )
-                / current_norm_sq
-            )
-            E_param_real *= scale
-            E_param_imag *= scale
+        current_E_complex = torch.complex(E_param_real, E_param_imag)
 
         opt = torch.optim.Adam(
             [E_param_real, E_param_imag], lr=lr, maximize=maximize
@@ -397,7 +405,7 @@ class Optimizer(Storable):
 
             # Calculate J_mat = <E_norm_for_J | F_op | E_norm_for_J>
             J_mat_torch = torch.einsum(
-                "mnij,i,j->mn", self.Ft, E_norm_for_J.conj(), E_norm_for_J
+                "mnij, i,j -> mn", self.Ft, E_norm_for_J.conj(), E_norm_for_J
             ).real
 
             loss = loss_function_of_J(J_mat_torch)  # custom loss function
@@ -467,7 +475,7 @@ class Optimizer(Storable):
             if verbose and (step + 1) % 50 == 0:
                 lr = opt.param_groups[0]["lr"]
                 print(
-                    f"\r{print_prepend} Step {step + 1:4d}/{steps}, loss={current_loss_val:.3e}, lr={lr:.3e}",
+                    f"\r{print_prepend} Step {step + 1:4d}/{steps}, loss={current_loss_val:.3e}, lr={lr:.3e}           ",
                     end="",
                 )
         # if verbose:
@@ -513,22 +521,14 @@ class Optimizer(Storable):
         overall_best_vec = None
         all_loss_histories = []
 
-        if verbose:
-            print(f"Starting multi-run optimization ({runs} runs)...")
+        if verbose and not print_prepend:
+            print(f"\nStarting multi-run optimization ({runs} runs)...")
 
         for i in range(runs):
             current_seed = None
             if base_seed is not None:
                 current_seed = base_seed + i
 
-            if E_init is not None:
-                E_random = np.random.rand(*E_init.shape) + 1j * np.random.rand(
-                    *E_init.shape
-                )
-                E_random = E_random * 2 - (1 + 1j)
-                E_init = E_init * E_init_strength + E_random * (
-                    1 - E_init_strength
-                )
             # if verbose:
             #     print(f"\n--- Run {i+1}/{runs} (seed: {current_seed}) ---")
 
@@ -545,6 +545,7 @@ class Optimizer(Storable):
                 photon_budget=photon_budget,
                 record_vec_history=False,  # Typically not needed for multi-run summary
                 E_init=E_init,
+                E_init_strength=E_init_strength,
             )
 
             all_loss_histories.append(run_result["loss_history"])
@@ -562,9 +563,11 @@ class Optimizer(Storable):
             # if verbose:
             #     print(f"Run {i+1} best value: {current_best_val_run:.3e}")
 
-        print(
-            f"\nMulti-run optimization complete. Overall best value: {overall_best_val:.3e}"
-        )
+        if verbose and not print_prepend:
+            print(
+                f"\nMulti-run optimization complete. Overall best value: {overall_best_val:.3e}"
+            )
+
         return {
             "bestval": overall_best_val,
             "bestvec": overall_best_vec,  # Already normalized by torch_optimize_loss

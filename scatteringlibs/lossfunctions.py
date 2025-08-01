@@ -279,7 +279,10 @@ class LossFunctionSweep(LossFunction):
         lr_decay=None,
         lr_decay_step_size: int = 500,
         multiruns=None,
+        E_init_strength: float = 0.1,
         n_sweep: int = 10,
+        alpha_min: float = 0,
+        alpha_max: float = 1,
     ):
         super().__init__(
             loss_function=loss_function,
@@ -295,24 +298,26 @@ class LossFunctionSweep(LossFunction):
             multiruns=multiruns,
         )
 
-        self.alpha = np.linspace(0, 1, num=n_sweep)
+        self.alpha = np.linspace(alpha_min, alpha_max, num=n_sweep)
         self._wavefronts = None
         self._Js = None
         self.steps_init = steps_init
+        self.E_init_strength = E_init_strength
 
     def optimize(
         self,
         optimizer: Optimizer,
-        seed=None,
-        steps=None,
-        steps_init=None,
-        multiruns=None,
-        num_eig=1,
-        verbose=True,
-        lr=None,
-        lr_decay=None,
-        lr_decay_step_size=None,
+        seed: int = None,
+        steps: int = None,
+        steps_init: int = None,
+        multiruns: int = None,
+        num_eig: int = 1,
+        verbose: bool = True,
+        lr: float = None,
+        lr_decay: float = None,
+        lr_decay_step_size: float = None,
         photon_budget=1.0,
+        E_init_strength: float = None,
     ):
         """
         Performs the optimization. If method == 'eig', the optimizer finds the
@@ -341,6 +346,9 @@ class LossFunctionSweep(LossFunction):
         """
         self._wavefronts = []
 
+        if verbose:
+            print(f"Starting sweep optimization for {self.name}...")
+
         if self.method == "eig":
             self.bestvals = []
 
@@ -359,7 +367,7 @@ class LossFunctionSweep(LossFunction):
 
             if verbose:
                 print(
-                    f"\rOptimization sweep. alpha={alpha:.2f}/{self.alpha[-1]}"
+                    f"\rEigenvalue optimization. Alpha={alpha:.3f}/{self.alpha[-1]}"
                 )
 
         elif self.method == "torch":
@@ -375,10 +383,13 @@ class LossFunctionSweep(LossFunction):
                 verbose=verbose,
                 maximize=self.maximize,
                 photon_budget=photon_budget,
+                E_init_strength=E_init_strength or self.E_init_strength,
             )
             optimize_multirun_kwargs = optimize_kwargs.copy()
             optimize_kwargs["seed"] = seed
-            optimize_multirun_kwargs["base_seed"] = seed
+            optimize_multirun_kwargs.update(
+                base_seed=seed,
+            )
 
             self._wavefronts = []
             self.loss_history = []
@@ -388,18 +399,19 @@ class LossFunctionSweep(LossFunction):
                 result = optimizer.torch_optimize_loss(
                     self.loss_function(self.alpha[0]),
                     steps=steps_init,
-                    print_prepend=f"Alpha: {self.alpha[0]}/{alpha[-1]}, ",
+                    print_prepend=f"Alpha: {self.alpha[0]:.3f}/{self.alpha[-1]}, ",
                     **optimize_kwargs,
                 )
                 self.loss_history.append(result["loss_history"])
                 wavefront_init = result["bestvec"]
                 self._wavefronts.append(wavefront_init)
 
+                # print(wavefront_init)
                 for alpha in self.alpha[1:]:
                     result = optimizer.torch_optimize_loss(
                         self.loss_function(alpha),
                         steps=steps,
-                        print_prepend=f"Alpha: {alpha}/{self.alpha[-1]}, ",
+                        print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, ",
                         E_init=wavefront_init,
                         **optimize_kwargs,
                     )
@@ -412,7 +424,7 @@ class LossFunctionSweep(LossFunction):
                     self.loss_function(self.alpha[0]),
                     steps=steps_init,
                     runs=multiruns,
-                    print_prepend=f"Alpha: {self.alpha[0]}/{self.alpha[-1]}, ",
+                    print_prepend=f"Alpha: {self.alpha[0]:.3f}/{self.alpha[-1]}, ",
                     **optimize_multirun_kwargs,
                 )
                 self.loss_history.append(result["all_loss_histories"])
@@ -425,7 +437,7 @@ class LossFunctionSweep(LossFunction):
                         self.loss_function(alpha),
                         steps=steps,
                         runs=multiruns,
-                        print_prepend=f"Alpha: {alpha}/{self.alpha[-1]}, ",
+                        print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, ",
                         E_init=wavefront_init,
                         **optimize_multirun_kwargs,
                     )
@@ -469,6 +481,18 @@ class LossFunctionSweep(LossFunction):
         if self._Js is None:
             raise ValueError("Js not defined. Please run optimizer first.")
         return self._Js
+
+    @property
+    def J(self):
+        raise ValueError(
+            "J not defined for LossFunctionSweep. Do you mean Js?"
+        )
+
+    @property
+    def wavefront(self):
+        raise ValueError(
+            "wavefront not defined for LossFunctionSweep. Do you mean wavefronts?"
+        )
 
 
 def single_param_F(i: int) -> Callable:
@@ -999,3 +1023,16 @@ def sweep_xz_inv_J(alpha):
         return (1 - alpha) * J_inv[0, 0] + alpha * J_inv[1, 1]
 
     return xz_inv_J
+
+
+def sweep_xz_inv_J_eps(eps):
+    def _sweep_xz_inv_J_eps(alpha):
+        def xz_inv_J(J):
+            J_inv = torch.linalg.inv(J)
+            return (1 - alpha) * J_inv[0, 0] ** (1 + eps) + alpha * J_inv[
+                1, 1
+            ] ** (1 + eps)
+
+        return xz_inv_J
+
+    return _sweep_xz_inv_J_eps
