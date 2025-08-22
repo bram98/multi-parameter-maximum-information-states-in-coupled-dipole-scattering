@@ -25,7 +25,7 @@ sys.exit()
 
 # %%
 
-data_folder = "../data/quasirandom"  # Where to save state
+data_folder = "../data/pareto_sweep_test"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
@@ -193,7 +193,7 @@ loss_functions_dict["det"] = LossFunction(
     lambda J: torch.linalg.det(J),
     "det",
     displayname="D-optimality",
-    shortname=r"D-Opt. ($\mathcal{J}$)",
+    shortname=r"D-Opt.",
     maximize=True,
     method="torch",
     steps=2000,
@@ -208,7 +208,7 @@ loss_functions_dict["spec_rad"] = LossFunction(
     lossfunctions.min_eigenvalue_of_J,
     "spec_rad",
     displayname="E-optimality",
-    shortname=r"E-Opt. ($\mathcal{J}$)",
+    shortname=r"E-Opt.",
     maximize=True,
     method="torch",
     steps=4000,
@@ -223,7 +223,7 @@ loss_functions_dict["tr_inv"] = LossFunction(
     lossfunctions.minimize_trace_of_J_inv,
     "tr_inv",
     displayname="A-optimality",
-    shortname=r"A-Opt. ($\mathcal{J}$)",
+    shortname=r"A-Opt.",
     maximize=False,
     method="torch",
     steps=4000,
@@ -256,7 +256,7 @@ loss_functions_dict["partial_det"] = LossFunction(
     partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
     "partial_det",
     displayname="D-optimality (partial)",
-    shortname=rf"D-Opt. ($ \mathcal{{J}}_{partial_fisher_latex}$)",
+    shortname=rf"D-Opt",
     maximize=True,
     method="torch",
     steps=2000,
@@ -270,7 +270,7 @@ loss_functions_dict["partial_spec_rad"] = LossFunction(
     partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
     "partial_spec_rad",
     displayname="E-optimality (partial) ",
-    shortname=rf"E-Opt. ($ \mathcal{{J}}_{partial_fisher_latex}$)",
+    shortname=rf"E-Opt.",
     maximize=True,
     method="torch",
     steps=4000,
@@ -286,7 +286,7 @@ loss_functions_dict["partial_tr_inv"] = LossFunction(
     partial_lossfunction(lossfunctions.trace_of_J_inv, nuisance_index),
     "partial_tr_inv",
     displayname="A-optimality (partial) ",
-    shortname=rf"A-Opt. ($ \mathcal{{J}}_{partial_fisher_latex}$)",
+    shortname=rf"A-Opt.",
     maximize=False,
     method="torch",
     steps=4000,
@@ -308,24 +308,24 @@ dropped_fisher_latex = (
     rf"{{{parameter_of_interest_latex}{parameter_of_interest_latex}}}"
 )
 
-# Single parameters
-for i, param in enumerate(["x", "z"]):
-    loss_functions_dict[f"dropped_{param}"] = LossFunction(
-        dropped_lossfunction(lossfunctions.single_param_F(i), nuisance_index),
-        f"dropped_{param}",
-        displayname=f"Single parameter {param} (dropped)",
-        shortname=rf"$\mathcal{{J}}_{dropped_fisher_latex}$)",
-        maximize=True,
-        method="torch",
-        steps=2000,
-    )
+# # Single parameters
+# for i, param in enumerate(["x", "z"]):
+#     loss_functions_dict[f"dropped_{param}"] = LossFunction(
+#         dropped_lossfunction(lossfunctions.single_param_F(i), nuisance_index),
+#         f"dropped_{param}",
+#         displayname=f"Single parameter {param} (dropped)",
+#         shortname=rf"$\mathcal{{J}}_{dropped_fisher_latex}$)",
+#         maximize=True,
+#         method="torch",
+#         steps=2000,
+#     )
 
 # dropped Determinant
 loss_functions_dict["dropped_det"] = LossFunction(
     dropped_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
     "dropped_det",
     displayname="D-optimality (dropped)",
-    shortname=rf"D-Opt. ($\mathcal{{J}}_{dropped_fisher_latex}$)",
+    shortname=rf"D-Opt.",
     maximize=True,
     method="torch",
     steps=2000,
@@ -339,7 +339,7 @@ loss_functions_dict["dropped_spec_rad"] = LossFunction(
     dropped_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
     "dropped_spec_rad",
     displayname="E-optimality (dropped) ",
-    shortname=rf"E-Opt. ($\mathcal{{J}}_{dropped_fisher_latex}$)",
+    shortname=rf"E-Opt.",
     maximize=True,
     method="torch",
     steps=4000,
@@ -355,7 +355,7 @@ loss_functions_dict["dropped_tr_inv"] = LossFunction(
     dropped_lossfunction(lossfunctions.trace_of_J_inv, nuisance_index),
     "dropped_tr_inv",
     displayname="A-optimality (dropped) ",
-    shortname=rf"A-Opt. ($\mathcal{{J}}_{dropped_fisher_latex}$)",
+    shortname=rf"A-Opt.",
     maximize=False,
     method="torch",
     steps=4000,
@@ -363,6 +363,14 @@ loss_functions_dict["dropped_tr_inv"] = LossFunction(
     lr=1e-1,
     lr_decay=0.2,
     lr_decay_step_size=1000,
+)
+loss_functions_dict["tr_norm"] = LossFunction(
+    lossfunctions.normalized_trace_of_F,
+    "dropped_tr_norm",
+    displayname="Normalized Trace (dropped)",
+    shortname=r"$\operatorname{tr}_N J$",
+    maximize=True,
+    method="eig",
 )
 
 
@@ -450,22 +458,22 @@ loss_functions_sweep_dict = LossFunctionsDict()
 # )
 
 
-loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
-    lossfunctions.sweep_xz_inv_J,
-    name="xz_joint",
-    displayname=f"Interpolation x-z (joint)",
-    # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-    shortname=rf"$x\leftrightarrow z$ (joint)",
-    maximize=False,
-    method="torch",
-    n_sweep=50,
-    steps_init=2000,
-    steps=1000,
-    lr=1e-2,
-    multiruns=3,
-    E_init_strength=0.5,
-)
-for eps in [0.1, -0.1]:
+# loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
+#     lossfunctions.sweep_xz_inv_J,
+#     name="xz_joint",
+#     displayname=f"Interpolation x-z (joint)",
+#     # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
+#     shortname=rf"$x\leftrightarrow z$ (joint)",
+#     maximize=False,
+#     method="torch",
+#     n_sweep=50,
+#     steps_init=2000,
+#     steps=1000,
+#     lr=1e-2,
+#     multiruns=3,
+#     E_init_strength=0.5,
+# )
+for eps in [1, 0.1, 0, -0.1, -0.5]:
     loss_functions_sweep_dict[f"xz_joint_eps{eps}"] = LossFunctionSweep(
         lossfunctions.sweep_xz_inv_J_eps(eps),
         name=f"xz_joint_eps{eps}",
@@ -475,11 +483,11 @@ for eps in [0.1, -0.1]:
         maximize=False,
         method="torch",
         n_sweep=50,
-        steps_init=2000,
-        steps=1000,
-        lr=1e-2,
-        multiruns=3,
-        E_init_strength=0.5,
+        steps_init=10000,
+        steps=6000,
+        lr=2e-2,
+        multiruns=5,
+        E_init_strength=0.2,
     )
 # %%
 """
@@ -505,7 +513,7 @@ for loss_function in loss_functions_sweep_dict.values():
     if loss_function.method == "torch" and loss_function._Js is not None:
         optimizer.plot_torch_loss_sweep(
             loss_function.loss_history,
-            first_step=100,
+            first_step=200,
             title=f"{loss_function.displayname} Optimization Loss",
         )
 
@@ -526,7 +534,7 @@ from scipy.optimize import curve_fit
 
 ss = [
     # loss_functions_sweep_dict["xz_scalar"],
-    loss_functions_sweep_dict["xz_joint"],
+    loss_functions_sweep_dict["xz_joint_eps0.1"],
 ]
 for name, s in loss_functions_sweep_dict.items():
     J_invs = [np.linalg.inv(J) for J in s.Js]
@@ -542,9 +550,10 @@ def f(z, m, n, c, z0, x0):
     return (c / (z - z0) ** m) ** (1 / n) + x0
 
 
-# p, cov = curve_fit(f, z, x, p0=(1, 1, 1e-6, 0, 0))
+p, cov = curve_fit(f, z, x, p0=(1, 1, 1e-6, 0, 0))
 
-# plt.plot(z, f(z, *p), label="fit")
+plt.figure()
+plt.plot(z, f(z, *p), label="fit")
 # plt.xscale("log")
 # plt.yscale("log")
 plt.legend()
@@ -552,3 +561,21 @@ plt.title(
     r"Interpolation of Scalar CRLB: $\langle E|\left((1-\alpha)F_{xx} + \alpha F_{zz}\right)|E\rangle$"
 )
 plt.show()
+
+
+# %%
+"""
+Change names without having to run optimizier
+"""
+data_folder = "../data/quasirandom_longrun"
+
+loss_functions_dict_load = LossFunctionsDict.load(folder=data_folder)
+
+for name, loss_function in loss_functions_dict.items():
+    loss_function._J = loss_functions_dict_load[name].J
+    loss_function.loss_history = loss_functions_dict_load[name].loss_history
+
+if save_state:
+    loss_functions_dict.save(folder=data_folder)
+
+    print(f"Renamed loss functions in '{data_folder}'")

@@ -1009,10 +1009,7 @@ def sweep_xz_F(alpha):
     # def xz_F(F):
     #     return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
     def xz_F(F):
-        if alpha < 0.5:
-            return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
-        else:
-            return 100 * ((1 - alpha) * F[0, 0] + alpha * F[1, 1])
+        return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
 
     return xz_F
 

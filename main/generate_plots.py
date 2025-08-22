@@ -22,7 +22,8 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
-project_name = "quasirandom_longrun"
+# project_name = "quasirandom_longrun"
+project_name = "quasirandom_longrun - Copy"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
@@ -70,6 +71,25 @@ def annotate_subplots_abc(axes, format_str="{})"):
             bbox=dict(facecolor="w", edgecolor="none", pad=3.0),
         )
 
+
+# %%
+
+lf = loss_functions_dict["x_inv"]
+
+sim.set_input_field_amplitudes(lf.wavefront)
+
+# fig, ax = plt.subplots(dpi=DPI)
+
+fig, ax = sim.visualize_intensity(title=lf.displayname)
+
+if save_plots:
+    optimized_path = (
+        save_folder / Path(f"optimized_wavefronts") / Path(f"{lf.name}.png")
+    )
+    optimized_path.parents[0].mkdir(exist_ok=True)
+    plt.savefig(optimized_path)
+    print(f"Saved plot to {optimized_path}")
+plt.show()
 
 # %% 1) Bar plot of CRLBs
 
@@ -193,12 +213,11 @@ loss_functions_dict
 """
 
 lf_dict_single_param = loss_functions_dict.select_only(["x", "z"])
+lf_dict_single_param_inv = loss_functions_dict.select_only(["x_inv", "z_inv"])
 lf_dict_dropped = loss_functions_dict.select_only(
     ["dropped_det", "dropped_spec_rad", "dropped_tr_inv"]
 )
-lf_dict_full = loss_functions_dict.select_only(
-    ["det", "spec_rad", "tr_inv", "x_inv", "z_inv"]
-)
+lf_dict_full = loss_functions_dict.select_only(["det", "spec_rad", "tr_inv"])
 lf_dict_partial = loss_functions_dict.select_only(
     [
         "partial_det",
@@ -207,8 +226,6 @@ lf_dict_partial = loss_functions_dict.select_only(
     ]
 )
 
-
-fig, ax = plt.subplots(figsize=(7, 5), dpi=DPI)
 
 """
 Control the formatting of the different groups here.
@@ -221,16 +238,22 @@ pareto_groups = [
         marker=".",
     ),
     PlotGroup(
-        lf_dict_dropped,
-        legend_label="Two-param. optimality",
-        color="red",
-        marker="x",
+        lf_dict_single_param_inv,
+        legend_label="Three-param. optimality",
+        color="green",
+        marker="^",
     ),
     PlotGroup(
         lf_dict_full,
         legend_label="Three-param. optimality",
         color="green",
         marker="^",
+    ),
+    PlotGroup(
+        lf_dict_dropped,
+        legend_label="Two-param. optimality",
+        color="red",
+        marker="x",
     ),
     PlotGroup(
         lf_dict_partial,
@@ -242,52 +265,116 @@ pareto_groups = [
 pareto_groups_sweep = [
     PlotGroup(
         loss_functions_sweep_dict.select_only("xz_joint"),
-        legend_label="Single-param. optimality",
+        legend_label="Interpolation",
         color="green",
-        linestyle="",
-        # marker=".",
-    ),
-    PlotGroup(
-        loss_functions_sweep_dict.select_only("xz_scalar"),
-        legend_label="Two-param. optimality",
-        color="purple",
-        linestyle="",
+        linestyle="-",
+        marker="",
         # marker="x",
     ),
 ]
+# pareto_groups_sweep = [
+#     PlotGroup(
+#         loss_functions_sweep_dict.select_only("xz_joint_eps1"),
+#         legend_label="$\epsilon=1.0$",
+#         color="purple",
+#         linestyle="-",
+#         marker="",
+#         # marker="x",
+#     ),
+#     PlotGroup(
+#         loss_functions_sweep_dict.select_only("xz_joint_eps0.1"),
+#         legend_label="$\epsilon=0.1$",
+#         color="green",
+#         linestyle="-",
+#         marker="",
+#     ),
+#     PlotGroup(
+#         loss_functions_sweep_dict.select_only("xz_joint_eps0"),
+#         legend_label="$\epsilon=0.0$",
+#         color="red",
+#         linestyle="-",
+#         marker="",
+#     ),
+#     PlotGroup(
+#         loss_functions_sweep_dict.select_only("xz_joint_eps-0.1"),
+#         legend_label="$\epsilon=-0.1$",
+#         color="blue",
+#         linestyle="-",
+#         marker="",
+#     ),
+#     PlotGroup(
+#         loss_functions_sweep_dict.select_only("xz_joint_eps-0.5"),
+#         legend_label="$\epsilon=-1.0$",
+#         color="orange",
+#         linestyle="-",
+#         marker="",
+#     ),
+# ]
 
 x_idx = 1  # Display Z on x-axis
 y_idx = 0  # Display X on y-axis
 
-pareto_plot_sweep(pareto_groups_sweep, x_idx, y_idx, ax=ax)
+include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
+# include_plot_indices = [(5, 2)]
+# include_plot_indices = [(5,0)]
+for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
-pareto_plot(
-    pareto_groups,
-    x_idx,
-    y_idx,
-    xlabel=r"CRLB for $z$ (wavelenghts)",
-    ylabel=r"CRLB for $x$ (wavelenghts)",
-    title=r"Nuisance Aware Optimality Criteria",
-    ax=ax,
-    grid_kwargs=GRID_KWARGS,
-    use_logscale=False,
-    adjust_text_kwargs=dict(
-        force_static=0.1, force_text=0.9, expand=(1.1, 1.1), min_arrow_len=40
-    ),
-)
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
 
+    wavelength_unit_order = -3
+    wavelength_unit = 10 ** (-wavelength_unit_order)
 
-if save_plots:
-    fig_name = f"{project_name}_pareto_plot_nuisance"
-    plt.savefig(save_folder / f"{fig_name}.png")
-    plt.savefig(save_folder / f"{fig_name}.pdf")
-    print(f"Saved pareto plot to '{fig_name}'")
+    x_avoid, y_avoid = pareto_plot_sweep(
+        pareto_groups_sweep[:sweep_index],
+        x_idx,
+        y_idx,
+        ax=ax,
+        wavelength_unit=wavelength_unit,
+    )
+    # line = np.linspace(0, 10)
+    # plt.plot(line, line, ls='-', c='#AAA', lw=1)
+    pareto_plot(
+        pareto_groups[:scatter_index],
+        x_idx,
+        y_idx,
+        xlabel=rf"CRLB for $z$ ($10^{{{wavelength_unit_order}}}$ wavelenghts)",
+        ylabel=rf"CRLB for $x$ ($10^{{{wavelength_unit_order}}}$ wavelenghts)",
+        title=r"Nuisance Aware Optimality Criteria",
+        ax=ax,
+        grid_kwargs=GRID_KWARGS,
+        use_logscale=False,
+        adjust_text_kwargs=dict(
+            force_static=0.5,
+            force_text=0.7,
+            force_explode=(0.5, 0.5),
+            force_pull=0.1,
+            expand=(2.0, 2.5),
+            min_arrow_len=40,
+            iter_lim=1000,
+            avoid_self=True,
+            max_move=(100, 100),
+            ensure_inside_axes=True,
+        ),
+        x_avoid=x_avoid,
+        y_avoid=y_avoid,
+        xlim=(0.0017 * wavelength_unit, 0.009 * wavelength_unit),
+        ylim=(0.00340 * wavelength_unit, 0.0056 * wavelength_unit),
+        wavelength_unit=wavelength_unit,
+    )
+
+    if save_plots:
+        fig_name = f"{project_name}_pareto_plot_nuisance_fig{i}"
+        plt.savefig(save_folder / f"{fig_name}.png")
+        plt.savefig(save_folder / f"{fig_name}.pdf")
+        print(f"Saved pareto plot to '{fig_name}'")
 
 plt.show()
 
 
 # %%
-
+"""
+Animation showing all the incident scattering angles
+"""
 
 DPI = 300
 sim = CoupledDipoleSimulator.load(folder=data_folder)

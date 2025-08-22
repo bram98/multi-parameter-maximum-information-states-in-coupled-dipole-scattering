@@ -47,21 +47,21 @@ class ParetoGroup:
 
 
 adjust_text_default_dict = dict(
-    explode=(1.2, 1.2),
-    only_move={
-        "text": "xy",
-        "explode": "x",
-        "static": "x",
-    },  # allow text to move in both directions, points only in y
+    # explode=(1.2, 1.2),
+    # only_move={
+    #     "text": "xy",
+    #     "explode": "x",
+    #     "static": "xy",
+    # },  # allow text to move in both directions, points only in y
     arrowprops=dict(arrowstyle="-", lw=0.5, alpha=1.0, zorder=0),
-    min_arrow_len=20,
-    expand=(1.5, 1.3),  # how much to "inflate" the text boxes,
-    avoid_self=False,
-    force_text=0.5,  # strength of repulsion
-    force_static=0.5,
-    force_pull=0.1,
-    lim=10,  # max iterations
-    expand_axes=True,
+    # min_arrow_len=20,
+    # expand=(1.5, 1.3),  # how much to "inflate" the text boxes,
+    # avoid_self=False,
+    # force_text=0.5,  # strength of repulsion
+    # force_static=0.5,
+    # force_pull=0.1,
+    # lim=10,  # max iterations
+    # expand_axes=True,
 )
 
 
@@ -77,6 +77,11 @@ def pareto_plot(
     title: str = "Cram'er-Rao Lower Bounds",
     xlabel: str = None,
     ylabel: str = None,
+    x_avoid: list = [],
+    y_avoid: list = [],
+    xlim=None,
+    ylim=None,
+    wavelength_unit: float = 1.0,
 ):
     new_fig = ax is None
     if new_fig:
@@ -93,8 +98,8 @@ def pareto_plot(
 
         texts, points = pareto_plot_single(
             loss_functions_dict.shortnames(),
-            x_data=crlbs_joint[:, x_idx],
-            y_data=crlbs_joint[:, y_idx],
+            x_data=crlbs_joint[:, x_idx] * wavelength_unit,
+            y_data=crlbs_joint[:, y_idx] * wavelength_unit,
             marker=pareto_group.marker,
             legend_label=pareto_group.legend_label,
             color=pareto_group.color,
@@ -102,6 +107,8 @@ def pareto_plot(
         )
         all_texts += texts
         all_points.append(points)
+        x_avoid += list(crlbs_joint[:, x_idx].flat)
+        y_avoid += list(crlbs_joint[:, y_idx].flat)
 
     bboxes = []
     for point in all_points:
@@ -115,6 +122,8 @@ def pareto_plot(
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
     ax.grid(**grid_kwargs)
 
     ax.set_title(title)
@@ -123,8 +132,19 @@ def pareto_plot(
         plt.xscale("log")
         plt.yscale("log")
 
-    ax.legend()
-    adjust_text(all_texts, ax=ax, objects=bboxes, **adjust_text_kwargs_final)
+    handles, labels = ax.get_legend_handles_labels()
+    labels_unique = dict(zip(labels, handles))
+    # print(handles, labels, labels_unique)
+    ax.legend(labels_unique.values(), labels_unique.keys())
+    # print(np.array(x_avoid), np.array(y_avoid))
+    adjust_text(
+        all_texts,
+        x=x_avoid,
+        y=y_avoid,
+        ax=ax,
+        # objects=bboxes,
+        **adjust_text_kwargs_final
+    )
     plt.tight_layout()
 
     if new_fig:
@@ -189,7 +209,7 @@ def pareto_plot_single(
             fontsize=8,
             color=color,
             bbox=dict(
-                boxstyle="round, pad=0.1", fc="white", ec="none", alpha=1.0
+                boxstyle="round, pad=0.1", fc="white", ec="none", alpha=0.8
             ),
             ha="center",
             va="center",
@@ -216,6 +236,7 @@ def pareto_plot_sweep(
     title: str = "Cram'er-Rao Lower Bounds",
     xlabel: str = None,
     ylabel: str = None,
+    wavelength_unit: float = 1.0,
 ):
     new_fig = ax is None
     if new_fig:
@@ -224,6 +245,8 @@ def pareto_plot_sweep(
     all_texts = []
     all_points = []
 
+    x_avoid = []
+    y_avoid = []
     for pareto_group in pareto_groups:
         crlbs_sweep_joint = []
         for loss_function in pareto_group.data.values():
@@ -238,17 +261,23 @@ def pareto_plot_sweep(
         # )
         crlbs_sweep_joint = np.array(crlbs_sweep_joint)
 
+        x_data = crlbs_sweep_joint[:, :, x_idx].T * wavelength_unit
+        y_data = crlbs_sweep_joint[:, :, y_idx].T * wavelength_unit
+
         texts, points = pareto_plot_sweep_single(
             # pareto_group.loss_functions_dict.shortnames(),
-            x_data=crlbs_sweep_joint[:, :, x_idx].T,
-            y_data=crlbs_sweep_joint[:, :, y_idx].T,
+            x_data=x_data,
+            y_data=y_data,
             linestyle=pareto_group.linestyle,
             legend_label=pareto_group.legend_label,
             color=pareto_group.color,
             ax=ax,
+            marker=pareto_group.marker,
         )
         all_texts += texts
         all_points.append(points)
+        x_avoid += list(x_data.flat)
+        y_avoid += list(y_data.flat)
 
     # bboxes = []
     # for point in all_points:
@@ -271,8 +300,11 @@ def pareto_plot_sweep(
         plt.yscale("log")
 
     ax.legend()
+
     adjust_text(
         all_texts,
+        x=x_avoid,
+        y=y_avoid,
         ax=ax,
         # objects=bboxes,
         **adjust_text_kwargs_final
@@ -281,6 +313,7 @@ def pareto_plot_sweep(
 
     if new_fig:
         plt.show()
+    return x_avoid, y_avoid
 
 
 def pareto_plot_sweep_single(
@@ -293,6 +326,7 @@ def pareto_plot_sweep_single(
     ax=None,
     linestyle: str = ":",
     color: str = "k",
+    marker: str = None,
 ):
     new_fig = ax is None
     if new_fig:
@@ -308,7 +342,7 @@ def pareto_plot_sweep_single(
         color=color,
         label=legend_label,
         zorder=9,
-        marker=".",
+        marker=marker,
     )
 
     # for point_label, x, y in zip(point_labels, x_data, y_data):
