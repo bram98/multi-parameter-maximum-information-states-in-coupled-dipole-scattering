@@ -23,15 +23,15 @@ sys.exit()
 
 # %% Loading in data
 # project_name = "quasirandom_longrun"
-project_name = "quasirandom_longrun - Copy"
+project_name = "quasirandom"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 fisher_calc = FisherMatrix.load(folder=data_folder)
 loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
-loss_functions_sweep_dict = LossFunctionsDict.load(
-    name="LossFunctionsSweepDict", folder=data_folder
-)
+# loss_functions_sweep_dict = LossFunctionsDict.load(
+#     name="LossFunctionsSweepDict", folder=data_folder
+# )
 
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
@@ -385,12 +385,27 @@ sim_kwargs = sim.get_kwargs()
 
 sim = CoupledDipoleSimulator(**sim_kwargs)
 E_kx_array = np.zeros_like(sim.theta_inc)
-E_kx_array[0] = 1
-sim.set_input_field_amplitudes(E_kx_array, flux_normalize=True)
+zero_index = np.argmin(np.abs(sim.k_x_array))
+E_kx_array[zero_index] = 1
+sim.set_input_field_amplitudes(E_kx_array / 2.17, flux_normalize=True)
 
-fig, ax = sim.visualize_intensity(dpi=DPI)
+fig, ax = sim.visualize_intensity(title="Field Intensity Over Slab", dpi=DPI)
+
+if save_plots:
+    fig.savefig(save_folder / f"{project_name}_zero_angle.png")
+
+    sim.animate_time_evolution(
+        frames=3,
+        fps=30,
+        save_gif=True,
+        save_mp4=False,
+        gif_filename=f"../figures/{project_name}_time_evolution.gif",
+        mp4_filename=f"../figures/{project_name}_time_evolution.mp4",
+    )
+# fig.save()
 
 n_frames = 2 * len(E_kx_array) - 2
+# %%
 
 
 def init():
