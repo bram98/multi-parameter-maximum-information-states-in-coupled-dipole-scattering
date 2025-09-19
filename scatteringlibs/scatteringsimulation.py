@@ -451,7 +451,13 @@ class CoupledDipoleSimulator(Storable):
         plt.show()
 
     def _visualize(
-        self, display_function, title, dpi=100, figsize=(10, 8), ax=None
+        self,
+        display_function,
+        title,
+        dpi=100,
+        figsize=(10, 8),
+        ax=None,
+        colorbar=True,
     ):
         """
         Helper function that applies `display_function` to the entire field
@@ -459,9 +465,7 @@ class CoupledDipoleSimulator(Storable):
         """
         newfig = ax is None
         if newfig:
-            fig, ax = plt.subplots(
-                figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
-            )
+            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
         # Ensure that E_total is computed
         if self.E_total is None:
@@ -497,18 +501,24 @@ class CoupledDipoleSimulator(Storable):
             )
         ax.set_title(title)
 
-        if newfig:
-            ax.legend()
-            ax.set_xlabel(r"$z/\lambda$")
-            ax.set_ylabel(r"$x/\lambda$")
-            ax.set_aspect("equal")
+        ax.legend()
+        ax.set_xlabel(r"$z/\lambda$")
+        ax.set_ylabel(r"$x/\lambda$")
+        ax.set_aspect("equal")
+        if colorbar:
             plt.colorbar(field_img, ax=ax, label=r"$|E|^2$  (a.u.)")
+        if newfig:
             plt.tight_layout()
             plt.show()
             return fig, ax
 
     def visualize_intensity(
-        self, title="Custom Input State", dpi=100.0, ax=None
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        colorbar=True,
+        figsize=(10, 8),
     ):
         """Visualizes the intensity distribution over the entire slab."""
 
@@ -522,9 +532,18 @@ class CoupledDipoleSimulator(Storable):
             title=title,
             dpi=dpi,
             ax=ax,
+            colorbar=colorbar,
+            figsize=figsize,
         )
 
-    def visualize_abs(self, ax=None):
+    def visualize_abs(
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        colorbar=True,
+        figsize=(10, 8),
+    ):
         """Visualizes the absolute value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -535,10 +554,19 @@ class CoupledDipoleSimulator(Storable):
         return self._visualize(
             display_function=np.abs,
             title=title,
+            dpi=dpi,
             ax=ax,
+            figsize=figsize,
         )
 
-    def visualize_real(self, ax=None):
+    def visualize_real(
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        colorbar=True,
+        figsize=(10, 8),
+    ):
         """Visualizes the real value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -549,7 +577,9 @@ class CoupledDipoleSimulator(Storable):
         return self._visualize(
             display_function=np.real,
             title=title,
+            dpi=dpi,
             ax=ax,
+            figsize=figsize,
         )
 
     def visualize_output_field(

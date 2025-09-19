@@ -42,6 +42,7 @@ for loss_function in loss_functions_dict.values():
     loss_function._J *= 4
 # %% Plotting parameters
 DPI = 300
+TEXTWIDTH = 5.25102  # inches
 FONTSIZE = 10
 TITLE_FONTSIZE = 14
 YLABEL_FONTSIZE = 12
@@ -72,8 +73,29 @@ def annotate_subplots_abc(axes, format_str="{})"):
         )
 
 
-# %%
+# %% Incident plane wave
 
+planewave = np.zeros_like(sim.E_kx_array)
+k_x_array = sim.k_x_array
+planewave[np.argmin(np.abs(k_x_array))] = 1
+
+
+sim.set_input_field_amplitudes(planewave)
+
+
+fig, ax = plt.subplots(dpi=DPI, figsize=(sim.Lz, sim.Lx))
+sim.visualize_intensity(title="", ax=ax, colorbar=False)
+plt.axis("off")
+# fig.subplots_adjust(bottom=0, top=1, left=0, right=1)
+# plt.autoscale(tight=True)
+plt.tight_layout(pad=0)
+if save_plots:
+    plt.savefig(save_folder / Path("planewave.png"), pad_inches=0)
+    print(f"Saved plot to {save_folder}")
+plt.show()
+
+
+# %% -
 lf = loss_functions_dict["x_inv"]
 
 sim.set_input_field_amplitudes(lf.wavefront)
