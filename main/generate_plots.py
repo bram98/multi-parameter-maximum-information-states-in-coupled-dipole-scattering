@@ -94,7 +94,31 @@ if save_plots:
     print(f"Saved plot to {save_folder}")
 plt.show()
 
+# %%
+from matplotlib import cm
 
+# fig, ax = plt.subplots(subplot_kw=dict(projection='3d'))
+
+X = sim.Z_grid
+Y = sim.X_grid
+Z = np.abs(sim.E_total) ** 2
+norm = plt.Normalize(Z.min(), Z.max())
+colors = cm.BuPu(norm(Z))
+rcount, ccount, _ = colors.shape
+
+fig = plt.figure()
+ax = fig.add_subplot(projection="3d")
+surf = ax.plot_surface(
+    X, Y, Z, rcount=150, ccount=150, facecolors=colors, shade=False
+)
+# surf.set_facecolor((0,0,0,0))
+plt.axis("off")
+
+
+# ax.plot_wireframe(sim.Z_grid, sim.X_grid, , color=None, linewidth=1, cmap='viridis')
+ax.set_zlim(0, 20)
+
+plt.show()
 # %% -
 lf = loss_functions_dict["x_inv"]
 
