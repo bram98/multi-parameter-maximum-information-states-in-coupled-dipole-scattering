@@ -25,21 +25,23 @@ sys.exit()
 
 # %%
 
-data_folder = "../data/pareto_sweep_test"  # Where to save state
+data_folder = "../data/square"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
-movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
-)
+# movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+#     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+# )
 
-frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3, 0.0), number=6, small_dist=0.786, start_index=22
-)
+# frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+#     center=(3, 0.0), number=6, small_dist=0.786, start_index=22
+# )
+movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
+frozen_dipoles = None
 
 # %% 2) simulator geometry and input space
-total_Ns_sim = movable_dipoles_line.shape[1]
-if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-    total_Ns_sim += frozen_dipoles_line.shape[1]
+total_Ns_sim = movable_dipoles.shape[1]
+if frozen_dipoles is not None and frozen_dipoles.size > 0:
+    total_Ns_sim += frozen_dipoles.shape[1]
 
 max_angle = 80  # degrees
 angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
@@ -63,8 +65,8 @@ print("Calculating dS for 3 parameters...")
 dS_tensor = placedipoles.calculate_dS_for_3_parameters(
     sim_kwargs,
     angles_deg,
-    movable_dipoles=movable_dipoles_line,
-    frozen_dipoles=frozen_dipoles_line,
+    movable_dipoles=movable_dipoles,
+    frozen_dipoles=frozen_dipoles,
     delta_param=delta_param,
     flux_normalize=True,
 )
@@ -84,16 +86,16 @@ print(
 # placeholder for base_sim for visualization
 _sim_params_vis = sim_kwargs.copy()
 
-# Correctly combine frozen and movable dipoles for visualization.
-if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-    _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
-else:
-    # If there are no frozen dipoles, just use the movable ones.
-    _scatterers_vis = movable_dipoles_line
+# # Correctly combine frozen and movable dipoles for visualization.
+# if frozen_dipoles is not None and frozen_dipoles.size > 0:
+#     _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
+# else:
+#     # If there are no frozen dipoles, just use the movable ones.
+#     _scatterers_vis = movable_dipoles_line
 
 base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
-base_sim_for_vis.movable_scatterers = movable_dipoles_line
-base_sim_for_vis.frozen_scatterers = frozen_dipoles_line
+base_sim_for_vis.movable_scatterers = movable_dipoles
+base_sim_for_vis.frozen_scatterers = frozen_dipoles
 
 ampl_init = np.zeros_like(angles_deg)
 ampl_init[len(angles_deg) // 2] = 1

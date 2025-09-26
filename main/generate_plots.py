@@ -23,7 +23,8 @@ sys.exit()
 
 # %% Loading in data
 # project_name = "quasirandom_longrun"
-project_name = "quasirandom"
+# project_name = "quasirandom"
+project_name = "square"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
@@ -120,22 +121,35 @@ ax.set_zlim(0, 20)
 
 plt.show()
 # %% -
-lf = loss_functions_dict["x_inv"]
 
-sim.set_input_field_amplitudes(lf.wavefront)
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+lf_names = ["z", "x", "phi"]
+# lf_names = ["z"]
 
-# fig, ax = plt.subplots(dpi=DPI)
+for lf in loss_functions_dict.select_only(lf_names).values():
 
-fig, ax = sim.visualize_intensity(title=lf.displayname)
+    sim.set_input_field_amplitudes(lf.wavefront)
 
-if save_plots:
-    optimized_path = (
-        save_folder / Path(f"optimized_wavefronts") / Path(f"{lf.name}.png")
+    fig, ax = plt.subplots(figsize=(4.5, 4), dpi=DPI)
+
+    shortname = lf.shortname.replace(" (scalar)", "")
+    sim.visualize_intensity(
+        title=f"Maximum Information State for {shortname}",
+        ax=ax,
+        scatterer_size=10,
     )
-    optimized_path.parents[0].mkdir(exist_ok=True)
-    plt.savefig(optimized_path)
-    print(f"Saved plot to {optimized_path}")
-plt.show()
+    plt.tight_layout(pad=1.0)
+    # plt.figure(fig)
+    if save_plots:
+        optimized_path = (
+            save_folder
+            / Path(f"optimized_wavefronts_{project_name}")
+            / Path(f"{lf.name}.png")
+        )
+        optimized_path.parents[0].mkdir(exist_ok=True)
+        plt.savefig(optimized_path)
+        print(f"Saved plot to {optimized_path}")
+    plt.show()
 
 # %% 1) Bar plot of CRLBs
 

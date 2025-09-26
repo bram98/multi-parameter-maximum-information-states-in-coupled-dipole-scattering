@@ -14,6 +14,7 @@ import os
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
@@ -458,6 +459,7 @@ class CoupledDipoleSimulator(Storable):
         figsize=(10, 8),
         ax=None,
         colorbar=True,
+        scatterer_size=100,
     ):
         """
         Helper function that applies `display_function` to the entire field
@@ -487,7 +489,7 @@ class CoupledDipoleSimulator(Storable):
                 self.movable_scatterers[1, :] / self.lambda_0,
                 c="red",
                 marker="o",
-                s=100,
+                s=scatterer_size,
                 label="Scatterers",
             )
         if self.frozen_scatterers is not None:
@@ -496,7 +498,7 @@ class CoupledDipoleSimulator(Storable):
                 self.frozen_scatterers[1, :] / self.lambda_0,
                 c="r",
                 marker="s",
-                s=100,
+                s=scatterer_size,
                 label="Static scatterers",
             )
         ax.set_title(title)
@@ -506,7 +508,14 @@ class CoupledDipoleSimulator(Storable):
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")
         if colorbar:
-            plt.colorbar(field_img, ax=ax, label=r"$|E|^2$  (a.u.)")
+            # im = ax.imshow(np.arange(100).reshape((10,10)))
+
+            # create an axes on the right side of ax. The width of cax will be 5%
+            # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.2)
+            # plt.colorbar(im, cax=cax)
+            plt.colorbar(field_img, cax=cax, label=r"$|E|^2$  (a.u.)")
         if newfig:
             plt.tight_layout()
             plt.show()
@@ -519,6 +528,7 @@ class CoupledDipoleSimulator(Storable):
         ax=None,
         colorbar=True,
         figsize=(10, 8),
+        scatterer_size=100,
     ):
         """Visualizes the intensity distribution over the entire slab."""
 
@@ -534,6 +544,7 @@ class CoupledDipoleSimulator(Storable):
             ax=ax,
             colorbar=colorbar,
             figsize=figsize,
+            scatterer_size=scatterer_size,
         )
 
     def visualize_abs(
