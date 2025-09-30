@@ -14,6 +14,7 @@ import os
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
@@ -74,6 +75,8 @@ class CoupledDipoleSimulator(Storable):
         seed=0,
         k_x_array=None,
         E_kx_array=None,
+        movable_scatterers=None,
+        frozen_scatterers=None,
     ):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters."""
         self.lambda_0 = lambda_0
@@ -83,15 +86,14 @@ class CoupledDipoleSimulator(Storable):
         self.Ns = Ns
         self.alpha = alpha
         self.exclusion_radius = exclusion_radius * self.lambda_0
-        self.seed = seed
         self.grid_points_x = grid_points_x
-        self.NA_out = NA_out
-        if theta_inc_deg is not None:
-            self.theta_inc_deg = theta_inc_deg
-        elif theta_inc is not None:
-            self.theta_inc = theta_inc
-        else:
-            self.theta_inc = 0.0
+
+        self.set_input_field_angles(
+            k_x_array=k_x_array,
+            theta_inc=theta_inc,
+            theta_inc_deg=theta_inc_deg,
+        )
+
         self.seed = seed
 
         # Derive grid points along z based on x sampling
@@ -107,7 +109,14 @@ class CoupledDipoleSimulator(Storable):
         self.Z_grid, self.X_grid = np.meshgrid(self.z, self.x)
 
         # Initialize scatterer positions
-        self.scatterers = self._generate_scatterers()
+        if movable_scatterers is None:
+            self.movable_scatterers = self._generate_scatterers()
+        else:
+            self.movable_scatterers = movable_scatterers
+
+        if frozen_scatterers is not None:
+            self.frozen_scatterers = frozen_scatterers
+        #   Note: self.scatterers is defined via a getter
 
         # Initialize fields as None; compute when needed
         self.fields = None
@@ -115,7 +124,6 @@ class CoupledDipoleSimulator(Storable):
         self.E_output = None
 
         # For arbitrary input fields
-        self.k_x_array = k_x_array
         self.E_kx_array = E_kx_array
 
     def _generate_scatterers(self):
@@ -180,23 +188,88 @@ class CoupledDipoleSimulator(Storable):
         k_z_array = np.sqrt(self.k**2 - k_x_array**2, dtype=complex)
         return k_z_array
 
-    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
-        k_x_array = np.array(k_x_array)
+    def set_scatterers(self, movable_scatterers=None, frozen_scatterers=None):
+        if movable_scatterers is not None:
+            try:
+                movable_scatterers = np.asarray(movable_scatterers)
+                assert movable_scatterers.shape[0] == 2
+            except Exception as e:
+                print(
+                    f"Expected array of shape (2, N) where N is the number of movable scatters. Instead got movable_scatterers={movable_scatterers}"
+                )
+                raise e
+            self.movable_scatterers = movable_scatterers
+
+        if frozen_scatterers is not None:
+            try:
+                frozen_scatterers = np.asarray(frozen_scatterers)
+                assert frozen_scatterers.shape[0] == 2
+            except Exception as e:
+                print(
+                    f"Expected array of shape (2, N) where N is the number of frozen_scatterers scatters. Instead got frozen_scatterers={movable_scatterers}"
+                )
+                raise e
+            self.frozen_scatterers = frozen_scatterers
+
+    def set_input_field_angles(
+        self, k_x_array=None, theta_inc=None, theta_inc_deg=None
+    ):
+        """
+        Sets the input field angles. The input field is written as a superposition of
+        plane waves. The angles are input via k_x_array, which describes the kx
+        components of each planewave. The amplitudes are give by E_kx_array,
+        which should have the same shape as k_x_array.
+        """
+
+        if k_x_array is not None:
+            self.k_x_array = np.array(k_x_array)
+        elif theta_inc_deg is not None:
+            self.theta_inc_deg = np.array(theta_inc_deg)
+        elif theta_inc is not None:
+            self.theta_inc = np.array(theta_inc)
+        else:
+            self.theta_inc = 0.0
+
+    def set_input_field_amplitudes(self, E_kx_array, flux_normalize=True):
+        """
+        Sets the input field amplitudes. The input field is written as a
+        superposition of plane waves. The angles are input via k_x_array, which describes the kx
+        components of each planewave. The amplitudes are give by E_kx_array,
+        which should have the same shape as k_x_array. The amplitudes can
+        be automatically flux_normalized by passing flux_normalized=True. This
+        means each plane wave has unit flux through the simulation box. This
+        method also calls reset().
+
+        Args:
+            k_x_array (numpy.ndarray): Array of kx values.
+            E_kx_array (numpy.ndarray): Array of amplitudes
+            flux_normalize (bool): Use flux normalization or use raw amplitudes
+        """
+
         E_kx_array = np.array(E_kx_array)
 
-        if k_x_array.shape != E_kx_array.shape:
+        if self.k_x_array.shape != E_kx_array.shape:
             raise ValueError(
                 "k_x_array and E_kx_array must have the same shape."
             )
 
         if flux_normalize:
-            amp = _flux_amplitude_2d(self.k, k_x_array)
+            amp = _flux_amplitude_2d(self.k, self.k_x_array)
         else:
             amp = 1.0
 
-        self.k_x_array = k_x_array
         self.E_kx_array = E_kx_array * amp
         self.reset()  # Reset computed fields
+
+    def set_input_field_kx(self, k_x_array, E_kx_array, flux_normalize=True):
+        """
+        Sets both k_x_array and E_kx_array. The name is for backwards
+        compatibility
+        """
+        self.set_input_field_angles(k_x_array=k_x_array)
+        self.set_input_field_amplitudes(
+            E_kx_array, flux_normalize=flux_normalize
+        )
 
     def compute_incident_field(self, x, z):
         """Computes the incident field at given positions.
@@ -381,42 +454,107 @@ class CoupledDipoleSimulator(Storable):
         plt.tight_layout()
         plt.show()
 
-    def _visualize(self, display_function, title, dpi=100, figsize=(10, 8)):
+    def _visualize(
+        self,
+        display_function,
+        title,
+        dpi=100,
+        figsize=(10, 8),
+        ax=None,
+        use_colorbar=True,
+        imshow_kwargs=None,
+        movable_kwargs=None,
+        frozen_kwargs=None,
+        legend_kwargs=None,
+        colorbar_label=None,
+    ):
         """
         Helper function that applies `display_function` to the entire field
         before plotting it.
         """
+        newfig = ax is None
+        if newfig:
+            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
         # Ensure that E_total is computed
         if self.E_total is None:
             self.compute_total_field()
 
-        plt.figure(
-            figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
-        )
-        plt.pcolormesh(
+        if imshow_kwargs is None:
+            imshow_kwargs = {}
+        field_img = ax.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
             display_function(self.E_total),
             shading="auto",
             cmap="viridis",
+            **imshow_kwargs,
         )
-        plt.colorbar(label=r"$|E|^2$  (a.u.)")
-        plt.scatter(
-            self.scatterers[0, :] / self.lambda_0,
-            self.scatterers[1, :] / self.lambda_0,
-            c="red",
-            s=100,
-            label="Scatterers",
-        )
-        plt.title(title)
-        plt.xlabel(r"$z/\lambda$")
-        plt.ylabel(r"$x/\lambda$")
-        plt.legend()
-        plt.gca().set_aspect("equal")
-        plt.tight_layout()
-        plt.show()
+        if self.movable_scatterers is not None:
+            if movable_kwargs is None:
+                movable_kwargs = {}
+            movable_kwargs_default = dict(
+                c="red",
+                marker="o",
+                s=10,
+                label="Scatterers",
+            )
+            movable_kwargs_default.update(movable_kwargs)
+            ax.scatter(
+                self.movable_scatterers[0, :] / self.lambda_0,
+                self.movable_scatterers[1, :] / self.lambda_0,
+                **movable_kwargs_default,
+            )
+        if self.frozen_scatterers is not None:
+            if frozen_kwargs is None:
+                frozen_kwargs = {}
+            frozen_kwargs_default = dict(
+                c="r",
+                marker="s",
+                s=10,
+                label="Static scatterers",
+            )
+            frozen_kwargs_default.update(frozen_kwargs)
+            ax.scatter(
+                self.frozen_scatterers[0, :] / self.lambda_0,
+                self.frozen_scatterers[1, :] / self.lambda_0,
+                **frozen_kwargs_default,
+            )
+        ax.set_title(title)
 
-    def visualize_intensity(self, title="Custom Input State", dpi=100.0):
+        if legend_kwargs is None:
+            legend_kwargs = {}
+        ax.legend(**legend_kwargs)
+        ax.set_xlabel(r"$z/\lambda$")
+        ax.set_ylabel(r"$x/\lambda$")
+        ax.set_aspect("equal")
+        if use_colorbar:
+            # im = ax.imshow(np.arange(100).reshape((10,10)))
+
+            # create an axes on the right side of ax. The width of cax will be 5%
+            # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.1)
+            # plt.colorbar(im, cax=cax)
+            plt.colorbar(field_img, cax=cax, label=colorbar_label)
+        if newfig:
+            plt.tight_layout()
+            plt.show()
+            return fig, ax
+
+    def visualize_intensity(
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        use_colorbar=True,
+        figsize=(10, 8),
+        imshow_kwargs=None,
+        movable_kwargs=None,
+        frozen_kwargs=None,
+        legend_kwargs=None,
+        colorbar_label=r"$|E|^2$  (a.u.)",
+    ):
         """Visualizes the intensity distribution over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -424,13 +562,28 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Electric Field Intensity Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=lambda field: np.abs(field) ** 2,
             title=title,
             dpi=dpi,
+            ax=ax,
+            use_colorbar=use_colorbar,
+            figsize=figsize,
+            imshow_kwargs=imshow_kwargs,
+            movable_kwargs=movable_kwargs,
+            frozen_kwargs=frozen_kwargs,
+            legend_kwargs=legend_kwargs,
+            colorbar_label=colorbar_label,
         )
 
-    def visualize_abs(self):
+    def visualize_abs(
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        colorbar=True,
+        figsize=(10, 8),
+    ):
         """Visualizes the absolute value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -438,12 +591,22 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Absolute Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=np.abs,
             title=title,
+            dpi=dpi,
+            ax=ax,
+            figsize=figsize,
         )
 
-    def visualize_real(self):
+    def visualize_real(
+        self,
+        title="Custom Input State",
+        dpi=100.0,
+        ax=None,
+        colorbar=True,
+        figsize=(10, 8),
+    ):
         """Visualizes the real value of the field over the entire slab."""
 
         if self.k_x_array is not None and self.E_kx_array is not None:
@@ -451,9 +614,12 @@ class CoupledDipoleSimulator(Storable):
         else:
             title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
-        self._visualize(
+        return self._visualize(
             display_function=np.real,
             title=title,
+            dpi=dpi,
+            ax=ax,
+            figsize=figsize,
         )
 
     def visualize_output_field(
@@ -541,13 +707,47 @@ class CoupledDipoleSimulator(Storable):
         self.E_output = self.E_total[:, -1]
         return self.E_output
 
+    # k_x_array is the variable that's actually stored. theta_inc and
+    # theta_inc_deg just shadow k_x_array.
     @property
     def theta_inc_deg(self):
-        return np.rad2deg(self.theta_inc)
+        return self.k_x2theta(self.k_x_array, degree=True)
 
     @theta_inc_deg.setter
-    def theta_inc_deg(self, deg):
-        self.theta_inc = np.deg2rad(deg)
+    def theta_inc_deg(self, theta_deg):
+        self.k_x_array = self.theta2k_x(theta_deg, degree=True)
+
+    @property
+    def theta_inc(self):
+        return self.k_x2theta(self.k_x_array, degree=False)
+
+    @theta_inc.setter
+    def theta_inc(self, theta):
+        self.k_x_array = self.theta2k_x(theta, degree=False)
+
+    def get_kwargs(self):
+        keys = [
+            "lambda_0",
+            "Lz",
+            "Lx",
+            "Ns",
+            "alpha",
+            "exclusion_radius",
+            "grid_points_x",
+            # "theta_inc_deg",
+            # "theta_inc",
+            "seed",
+            "k_x_array",
+            "E_kx_array",
+            "movable_scatterers",
+            "frozen_scatterers",
+        ]
+        kwargs = {
+            key: self.__getattribute__(key)
+            for key in keys
+            if self.__getattribute__(key) is not None
+        }
+        return kwargs
 
     def animate_time_evolution(
         self,
@@ -623,7 +823,7 @@ class CoupledDipoleSimulator(Storable):
 
         plt.show()
 
-    def build_scattering_matrix(self, angles_deg, flux_normalize=True):
+    def build_scattering_matrix(self, flux_normalize=True):
         """
         Build a scattering matrix S of shape (N_out, N_in) where:
         - N_in = len(angles_deg)
@@ -631,28 +831,31 @@ class CoupledDipoleSimulator(Storable):
         For each angle in angles_deg, we set a single plane wave input,
         solve, read off E_zL. Then store in S.
         Returns:
-            S: shape (N_out, N_in)
-            x_cam: array of x-values at z=Lz
+            tuple (S, x_cam):
+                S: shape (N_out, N_in)
+                x_cam: array of x-values at z=Lz
         """
-        N_in = len(angles_deg)
+        N_in = len(self.k_x_array)
         N_out = self.grid_points_x
         S = np.zeros((N_out, N_in), dtype=complex)
 
         # We'll do a loop over angles
-        for n, th_deg in enumerate(angles_deg):
-            th_rad = np.deg2rad(th_deg)
-            kx = self.k * np.sin(th_rad)
-            # if flux_normalize:
-            #     amp = _flux_amplitude_2d(self.k, kx)
-            # else:
-            #     amp = 1.0
-
+        for n, kx in enumerate(self.k_x_array):
             # set input
             self.set_input_field_kx([kx], [1.0], flux_normalize=flux_normalize)
             self.solve_fields()
             E_zL = self.compute_zL_fields_direct()
             S[:, n] = E_zL
         return S, self.x
+
+    @property
+    def scatterers(self):
+        scat = self.movable_scatterers
+        if not scat is None and not self.frozen_scatterers is None:
+            scat = np.append(
+                self.movable_scatterers, self.frozen_scatterers, axis=1
+            )
+        return scat
 
 
 if __name__ == "__main__":
@@ -688,7 +891,10 @@ if __name__ == "__main__":
     simulator_arbitrary = CoupledDipoleSimulator(Ns=5)
 
     # Set the arbitrary input field
-    simulator_arbitrary.set_input_field_kx(k_x_array, E_kx_array)
+    simulator_arbitrary.set_input_field_angles(angles_deg)
+    simulator_arbitrary.set_input_field_amplitudes(
+        E_kx_array, flux_normalize=False
+    )
 
     # Visualize scatterer positions
     simulator_arbitrary.visualize_scatterers()
@@ -707,7 +913,9 @@ if __name__ == "__main__":
     simulator_arbitrary_no_scatterers = CoupledDipoleSimulator(Ns=0)
 
     # Set the same arbitrary input field
-    simulator_arbitrary_no_scatterers.set_input_field_kx(k_x_array, E_kx_array)
+
+    simulator_arbitrary_no_scatterers.set_input_field_angles(angles_deg)
+    simulator_arbitrary_no_scatterers.set_input_field_amplitudes(E_kx_array)
 
     # Visualize the intensity over the full slab with arbitrary input field and no scatterers
     simulator_arbitrary_no_scatterers.visualize_intensity()

@@ -25,7 +25,7 @@ class FisherMatrix(Storable):
         if dS is None:
             self._dS = None
         else:
-            self.dS = np.array(dS)  # This will trigger the setter.
+            self.dS = np.asarray(dS)  # This will trigger the setter.
 
     @staticmethod
     def F_from_dS(dS):
@@ -33,7 +33,7 @@ class FisherMatrix(Storable):
         Computes the Fisher matrix from dS.
         Assumes dS is shape (nparams, N_out, N_in).
         The Fisher operator F[mu, nu] is (N_in, N_in).
-        F_munu = 0.5 * ( (dS/dmu)^dagger (dS/dnu) + (dS/dnu)^dagger (dS/dmu) )
+        F_munu = 2.0 * ( (dS/dmu)^dagger (dS/dnu) + (dS/dnu)^dagger (dS/dmu) )
         """
         nparams = dS.shape[0]
         N_out, N_in = dS.shape[1], dS.shape[2]
@@ -46,7 +46,7 @@ class FisherMatrix(Storable):
 
                 term1 = dS_mu_dagger @ dS[nu]  # Shape (N_in, N_in)
                 term2 = dS_nu_dagger @ dS[mu]  # Shape (N_in, N_in)
-                F[mu, nu, :, :] = 0.5 * (term1 + term2)
+                F[mu, nu, :, :] = 2.0 * (term1 + term2)
         return F
 
     @property
