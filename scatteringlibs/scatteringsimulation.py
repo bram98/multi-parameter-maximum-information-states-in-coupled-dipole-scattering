@@ -42,6 +42,7 @@ class CoupledDipoleSimulator(Storable):
         alpha (complex): Polarizability of scatterers.
         exclusion_radius (float): Minimum spacing between scatterers.
         grid_points_x (int): Number of grid points along the x-axis.
+        NA_out (float, optional): Numerical aperture of the output objective for filtering.
         grid_points_z (int): Number of grid points along the z-axis (derived).
         z (numpy.ndarray): Array of z-coordinates.
         x (numpy.ndarray): Array of x-coordinates.
@@ -67,28 +68,14 @@ class CoupledDipoleSimulator(Storable):
         alpha=4j / (2 * np.pi / 1.0) ** 2,
         exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
         grid_points_x=400,
+        NA_out=0.95,
         theta_inc_deg=None,
         theta_inc=None,
         seed=0,
         k_x_array=None,
         E_kx_array=None,
     ):
-        """Initializes the CoupledDipoleSimulator with default or user-defined parameters.
-
-        Args:
-            lambda_0 (float, optional): Wavelength (normalized units). Defaults to 1.0.
-            Lz (float, optional): Length of the slab along the z-axis (in wavelengths). Defaults to 16.0.
-            Lx (float, optional): Length of the slab along the x-axis (in wavelengths). Defaults to 8.0.
-            Ns (int, optional): Number of scatterers. Defaults to 10.
-            alpha (complex, optional): Polarizability of scatterers. Defaults to 4j / k**2.
-            exclusion_radius (float, optional): Minimum spacing between scatterers (in wavelengths). Defaults to 0.637.
-            grid_points_x (int, optional): Number of grid points along the x-axis. Defaults to 400.
-            theta_inc_deg (float, optional): Incident angle in degrees. Defaults to 0.0.
-            theta_inc (float, optional): Incident angle in radians. Defaults to 0.0.
-            seed (int, optional): Random seed for scatterer placement. Defaults to 0.
-            k_x_array (numpy.ndarray, optional): Array of k_x components for arbitrary input field. Defaults to None.
-            E_kx_array (numpy.ndarray, optional): Corresponding amplitudes for k_x components. Defaults to None.
-        """
+        """Initializes the CoupledDipoleSimulator with default or user-defined parameters."""
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / self.lambda_0
         self.Lz = Lz * self.lambda_0
@@ -96,7 +83,9 @@ class CoupledDipoleSimulator(Storable):
         self.Ns = Ns
         self.alpha = alpha
         self.exclusion_radius = exclusion_radius * self.lambda_0
+        self.seed = seed
         self.grid_points_x = grid_points_x
+        self.NA_out = NA_out
         if theta_inc_deg is not None:
             self.theta_inc_deg = theta_inc_deg
         elif theta_inc is not None:
@@ -297,10 +286,10 @@ class CoupledDipoleSimulator(Storable):
         return self.E_total
 
     def compute_zL_fields_direct(self):
-        """Directly computes the electric field at z = Lz plane without solving the entire slab.
-
-        Returns:
-            numpy.ndarray: Electric field at z = Lz (shape: (grid_points_x,)).
+        """
+        Directly computes the electric field at z = Lz plane.
+        If self.NA_out is specified, it applies a Fourier-space filter to model
+        a finite numerical aperture objective.
         """
         if self.E_output is not None:
             return self.E_output
@@ -317,9 +306,7 @@ class CoupledDipoleSimulator(Storable):
 
         # Compute incident field at z = Lz for all x
         E_incident = self.compute_incident_field(x_points, z_L)
-
-        # Initialize total field at z = Lz with incident field
-        E_output = np.copy(E_incident)
+        E_output_unfiltered = np.copy(E_incident)
 
         # Compute scattered fields from each scatterer
         for n in range(self.Ns):
@@ -344,10 +331,29 @@ class CoupledDipoleSimulator(Storable):
             )  # Shape: (grid_points_x,)
 
             # Add to total field
-            E_output += E_scatt
+            E_output_unfiltered += E_scatt
 
-        self.E_output = E_output
-        return self.E_output
+        if self.NA_out is None:
+            self.E_output = E_output_unfiltered
+            return self.E_output
+        else:
+            # Apply NA filter in Fourier space
+            E_kx = np.fft.fft(E_output_unfiltered)
+
+            # Define spatial frequency vector
+            delta_x = self.x[1] - self.x[0]
+            kx_vec = np.fft.fftfreq(self.grid_points_x, d=delta_x) * 2 * np.pi
+
+            # Define cutoff frequency and mask
+            k_max = self.NA_out * self.k
+            mask = np.abs(kx_vec) <= k_max
+
+            # Apply mask and inverse transform
+            E_kx_filtered = E_kx * mask
+            E_output_filtered = np.fft.ifft(E_kx_filtered)
+
+            self.E_output = E_output_filtered
+            return self.E_output
 
     def reset(self):
         """Resets computed fields."""
@@ -646,12 +652,11 @@ class CoupledDipoleSimulator(Storable):
             self.solve_fields()
             E_zL = self.compute_zL_fields_direct()
             S[:, n] = E_zL
-        # re-initialize if needed
         return S, self.x
 
 
 if __name__ == "__main__":
-    import time  # Import the time module for performance measurement
+    import time
 
     # Start timer
     start_time = time.time()
