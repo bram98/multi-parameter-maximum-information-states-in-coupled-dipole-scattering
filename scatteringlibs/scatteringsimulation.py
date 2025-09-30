@@ -458,8 +458,12 @@ class CoupledDipoleSimulator(Storable):
         dpi=100,
         figsize=(10, 8),
         ax=None,
-        colorbar=True,
-        scatterer_size=100,
+        use_colorbar=True,
+        imshow_kwargs=None,
+        movable_kwargs=None,
+        frozen_kwargs=None,
+        legend_kwargs=None,
+        colorbar_label=None,
     ):
         """
         Helper function that applies `display_function` to the entire field
@@ -476,46 +480,63 @@ class CoupledDipoleSimulator(Storable):
         # plt.figure(
         #     figsize=(figsize[0], figsize[1] * self.Lx / self.Lz), dpi=dpi
         # )
+        if imshow_kwargs is None:
+            imshow_kwargs = {}
         field_img = ax.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
             display_function(self.E_total),
             shading="auto",
             cmap="viridis",
+            **imshow_kwargs,
         )
         if self.movable_scatterers is not None:
+            if movable_kwargs is None:
+                movable_kwargs = {}
+            movable_kwargs_default = dict(
+                c="red",
+                marker="o",
+                s=10,
+                label="Scatterers",
+            )
+            movable_kwargs_default.update(movable_kwargs)
             ax.scatter(
                 self.movable_scatterers[0, :] / self.lambda_0,
                 self.movable_scatterers[1, :] / self.lambda_0,
-                c="red",
-                marker="o",
-                s=scatterer_size,
-                label="Scatterers",
+                **movable_kwargs_default,
             )
         if self.frozen_scatterers is not None:
+            if frozen_kwargs is None:
+                frozen_kwargs = {}
+            frozen_kwargs_default = dict(
+                c="r",
+                marker="s",
+                s=10,
+                label="Static scatterers",
+            )
+            frozen_kwargs_default.update(frozen_kwargs)
             ax.scatter(
                 self.frozen_scatterers[0, :] / self.lambda_0,
                 self.frozen_scatterers[1, :] / self.lambda_0,
-                c="r",
-                marker="s",
-                s=scatterer_size,
-                label="Static scatterers",
+                **frozen_kwargs_default,
             )
         ax.set_title(title)
 
-        ax.legend()
+        if legend_kwargs is None:
+            legend_kwargs = {}
+        ax.legend(**legend_kwargs)
         ax.set_xlabel(r"$z/\lambda$")
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")
-        if colorbar:
+        if use_colorbar:
             # im = ax.imshow(np.arange(100).reshape((10,10)))
 
             # create an axes on the right side of ax. The width of cax will be 5%
             # of ax and the padding between cax and ax will be fixed at 0.05 inch.
             divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.2)
+            cax = divider.append_axes("right", size="5%", pad=0.1)
             # plt.colorbar(im, cax=cax)
-            plt.colorbar(field_img, cax=cax, label=r"$|E|^2$  (a.u.)")
+            plt.colorbar(field_img, cax=cax, label=colorbar_label)
         if newfig:
             plt.tight_layout()
             plt.show()
@@ -526,9 +547,13 @@ class CoupledDipoleSimulator(Storable):
         title="Custom Input State",
         dpi=100.0,
         ax=None,
-        colorbar=True,
+        use_colorbar=True,
         figsize=(10, 8),
-        scatterer_size=100,
+        imshow_kwargs=None,
+        movable_kwargs=None,
+        frozen_kwargs=None,
+        legend_kwargs=None,
+        colorbar_label=r"$|E|^2$  (a.u.)",
     ):
         """Visualizes the intensity distribution over the entire slab."""
 
@@ -542,9 +567,13 @@ class CoupledDipoleSimulator(Storable):
             title=title,
             dpi=dpi,
             ax=ax,
-            colorbar=colorbar,
+            use_colorbar=use_colorbar,
             figsize=figsize,
-            scatterer_size=scatterer_size,
+            imshow_kwargs=imshow_kwargs,
+            movable_kwargs=movable_kwargs,
+            frozen_kwargs=frozen_kwargs,
+            legend_kwargs=legend_kwargs,
+            colorbar_label=colorbar_label,
         )
 
     def visualize_abs(

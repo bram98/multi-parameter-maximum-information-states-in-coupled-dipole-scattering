@@ -22,9 +22,9 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
-# project_name = "quasirandom_longrun"
+project_name = "quasirandom_longrun - Copy"
 # project_name = "quasirandom"
-project_name = "square"
+# project_name = "square"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
@@ -43,7 +43,7 @@ for loss_function in loss_functions_dict.values():
     loss_function._J *= 4
 # %% Plotting parameters
 DPI = 300
-TEXTWIDTH = 5.25102  # inches
+TEXTWIDTH = 5.90666  # inches
 FONTSIZE = 10
 TITLE_FONTSIZE = 14
 YLABEL_FONTSIZE = 12
@@ -53,6 +53,18 @@ GRID_KWARGS = dict(which="both", linestyle=":")
 
 save_plots = True
 save_folder = Path("../figures")
+
+plt.rcdefaults()
+plt.rcParams.update(
+    {
+        "font.size": 10,  # Main text
+        "axes.labelsize": 10,  # Axis labels
+        "legend.fontsize": 9,  # Legend
+        "xtick.labelsize": 8,  # X-tick labels
+        "ytick.labelsize": 8,  # Y-tick labels
+        "axes.titlesize": 10,  # Title
+    }
+)
 
 
 def annotate_subplots_abc(axes, format_str="{})"):
@@ -91,7 +103,9 @@ plt.axis("off")
 # plt.autoscale(tight=True)
 plt.tight_layout(pad=0)
 if save_plots:
-    plt.savefig(save_folder / Path("planewave.png"), pad_inches=0)
+    plt.savefig(
+        save_folder / Path(f"{project_name}_planewave.png"), pad_inches=0
+    )
     print(f"Saved plot to {save_folder}")
 plt.show()
 
@@ -123,34 +137,141 @@ plt.show()
 # %% -
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
-lf_names = ["z", "x", "phi"]
-# lf_names = ["z"]
-
+# lf_names = ["x", "phi", "z"]
+lf_names = ["det", "tr_inv", "spec_rad"]
+lf_names = [
+    "x",
+    "z",
+    "phi",
+    "x_inv",
+    "z_inv",
+    "phi_inv",
+    "tr_norm",
+    "det",
+    "tr_inv",
+    "spec_rad",
+]
+lf_names = ["x"]
 for lf in loss_functions_dict.select_only(lf_names).values():
 
     sim.set_input_field_amplitudes(lf.wavefront)
 
-    fig, ax = plt.subplots(figsize=(4.5, 4), dpi=DPI)
-
-    shortname = lf.shortname.replace(" (scalar)", "")
-    sim.visualize_intensity(
-        title=f"Maximum Information State for {shortname}",
-        ax=ax,
-        scatterer_size=10,
+    # fig, ax = plt.subplots(figsize=(5.0, 4.5), dpi=DPI)
+    fig, ax = plt.subplots(
+        figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
     )
-    plt.tight_layout(pad=1.0)
+
+    # name = lf.shortname.replace(" (scalar)", "")
+    name = lf.displayname.replace("Singe parameter ", "")
+    name = name.replace("Single parameter ", "")
+
+    # add colorbar label to last plot
+    if lf.name == lf_names[-1]:
+        use_colorbar = True
+        colorbar_label = {}
+    else:
+        use_colorbar = False
+        colorbar_label = dict(colorbar_label=None)
+
+    # print(lf.name, lf_names[-1])
+    sim.visualize_intensity(
+        title=f"Maximum Information State\nfor {name}",
+        ax=ax,
+        # imshow_kwargs=dict(vmax=91),
+        movable_kwargs=dict(
+            marker="o", facecolors="none", edgecolors="r", s=80, c=None
+        ),
+        frozen_kwargs=dict(
+            marker="s", facecolors="none", edgecolors="r", s=80, c=None
+        ),
+        legend_kwargs=dict(fontsize=9),
+        use_colorbar=use_colorbar,
+        **colorbar_label,
+    )
+    # plt.clim(0, 10)
+    # plt.tight_layout(pad=0.0)
     # plt.figure(fig)
     if save_plots:
         optimized_path = (
             save_folder
             / Path(f"optimized_wavefronts_{project_name}")
-            / Path(f"{lf.name}.png")
+            / Path(f"optimized_{lf.name}.png")
         )
         optimized_path.parents[0].mkdir(exist_ok=True)
         plt.savefig(optimized_path)
         print(f"Saved plot to {optimized_path}")
     plt.show()
 
+
+# %%
+
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+# lf_names = ["x", "phi", "z"]
+lf_names = ["det", "tr_inv", "spec_rad"]
+lf_names = [
+    "x",
+    "z",
+    "phi",
+    "x_inv",
+    "z_inv",
+    "phi_inv",
+    "tr_norm",
+    "det",
+    "tr_inv",
+    "spec_rad",
+]
+
+fig, ax = plt.subplots(nrows=5, ncols=2, figsize=(0.95 * TEXTWIDTH,))
+
+for lf in loss_functions_dict.select_only(lf_names).values():
+
+    sim.set_input_field_amplitudes(lf.wavefront)
+
+    # fig, ax = plt.subplots(figsize=(5.0, 4.5), dpi=DPI)
+    fig, ax = plt.subplots(
+        figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
+    )
+
+    # name = lf.shortname.replace(" (scalar)", "")
+    name = lf.displayname.replace("Singe parameter ", "")
+    name = name.replace("Single parameter ", "")
+
+    # add colorbar label to last plot
+    if lf.name == lf_names[-1]:
+        colorbar = True
+        colorbar_label = {}
+    else:
+        colorbar = False
+        colorbar_label = dict(colorbar_label=None)
+
+    # print(lf.name, lf_names[-1])
+    sim.visualize_intensity(
+        title=f"Maximum Information State\nfor {name}",
+        ax=ax,
+        # imshow_kwargs=dict(vmax=91),
+        movable_kwargs=dict(
+            marker="o", facecolors="none", edgecolors="r", s=80, c=None
+        ),
+        frozen_kwargs=dict(
+            marker="s", facecolors="none", edgecolors="r", s=80, c=None
+        ),
+        legend_kwargs=dict(fontsize=9),
+        colorbar=colorbar,
+        **colorbar_label,
+    )
+    # plt.clim(0, 10)
+    # plt.tight_layout(pad=0.0)
+    # plt.figure(fig)
+    if save_plots:
+        optimized_path = (
+            save_folder
+            / Path(f"optimized_wavefronts_{project_name}")
+            / Path(f"optimized_{lf.name}.png")
+        )
+        optimized_path.parents[0].mkdir(exist_ok=True)
+        plt.savefig(optimized_path)
+        print(f"Saved plot to {optimized_path}")
+    plt.show()
 # %% 1) Bar plot of CRLBs
 
 

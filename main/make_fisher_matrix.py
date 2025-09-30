@@ -25,18 +25,18 @@ sys.exit()
 
 # %%
 
-data_folder = "../data/square"  # Where to save state
+data_folder = "../data/quasirandom_longrun"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
-# movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-#     center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
-# )
+movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
+    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+)
 
-# frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-#     center=(3, 0.0), number=6, small_dist=0.786, start_index=22
-# )
-movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
-frozen_dipoles = None
+frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
+    center=(3, 0.0), number=6, small_dist=0.786, start_index=22
+)
+# movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
+# frozen_dipoles = None
 
 # %% 2) simulator geometry and input space
 total_Ns_sim = movable_dipoles.shape[1]
