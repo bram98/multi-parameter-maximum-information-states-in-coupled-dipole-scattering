@@ -20,7 +20,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # %% 0) settings
 verbose_plotting = True
-NA_in = 0.8  # n (refractive index) assumed to be 1
+NA_in = 0.98  # n (refractive index) assumed to be 1
 max_angle = np.rad2deg(np.arcsin(NA_in))  # degrees, max angle for input modes
 NA_out = NA_in
 number_of_input_channels = 100  # Input angle channels
