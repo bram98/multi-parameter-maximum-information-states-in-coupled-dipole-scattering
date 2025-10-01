@@ -195,4 +195,12 @@ def calculate_dS_for_3_parameters(
         S_deriv = (S_plus - S_minus) / (2 * delta_param)
         dS_list.append(S_deriv)
 
-    return np.array(dS_list)
+    # Convert to numpy array first
+    dS_tensor = np.array(dS_list)
+
+    # We need to find the output grid spacing delta_x to correctly scale the sum that approximates the Fisher operator integral.
+    temp_sim_for_dx = CoupledDipoleSimulator(**current_sim_kwargs)
+    delta_x = temp_sim_for_dx.x[1] - temp_sim_for_dx.x[0]
+
+    # Scale dS by sqrt(delta_x) so that dS^dagger * dS contains the correct delta_x factor.
+    return dS_tensor * np.sqrt(delta_x)
