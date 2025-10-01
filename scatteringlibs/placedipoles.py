@@ -172,7 +172,7 @@ def calculate_dS_for_3_parameters(
             movable_dipoles, dx, dz, dtheta
         )
         sim_plus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_plus.angles_deg = angles_deg
+        sim_plus.theta_inc_deg = angles_deg
         sim_plus.movable_scatterers = scatterers_plus
         sim_plus.frozen_scatterers = frozen_dipoles
         S_plus, _ = sim_plus.build_scattering_matrix(
@@ -184,10 +184,9 @@ def calculate_dS_for_3_parameters(
             movable_dipoles, -dx, -dz, -dtheta
         )
         sim_minus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_minus.angles_deg = angles_deg
+        sim_minus.theta_inc_deg = angles_deg
         sim_minus.movable_scatterers = scatterers_minus
         sim_minus.frozen_scatterers = frozen_dipoles
-        # print(total_Ns, sim_minus.movable_scatterers.shape, sim)
         S_minus, _ = sim_minus.build_scattering_matrix(
             flux_normalize=flux_normalize
         )

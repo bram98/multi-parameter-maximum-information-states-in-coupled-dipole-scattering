@@ -87,6 +87,7 @@ class CoupledDipoleSimulator(Storable):
         self.alpha = alpha
         self.exclusion_radius = exclusion_radius * self.lambda_0
         self.grid_points_x = grid_points_x
+        self.NA_out = NA_out
 
         self.set_input_field_angles(
             k_x_array=k_x_array,
