@@ -411,7 +411,7 @@ class CoupledDipoleSimulator(Storable):
             return self.E_output
         else:
             # Apply NA filter in Fourier space
-            E_kx = np.fft.fft(E_output_unfiltered)
+            E_kx = np.fft.fft(E_output_unfiltered, norm="ortho")
 
             # Define spatial frequency vector
             delta_x = self.x[1] - self.x[0]
@@ -423,7 +423,7 @@ class CoupledDipoleSimulator(Storable):
 
             # Apply mask and inverse transform
             E_kx_filtered = E_kx * mask
-            E_output_filtered = np.fft.ifft(E_kx_filtered)
+            E_output_filtered = np.fft.ifft(E_kx_filtered, norm="ortho")
 
             self.E_output = E_output_filtered
             return self.E_output
