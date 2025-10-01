@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 
 # %%
 import numpy as np
-import toposort
 import torch
 from adjustText import adjust_text
 from libraries.fishermatrix import FisherMatrix
@@ -112,7 +111,7 @@ class LossFunction:
         Performs the optimization. If method == 'eig', the optimizer finds the
         eigenvectors and eigenvalues of the matrix returned by loss_function.
         If method == 'torch', the loss_function is optimized using torch. The
-        loss_function should return a scalar and for calculations, torch
+        loss_function should return a scalar and during calculations torch
         methods should be used.
 
         Parameters

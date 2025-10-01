@@ -169,33 +169,38 @@ def calculate_dS_for_3_parameters(
     for dx, dz, dtheta in param_shifts:
         # Positions for S_plus
         scatterers_plus = shift_and_rotate_dipoles(
-            movable_dipoles,
-            dx,
-            dz,
-            dtheta,
-            frozen_dipoles_positions=frozen_dipoles,
+            movable_dipoles, dx, dz, dtheta
         )
         sim_plus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_plus.scatterers = scatterers_plus
+        sim_plus.angles_deg = angles_deg
+        sim_plus.movable_scatterers = scatterers_plus
+        sim_plus.frozen_scatterers = frozen_dipoles
         S_plus, _ = sim_plus.build_scattering_matrix(
-            angles_deg, flux_normalize=flux_normalize
+            flux_normalize=flux_normalize
         )
 
         # Positions for S_minus
         scatterers_minus = shift_and_rotate_dipoles(
-            movable_dipoles,
-            -dx,
-            -dz,
-            -dtheta,
-            frozen_dipoles_positions=frozen_dipoles,
+            movable_dipoles, -dx, -dz, -dtheta
         )
         sim_minus = CoupledDipoleSimulator(**current_sim_kwargs)
-        sim_minus.scatterers = scatterers_minus
+        sim_minus.angles_deg = angles_deg
+        sim_minus.movable_scatterers = scatterers_minus
+        sim_minus.frozen_scatterers = frozen_dipoles
+        # print(total_Ns, sim_minus.movable_scatterers.shape, sim)
         S_minus, _ = sim_minus.build_scattering_matrix(
-            angles_deg, flux_normalize=flux_normalize
+            flux_normalize=flux_normalize
         )
 
         S_deriv = (S_plus - S_minus) / (2 * delta_param)
         dS_list.append(S_deriv)
 
-    return np.array(dS_list)
+    # Convert to numpy array first
+    dS_tensor = np.array(dS_list)
+
+    # We need to find the output grid spacing delta_x to correctly scale the sum that approximates the Fisher operator integral.
+    temp_sim_for_dx = CoupledDipoleSimulator(**current_sim_kwargs)
+    delta_x = temp_sim_for_dx.x[1] - temp_sim_for_dx.x[0]
+
+    # Scale dS by sqrt(delta_x) so that dS^dagger * dS contains the correct delta_x factor.
+    return dS_tensor * np.sqrt(delta_x)

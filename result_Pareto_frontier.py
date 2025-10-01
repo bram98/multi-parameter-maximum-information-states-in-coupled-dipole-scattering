@@ -20,7 +20,9 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # %% 0) settings
 verbose_plotting = True
-max_angle = 80  # degrees, max angle for input modes
+NA_in = 0.98  # n (refractive index) assumed to be 1
+max_angle = np.rad2deg(np.arcsin(NA_in))  # degrees, max angle for input modes
+NA_out = NA_in
 number_of_input_channels = 100  # Input angle channels
 number_of_output_channels = 300  # Output channels (direct basis)
 param_names = ["shiftX", "shiftZ", "rotation"]
@@ -74,6 +76,7 @@ sim_kwargs = dict(
     Ns=total_Ns_sim,  # Ns in sim_kwargs should be the total number of dipoles
     seed=123,
     grid_points_x=number_of_output_channels,  # Number of points for field calculation (output basis for S-matrix)
+    NA_out=NA_out,
 )
 angles_deg = np.linspace(-max_angle, max_angle, number_of_input_channels)
 

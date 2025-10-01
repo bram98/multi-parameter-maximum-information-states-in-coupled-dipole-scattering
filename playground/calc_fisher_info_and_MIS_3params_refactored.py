@@ -25,6 +25,10 @@ total_Ns_sim = movable_dipoles_line.shape[1]
 if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
     total_Ns_sim += frozen_dipoles_line.shape[1]
 
+
+max_angle = 80  # degrees
+angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
+
 sim_kwargs = dict(
     lambda_0=1.0,
     Lz=8.0,
@@ -32,12 +36,10 @@ sim_kwargs = dict(
     Ns=total_Ns_sim,  # Ns in sim_kwargs should be the total number of dipoles
     seed=123,
     grid_points_x=300,  # Number of points for field calculation (output basis for S-matrix)
+    theta_inc_deg=angles_deg,
 )
-max_angle = 80  # degrees
-angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
-
-k0 = 2 * np.pi / sim_kwargs["lambda_0"]
-kx_array = k0 * np.sin(np.deg2rad(angles_deg))
+# k0 = 2 * np.pi / sim_kwargs["lambda_0"]
+# kx_array = k0 * np.sin(np.deg2rad(angles_deg))
 
 # %% 3) Build partial derivatives for each param => dS[mu]
 param_names = ["shiftX", "shiftZ", "rotation"]
@@ -76,7 +78,9 @@ else:
     _scatterers_vis = movable_dipoles_line
 
 base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
-base_sim_for_vis.scatterers = _scatterers_vis
+base_sim_for_vis.movable_scatterers = movable_dipoles_line
+base_sim_for_vis.frozen_scatterers = frozen_dipoles_line
+# base_sim_for_vis.scatterers = _scatterers_vis
 
 # Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
 optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -897,7 +901,7 @@ crlbanalysis.visualize_crlb_comparison(
     photon_budget=photon_budget,
     param_names=param_names,
     sim_kwargs=sim_kwargs,
-    kx_array=kx_array,
+    kx_array=base_sim_for_vis.k_x_array,
     figure_title="CRLB Comparison for different types of Maximum Information States",
     show_plane_waves=False,
     show_random_wavefronts=False,
