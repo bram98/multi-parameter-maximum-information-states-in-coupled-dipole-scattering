@@ -151,7 +151,7 @@ lf_names = [
     "tr_inv",
     "spec_rad",
 ]
-lf_names = ["x"]
+lf_names = ["x", "det"]
 for lf in loss_functions_dict.select_only(lf_names).values():
 
     sim.set_input_field_amplitudes(lf.wavefront)
@@ -175,7 +175,8 @@ for lf in loss_functions_dict.select_only(lf_names).values():
 
     # print(lf.name, lf_names[-1])
     sim.visualize_intensity(
-        title=f"Maximum Information State\nfor {name}",
+        # title=f"Maximum Information State\nfor {name}",
+        title=f"",
         ax=ax,
         # imshow_kwargs=dict(vmax=91),
         movable_kwargs=dict(
