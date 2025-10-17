@@ -29,33 +29,53 @@ data_folder = "../data/quasirandom_longrun"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(5.2, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(1, 0.0), number=6, small_dist=0.786, start_index=5
 )
 
 frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(3, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(-1, 0.0), number=6, small_dist=0.786, start_index=22
 )
 # movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
 # frozen_dipoles = None
 
 # %% 2) simulator geometry and input space
-total_Ns_sim = movable_dipoles.shape[1]
-if frozen_dipoles is not None and frozen_dipoles.size > 0:
-    total_Ns_sim += frozen_dipoles.shape[1]
 
-max_angle = 80  # degrees
-angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
+N_modes = 45
+lambda_0 = 1.0
+NA_out = 0.95
 
-sim_kwargs = dict(
-    lambda_0=1.0,
-    Lz=8.0,
-    Lx=8.0,
-    Ns=total_Ns_sim,  # Ns in sim_kwargs should be the total number of dipoles
-    seed=123,
-    grid_points_x=300,  # Number of points for field calculation (output basis for S-matrix)
-    theta_inc_deg=angles_deg,
+critical_sampling = CoupledDipoleSimulator.calc_critical_sampling_at_N_modes(
+    N_modes=N_modes,
+    NA_full=0.95,
+    NA_in=0.95,
+    lambda_0=lambda_0,
+)
+Lx = critical_sampling["Lx"]
+k_x_array = critical_sampling["k_x_array"]
+
+sim = CoupledDipoleSimulator(
+    lambda_0=lambda_0,
+    Lx=critical_sampling["Lx"],
+    Lz=critical_sampling["Lx"],
+    grid_points_x=critical_sampling["grid_points_x"],
+    NA_out=NA_out,
+    movable_scatterers=movable_dipoles,
+    frozen_scatterers=frozen_dipoles,
+    k_x_array=k_x_array,
+    Lz_vis=8,
+    Lx_vis=8,
+    grid_points_x_vis=300,
 )
 
+sim_for_vis = sim.copy()
+
+sim_for_vis.set_input_field_kx([0], [1])
+sim_for_vis.visualize_intensity(
+    title="Dipole Configuration",
+    movable_kwargs=dict(
+        s=100, marker="o", edgecolors="r", c="none", facecolors="none"
+    ),
+)
 
 # %% 3) Build partial derivatives for each param => dS[mu]
 param_names = ["shiftX", "shiftZ", "rotation"]
@@ -63,8 +83,8 @@ delta_param = 1e-3
 
 print("Calculating dS for 3 parameters...")
 dS_tensor = placedipoles.calculate_dS_for_3_parameters(
-    sim_kwargs,
-    angles_deg,
+    sim.get_kwargs(),
+    sim.theta_inc_deg,
     movable_dipoles=movable_dipoles,
     frozen_dipoles=frozen_dipoles,
     delta_param=delta_param,
@@ -80,27 +100,9 @@ F_tensor_operator = fisher_calc.F
 print(
     "Built F[mu,nu,:,:], shape =",
     F_tensor_operator.shape,
-    f" (should be 3,3,{len(angles_deg)},{len(angles_deg)})",
+    f" (should be 3,3,{len(sim.theta_inc)},{len(sim.theta_inc)})",
 )
 
-# placeholder for base_sim for visualization
-_sim_params_vis = sim_kwargs.copy()
-
-# # Correctly combine frozen and movable dipoles for visualization.
-# if frozen_dipoles is not None and frozen_dipoles.size > 0:
-#     _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
-# else:
-#     # If there are no frozen dipoles, just use the movable ones.
-#     _scatterers_vis = movable_dipoles_line
-
-base_sim_for_vis = CoupledDipoleSimulator(**_sim_params_vis)
-base_sim_for_vis.movable_scatterers = movable_dipoles
-base_sim_for_vis.frozen_scatterers = frozen_dipoles
-
-ampl_init = np.zeros_like(angles_deg)
-ampl_init[len(angles_deg) // 2] = 1
-base_sim_for_vis.set_input_field_amplitudes(ampl_init)
-base_sim_for_vis.visualize_intensity(title="Dipole Configuration")
 
 # Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
 optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -121,7 +123,7 @@ optimized_wavefronts = {}
 fisher_matrices_for_wavefronts = {}
 
 if save_state:
-    base_sim_for_vis.save(folder=data_folder)
+    sim.save(folder=data_folder)
     fisher_calc.save(folder=data_folder)
 
     print(f"Saved simulator and Fisher matrix to '{data_folder}'")

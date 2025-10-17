@@ -19,12 +19,12 @@ from scatteringlibs.matplotlibmagic import (
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
-sys.exit()
+# sys.exit()
 
 # %% Loading in data
-project_name = "quasirandom_longrun - Copy"
+# project_name = "quasirandom_longrun - Copy"
 # project_name = "quasirandom"
-# project_name = "square"
+project_name = "square"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
@@ -51,7 +51,7 @@ SUBPLOT_ANNOTATION_FONTSIZE = 24
 
 GRID_KWARGS = dict(which="both", linestyle=":")
 
-save_plots = True
+save_plots = False
 save_folder = Path("../figures")
 
 plt.rcdefaults()
@@ -97,7 +97,7 @@ sim.set_input_field_amplitudes(planewave)
 
 
 fig, ax = plt.subplots(dpi=DPI, figsize=(sim.Lz, sim.Lx))
-sim.visualize_intensity(title="", ax=ax, colorbar=False)
+sim.visualize_intensity(title="", ax=ax, use_colorbar=False)
 plt.axis("off")
 # fig.subplots_adjust(bottom=0, top=1, left=0, right=1)
 # plt.autoscale(tight=True)
@@ -137,29 +137,29 @@ plt.show()
 # %% -
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
-# lf_names = ["x", "phi", "z"]
-lf_names = ["det", "tr_inv", "spec_rad"]
-lf_names = [
-    "x",
-    "z",
-    "phi",
-    "x_inv",
-    "z_inv",
-    "phi_inv",
-    "tr_norm",
-    "det",
-    "tr_inv",
-    "spec_rad",
-]
-lf_names = ["x", "det"]
+lf_names = ["x", "phi", "z"]
+# lf_names = ["det", "tr_inv", "spec_rad"]
+# lf_names = [
+#     "x",
+#     "z",
+#     "phi",
+#     "x_inv",
+#     "z_inv",
+#     "phi_inv",
+#     "tr_norm",
+#     "det",
+#     "tr_inv",
+#     "spec_rad",
+# ]
+# lf_names = ["x", "det"]
 for lf in loss_functions_dict.select_only(lf_names).values():
 
     sim.set_input_field_amplitudes(lf.wavefront)
 
-    # fig, ax = plt.subplots(figsize=(5.0, 4.5), dpi=DPI)
-    fig, ax = plt.subplots(
-        figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
-    )
+    fig, ax = plt.subplots(figsize=(4.45, 4.0), dpi=DPI)
+    # fig, ax = plt.subplots(
+    #     figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
+    # )
 
     # name = lf.shortname.replace(" (scalar)", "")
     name = lf.displayname.replace("Singe parameter ", "")
@@ -173,10 +173,12 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         use_colorbar = False
         colorbar_label = dict(colorbar_label=None)
 
+    use_colorbar = True
+
     # print(lf.name, lf_names[-1])
     sim.visualize_intensity(
-        # title=f"Maximum Information State\nfor {name}",
-        title=f"",
+        title=f"Maximum Information State for {name}",
+        # title=f"",
         ax=ax,
         # imshow_kwargs=dict(vmax=91),
         movable_kwargs=dict(
@@ -190,7 +192,7 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         **colorbar_label,
     )
     # plt.clim(0, 10)
-    # plt.tight_layout(pad=0.0)
+    plt.tight_layout(h_pad=0.0, w_pad=0.0)
     # plt.figure(fig)
     if save_plots:
         optimized_path = (
@@ -199,7 +201,7 @@ for lf in loss_functions_dict.select_only(lf_names).values():
             / Path(f"optimized_{lf.name}.png")
         )
         optimized_path.parents[0].mkdir(exist_ok=True)
-        plt.savefig(optimized_path)
+        plt.savefig(optimized_path, pad_inches=0.0)
         print(f"Saved plot to {optimized_path}")
     plt.show()
 

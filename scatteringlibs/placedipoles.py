@@ -70,7 +70,7 @@ def place_quasi_random_line_of_dipoles(
 
     fib_chain = "LSLLSLSLLSLLSLSLLSLSLLSLLSLSLLSLLSLSLLSLSLLSLLSLSLLSLSL"
     fib_chain = fib_chain[start_index : start_index + number]
-    print(fib_chain)
+    # print(fib_chain)
     golden_ratio = (1 + np.sqrt(5)) / 2
 
     y = 0
@@ -164,7 +164,7 @@ def calculate_dS_for_3_parameters(
 
     # Create a temporary sim_kwargs for this function to avoid modifying the original
     current_sim_kwargs = sim_kwargs.copy()
-    current_sim_kwargs["Ns"] = total_Ns
+    # current_sim_kwargs["Ns"] = total_Ns
 
     for dx, dz, dtheta in param_shifts:
         # Positions for S_plus

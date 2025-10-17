@@ -15,6 +15,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.signal.windows import tukey
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
@@ -63,16 +64,19 @@ class CoupledDipoleSimulator(Storable):
     def __init__(
         self,
         lambda_0=1.0,
-        Lz=16.0,
+        Lz=8.0,
         Lx=8.0,
-        Ns=10,
+        Lz_vis=8.0,
+        Lx_vis=8.0,
+        grid_points_x=16,
+        grid_points_x_vis=200,
+        grid_points_z_vis=None,
         alpha=4j / (2 * np.pi / 1.0) ** 2,
-        exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
-        grid_points_x=400,
+        # exclusion_radius=0.637,  # Derived from sigma_s ≈ 0.637λ₀
         NA_out=0.95,
         theta_inc_deg=None,
         theta_inc=None,
-        seed=0,
+        # seed=0,
         k_x_array=None,
         E_kx_array=None,
         movable_scatterers=None,
@@ -81,12 +85,15 @@ class CoupledDipoleSimulator(Storable):
         """Initializes the CoupledDipoleSimulator with default or user-defined parameters."""
         self.lambda_0 = lambda_0
         self.k = 2 * np.pi / self.lambda_0
-        self.Lz = Lz * self.lambda_0
-        self.Lx = Lx * self.lambda_0
-        self.Ns = Ns
-        self.alpha = alpha
-        self.exclusion_radius = exclusion_radius * self.lambda_0
+        self.Lz = Lz  # Lz is saved in its native units: it has same units as wavelength
+        self.Lx = Lx
+
         self.grid_points_x = grid_points_x
+        self.x = np.linspace(
+            -self.Lx / 2, self.Lx / 2, self.grid_points_x, endpoint=False
+        )
+        self.alpha = alpha
+        # self.exclusion_radius = exclusion_radius * self.lambda_0
         self.NA_out = NA_out
 
         self.set_input_field_angles(
@@ -95,28 +102,46 @@ class CoupledDipoleSimulator(Storable):
             theta_inc_deg=theta_inc_deg,
         )
 
-        self.seed = seed
+        # self.seed = seed
 
-        # Derive grid points along z based on x sampling
-        # Note: for endpoint=True, you need to subtract one from grid_points
-        delta_x = self.Lx / (self.grid_points_x - 1)
-        self.grid_points_z = int(np.ceil(self.Lz / delta_x))
-
-        # Generate grid
-        self.z = np.linspace(0, self.Lz, self.grid_points_z, endpoint=True)
-        self.x = np.linspace(
-            -self.Lx / 2, self.Lx / 2, self.grid_points_x, endpoint=True
-        )
-        self.Z_grid, self.X_grid = np.meshgrid(self.z, self.x)
-
-        # Initialize scatterer positions
-        if movable_scatterers is None:
-            self.movable_scatterers = self._generate_scatterers()
+        self.Lz_vis = (
+            Lz_vis / self.lambda_0
+        )  # distances are displayed in units of wavelength
+        self.Lx_vis = Lx_vis / self.lambda_0
+        self.grid_points_x_vis = grid_points_x_vis
+        if grid_points_z_vis is None:
+            # Derive grid points along z based on x sampling
+            # Note: for endpoint=True, you need to subtract one from grid_points
+            delta_x = self.Lx_vis / (self.grid_points_x_vis - 1)
+            self.grid_points_z_vis = int(np.round(self.Lz_vis / delta_x + 1))
         else:
-            self.movable_scatterers = movable_scatterers
+            self.grid_points_z_vis = grid_points_z_vis
 
-        if frozen_scatterers is not None:
-            self.frozen_scatterers = frozen_scatterers
+        # Generate grid for visualization
+        self.z_vis = np.linspace(
+            -self.Lz_vis / 2,
+            self.Lz_vis / 2,
+            self.grid_points_z_vis,
+            endpoint=True,
+        )
+        self.x_vis = np.linspace(
+            -self.Lx_vis / 2,
+            self.Lx_vis / 2,
+            self.grid_points_x_vis,
+            endpoint=True,
+        )
+        self.Z_grid, self.X_grid = np.meshgrid(self.z_vis, self.x_vis)
+
+        self.movable_scatterers = movable_scatterers
+        self.frozen_scatterers = frozen_scatterers
+        # Initialize scatterer positions
+        # if movable_scatterers is None:
+        #     self.movable_scatterers = self._generate_scatterers()
+        # else:
+        #     self.movable_scatterers = movable_scatterers
+
+        # if frozen_scatterers is not None:
+        #     self.frozen_scatterers = frozen_scatterers
         #   Note: self.scatterers is defined via a getter
 
         # Initialize fields as None; compute when needed
@@ -249,11 +274,6 @@ class CoupledDipoleSimulator(Storable):
 
         E_kx_array = np.array(E_kx_array)
 
-        if self.k_x_array.shape != E_kx_array.shape:
-            raise ValueError(
-                "k_x_array and E_kx_array must have the same shape."
-            )
-
         if flux_normalize:
             amp = _flux_amplitude_2d(self.k, self.k_x_array)
         else:
@@ -359,27 +379,90 @@ class CoupledDipoleSimulator(Storable):
         self.E_total = E_total
         return self.E_total
 
-    def compute_zL_fields_direct(self):
+    def _NA_filter(
+        self, E, NA: float, x: np.ndarray = None, window_start: int = None
+    ):
         """
-        Directly computes the electric field at z = Lz plane.
+        Performs an NA filter equivalent to a 4F system with a limiting
+        numerical aperture given by NA. If window_start is provided, the region
+        outside [window_start:-window_start] is used as padding, which greatly
+        reduces ringing on the edges of the domain.
+
+        Args:
+            E (np.ndarray): input field
+            NA (float): numerical aperture
+            x (np.ndarray): x positions of input field. If None, the simulation
+                            x is used. Should have same dimension as E
+            window_start (int): the valid region is defined by the slice
+                                [window_start:-window_start].
+        """
+        if window_start is not None:
+            alpha = window_start / len(E)
+            E *= tukey(len(E), alpha=alpha)
+        # Apply NA filter in Fourier space
+        E_kx = np.fft.fft(E, norm="ortho")
+
+        if x is None:
+            x = self.x
+
+        assert len(x) == len(E)
+
+        # Define spatial frequency vector
+        dx = x[1] - x[0]
+        kx_vec = np.fft.fftfreq(len(x), d=dx) * 2 * np.pi
+
+        # Define cutoff frequency and mask
+        k_max = NA * self.k
+        mask = np.abs(kx_vec) <= k_max
+
+        # Apply mask and inverse transform
+        E_kx_filtered = E_kx * mask
+        E_output_filtered = np.fft.ifft(E_kx_filtered, norm="ortho")
+
+        if window_start is not None:
+            E_output_filtered = E_output_filtered[window_start:-window_start]
+        return E_output_filtered
+
+    def compute_output_fields_direct(self):
+        """
+        Directly computes the electric field at z = Lz/2 plane.
         If self.NA_out is specified, it applies a Fourier-space filter to model
         a finite numerical aperture objective.
         """
         if self.E_output is not None:
+            print(
+                "Warning: using precomputed values. Use sim.reset() to prevent this."
+            )
             return self.E_output
 
         # Ensure that induced fields are computed
         if self.fields is None:
             self.solve_fields()
 
-        # Define z = Lz
-        z_L = self.Lz
+        # Define z = Lz / 2
+        z_out = self.Lz / 2
 
         # Define x coordinates along z = Lz
-        x_points = self.x  # Shape: (grid_points_x,)
+        if self.NA_out is None:
+            x_points = self.x  # Shape: (grid_points_x,)
+        else:
+            """
+            Here we create an array that is twice as large as the domain. We
+            can use this extra padding to improve the Fourier filtering. We use
+            a Tukey window to reduce leakage. The lobes of the Tukey window
+            fall in this extra padding.
+            """
+            dx = self.x[1] - self.x[0]
+            n_half = len(self.x) // 2
+            x_points = np.linspace(
+                self.x[0] - dx * n_half,
+                self.x[-1] + dx * n_half,
+                len(self.x) + 2 * n_half,
+                endpoint=True,
+            )  # this awkward line prevents one-off errors.
 
         # Compute incident field at z = Lz for all x
-        E_incident = self.compute_incident_field(x_points, z_L)
+        E_incident = self.compute_incident_field(x_points, z_out)
         E_output_unfiltered = np.copy(E_incident)
 
         # Compute scattered fields from each scatterer
@@ -389,7 +472,7 @@ class CoupledDipoleSimulator(Storable):
 
             # Observation points at z = Lz, all x
             # Vectorized computation
-            delta_z = z_L - r_n[0]  # Scalar
+            delta_z = z_out - r_n[0]  # Scalar
             delta_x = x_points - r_n[1]  # Shape: (grid_points_x,)
             distances = np.sqrt(
                 delta_z**2 + delta_x**2
@@ -411,22 +494,12 @@ class CoupledDipoleSimulator(Storable):
             self.E_output = E_output_unfiltered
             return self.E_output
         else:
-            # Apply NA filter in Fourier space
-            E_kx = np.fft.fft(E_output_unfiltered, norm="ortho")
-
-            # Define spatial frequency vector
-            delta_x = self.x[1] - self.x[0]
-            kx_vec = np.fft.fftfreq(self.grid_points_x, d=delta_x) * 2 * np.pi
-
-            # Define cutoff frequency and mask
-            k_max = self.NA_out * self.k
-            mask = np.abs(kx_vec) <= k_max
-
-            # Apply mask and inverse transform
-            E_kx_filtered = E_kx * mask
-            E_output_filtered = np.fft.ifft(E_kx_filtered, norm="ortho")
-
-            self.E_output = E_output_filtered
+            self.E_output = self._NA_filter(
+                E_output_unfiltered,
+                NA=self.NA_out,
+                x=x_points,
+                window_start=n_half,
+            )
             return self.E_output
 
     def reset(self):
@@ -435,25 +508,69 @@ class CoupledDipoleSimulator(Storable):
         self.E_output = None
         self.E_total = None
 
-    def visualize_scatterers(self):
+    def visualize_scatterers(
+        self,
+        movable_kwargs=None,
+        frozen_kwargs=None,
+        ax=None,
+        figsize=None,
+        title=None,
+    ):
         """Visualizes the positions of scatterers within the slab."""
-        plt.figure(figsize=(12, 12 * self.Lx / self.Lz))
-        plt.scatter(
-            self.scatterers[0, :] / self.lambda_0,
-            self.scatterers[1, :] / self.lambda_0,
-            c="red",
-            s=100,
-            label="Scatterers",
-        )
-        plt.title("Scatterer Positions")
-        plt.xlabel(r"$z/\lambda$")
-        plt.ylabel(r"$x/\lambda$")
-        plt.legend()
-        plt.gca().set_aspect("equal")
-        plt.xlim(0, self.Lz / self.lambda_0)
-        plt.ylim(-self.Lx / self.lambda_0 / 2, self.Lx / self.lambda_0 / 2)
-        plt.tight_layout()
-        plt.show()
+        newfig = ax is None
+        if newfig:
+            if figsize is None:
+                figsize = (12, 12 * self.Lx_vis / self.Lz_vis)
+            fig, ax = plt.subplots(figsize=figsize)
+
+        if self.movable_scatterers is not None:
+            if movable_kwargs is None:
+                movable_kwargs = {}
+            movable_kwargs_default = dict(
+                c="red",
+                marker="o",
+                s=10,
+                label="Scatterers",
+            )
+            movable_kwargs_default.update(movable_kwargs)
+            ax.scatter(
+                self.movable_scatterers[0, :] / self.lambda_0,
+                self.movable_scatterers[1, :] / self.lambda_0,
+                **movable_kwargs_default,
+            )
+
+        if self.frozen_scatterers is not None:
+            if frozen_kwargs is None:
+                frozen_kwargs = {}
+            frozen_kwargs_default = dict(
+                c="r",
+                marker="s",
+                s=10,
+                label="Static scatterers",
+            )
+            frozen_kwargs_default.update(frozen_kwargs)
+            ax.scatter(
+                self.frozen_scatterers[0, :] / self.lambda_0,
+                self.frozen_scatterers[1, :] / self.lambda_0,
+                **frozen_kwargs_default,
+            )
+
+        if newfig:
+            ax.set_title(title)
+            ax.set_xlabel(r"$z/\lambda$")
+            ax.set_ylabel(r"$x/\lambda$")
+            plt.legend()
+            ax.set_aspect("equal")
+            ax.set_xlim(
+                -self.Lz_vis / self.lambda_0 / 2,
+                self.Lz_vis / self.lambda_0 / 2,
+            )
+            ax.set_ylim(
+                -self.Lx_vis / self.lambda_0 / 2,
+                self.Lx_vis / self.lambda_0 / 2,
+            )
+            plt.tight_layout()
+            plt.show()
 
     def _visualize(
         self,
@@ -491,36 +608,11 @@ class CoupledDipoleSimulator(Storable):
             cmap="viridis",
             **imshow_kwargs,
         )
-        if self.movable_scatterers is not None:
-            if movable_kwargs is None:
-                movable_kwargs = {}
-            movable_kwargs_default = dict(
-                c="red",
-                marker="o",
-                s=10,
-                label="Scatterers",
-            )
-            movable_kwargs_default.update(movable_kwargs)
-            ax.scatter(
-                self.movable_scatterers[0, :] / self.lambda_0,
-                self.movable_scatterers[1, :] / self.lambda_0,
-                **movable_kwargs_default,
-            )
-        if self.frozen_scatterers is not None:
-            if frozen_kwargs is None:
-                frozen_kwargs = {}
-            frozen_kwargs_default = dict(
-                c="r",
-                marker="s",
-                s=10,
-                label="Static scatterers",
-            )
-            frozen_kwargs_default.update(frozen_kwargs)
-            ax.scatter(
-                self.frozen_scatterers[0, :] / self.lambda_0,
-                self.frozen_scatterers[1, :] / self.lambda_0,
-                **frozen_kwargs_default,
-            )
+
+        self.visualize_scatterers(
+            movable_kwargs=movable_kwargs, frozen_kwargs=frozen_kwargs, ax=ax
+        )
+
         ax.set_title(title)
 
         if legend_kwargs is None:
@@ -530,7 +622,6 @@ class CoupledDipoleSimulator(Storable):
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")
         if use_colorbar:
-            # im = ax.imshow(np.arange(100).reshape((10,10)))
 
             # create an axes on the right side of ax. The width of cax will be 5%
             # of ax and the padding between cax and ax will be fixed at 0.05 inch.
@@ -610,10 +701,10 @@ class CoupledDipoleSimulator(Storable):
     ):
         """Visualizes the real value of the field over the entire slab."""
 
-        if self.k_x_array is not None and self.E_kx_array is not None:
-            title = "Custom Input State: Real Part of Electric Field"
-        else:
-            title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
+        # if self.k_x_array is not None and self.E_kx_array is not None:
+        #     title = "Custom Input State: Real Part of Electric Field"
+        # else:
+        #     title = f"Real Value of Electric Field Over Slab (θ = {self.theta_inc_deg:.1f}°)"
 
         return self._visualize(
             display_function=np.real,
@@ -636,12 +727,12 @@ class CoupledDipoleSimulator(Storable):
 
         if (self.E_output is not None) and (self.E_total is not None):
             if direct_computation:
-                E_output = self.compute_zL_fields_direct()
+                E_output = self.compute_output_fields_direct()
             else:
                 # Extract fields at z = Lz
-                E_output = self.get_zL_fields()
+                E_output = self.get_output_fields()
         else:
-            E_output = self.get_zL_fields()
+            E_output = self.get_output_fields()
 
         if not plot_intensity_only:
             # Plot both intensity and phase
@@ -692,11 +783,11 @@ class CoupledDipoleSimulator(Storable):
             plt.tight_layout()
             plt.show()
 
-    def get_zL_fields(self):
-        """Returns the electric field at z = Lz plane.
+    def get_output_fields(self):
+        """Returns the electric field at z = Lz/2 plane.
 
         Returns:
-            numpy.ndarray: Electric field at z = Lz (shape: (grid_points_x,)).
+            numpy.ndarray: Electric field at z = Lz/2 (shape: (grid_points_x,)).
         """
         if self.E_output is not None:
             return self.E_output
@@ -727,17 +818,23 @@ class CoupledDipoleSimulator(Storable):
         self.k_x_array = self.theta2k_x(theta, degree=False)
 
     def get_kwargs(self):
+
         keys = [
             "lambda_0",
             "Lz",
             "Lx",
-            "Ns",
-            "alpha",
-            "exclusion_radius",
+            "Lz_vis",
+            "Lx_vis",
             "grid_points_x",
+            "grid_points_x_vis",
+            "grid_points_z_vis",
+            # "Ns",
+            "alpha",
+            "NA_out",
+            # "exclusion_radius",
             # "theta_inc_deg",
             # "theta_inc",
-            "seed",
+            # "seed",
             "k_x_array",
             "E_kx_array",
             "movable_scatterers",
@@ -749,6 +846,9 @@ class CoupledDipoleSimulator(Storable):
             if self.__getattribute__(key) is not None
         }
         return kwargs
+
+    def copy(self):
+        return CoupledDipoleSimulator(**self.get_kwargs())
 
     def animate_time_evolution(
         self,
@@ -824,6 +924,56 @@ class CoupledDipoleSimulator(Storable):
 
         plt.show()
 
+    @staticmethod
+    def calc_critical_sampling_at_N_modes(
+        N_modes=45, NA_full=0.95, NA_in=None, lambda_0=1.0
+    ):
+        k0 = 2 * np.pi / lambda_0
+        n = np.ceil(N_modes / 2)
+        dk = k0 * NA_full / n
+
+        dx = 2 * np.pi / (N_modes * dk)
+
+        k_x_array = np.fft.fftfreq(N_modes, d=dx)
+
+        k_x_array = np.fft.fftshift(k_x_array)
+
+        if NA_in is not None:
+            k_x_array = k_x_array[np.where(np.abs(k_x_array) <= NA_in)]
+
+        k_x_array *= 2 * np.pi
+
+        Lx = dx * N_modes
+
+        return dict(k_x_array=k_x_array, Lx=Lx, grid_points_x=N_modes)
+
+    @staticmethod
+    def calc_critical_sampling_at_Lx(self, NA_in=None, Lx=None, k=None):
+        """
+        Creates a kx array that is critically sampled, which means that the
+        the input states form an orthogonal basis if we assume that the
+        simulation box is a waveguide with periodic boundary conditions.
+        More precisely, it creates the array
+        [ -(n-1)*dkx, ..., -dkx, 0, dkx, ..., (n-1)*dkx ], where dkx allows for
+        periodic boundary conditions in the box and (n-1)*dkx is smaller than
+        or equal to k.
+        """
+        if NA_in is None:
+            NA_in = self.NA_in
+            if NA_in is None:
+                NA_in = 1.0
+        if Lx is None:
+            Lx = self.Lx
+        if k is None:
+            k = self.k
+
+        dkx = 2 * np.pi / Lx
+        n = np.floor(k * NA_in / dkx) + 1
+        n = int(n)
+        max_kx = (n - 1) * dkx
+        # print(dkx, n)
+        return np.linspace(-max_kx, max_kx, num=2 * n - 1)
+
     def build_scattering_matrix(self, flux_normalize=True):
         """
         Build a scattering matrix S of shape (N_out, N_in) where:
@@ -834,28 +984,60 @@ class CoupledDipoleSimulator(Storable):
         Returns:
             tuple (S, x_cam):
                 S: shape (N_out, N_in)
-                x_cam: array of x-values at z=Lz
+                x_cam: array of x-values at z=Lz/2
         """
         N_in = len(self.k_x_array)
         N_out = self.grid_points_x
         S = np.zeros((N_out, N_in), dtype=complex)
+        k_in = self.k_x_array.copy()
 
         # We'll do a loop over angles
         for n, kx in enumerate(self.k_x_array):
             # set input
             self.set_input_field_kx([kx], [1.0], flux_normalize=flux_normalize)
             self.solve_fields()
-            E_zL = self.compute_zL_fields_direct()
-            S[:, n] = E_zL
-        return S, self.x
+            E_output = self.compute_output_fields_direct()
+            S[:, n] = E_output
+        S = np.fft.fft(S, axis=0, norm="forward")
+        S = np.fft.fftshift(S, axes=0)
+
+        dx = self.x[1] - self.x[0]
+        k_out = np.fft.fftfreq(N_out, d=dx) * 2 * np.pi
+        k_out = np.fft.fftshift(k_out)
+
+        self.k_x_array = k_in  # restore k_x_array
+
+        return S, (k_in, k_out)
+
+    @property
+    def Ns(self):
+        """
+        Getter that returns the number of scatterers.
+        """
+        _Ns = 0
+        if self.movable_scatterers is not None:
+            _Ns += self.movable_scatterers.shape[1]
+
+        if self.frozen_scatterers is not None:
+            _Ns += self.frozen_scatterers.shape[1]
+
+        return _Ns
 
     @property
     def scatterers(self):
-        scat = self.movable_scatterers
-        if not scat is None and not self.frozen_scatterers is None:
-            scat = np.append(
-                self.movable_scatterers, self.frozen_scatterers, axis=1
-            )
+        """
+        Getter that returns movable and frozen scatterers as a single (2, N)
+        array. If both are None, returns None.
+        """
+        if self.movable_scatterers is None and self.frozen_scatterers is None:
+            return None
+
+        scat = np.array([[], []])
+        if self.movable_scatterers is not None:
+            scat = np.append(scat, self.movable_scatterers, axis=1)
+        if self.frozen_scatterers is not None:
+            scat = np.append(scat, self.frozen_scatterers, axis=1)
+
         return scat
 
 
@@ -878,7 +1060,7 @@ if __name__ == "__main__":
     simulator.visualize_output_field(direct_computation=True)
 
     # Optionally, retrieve and print the electric field at z = Lz
-    E_zL = simulator.compute_zL_fields_direct()
+    E_zL = simulator.compute_output_fields_direct()
 
     # %% ------------------------ Arbitrary Input Field Demo
 
@@ -907,7 +1089,7 @@ if __name__ == "__main__":
     simulator_arbitrary.visualize_output_field(direct_computation=True)
 
     # Optionally, retrieve and print the electric field at z = Lz
-    E_zL_arbitrary = simulator_arbitrary.compute_zL_fields_direct()
+    E_zL_arbitrary = simulator_arbitrary.compute_output_fields_direct()
 
     # ------------------------ Arbitrary Input Field Without Scatterers Demo
     # Initialize a new simulator instance for arbitrary input field with no scatterers
@@ -928,7 +1110,7 @@ if __name__ == "__main__":
 
     # Optionally, retrieve and print the electric field at z = Lz
     E_zL_arbitrary_no_scatterers = (
-        simulator_arbitrary_no_scatterers.compute_zL_fields_direct()
+        simulator_arbitrary_no_scatterers.compute_output_fields_direct()
     )
     print(
         f"Electric field at z = Lz with arbitrary input and no scatterers (first 10 points): {E_zL_arbitrary_no_scatterers[:10]}"
