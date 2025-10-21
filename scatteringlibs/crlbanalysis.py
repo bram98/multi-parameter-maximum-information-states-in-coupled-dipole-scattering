@@ -235,29 +235,26 @@ def get_crlb_data(
     return all_crlbs
 
 
-def visualize_crlb_comparison(
+def visualize_crlb_barplot(
     loss_function_names: list,
     param_legends: list,
-    optimized_crlbs_joint: np.ndarray = None,
-    optimized_crlbs_scalar: np.ndarray = None,
-    plane_wave_crlbs_joint: np.ndarray = None,
-    random_wavefronts_crlbs_joint: np.ndarray = None,
+    optimized_crlbs_joint: np.ndarray,
+    optimized_crlbs_scalar: np.ndarray,
     title: str = "CRLB Comparison",
-    show_optimized: bool = True,
-    show_plane_waves: bool = True,
-    show_random_wavefronts: bool = True,
-    num_random_samples: int = 100,
     ax: matplotlib.axes._axes.Axes = None,
     bar_width: float = 0.2,
     y_label: str = "Standard Deviation (CRLB)",
     ylim=None,
     joint_opacity: float = 0.7,
     hatches: tuple = ("/", "\\", "x"),
-    fontsize: int = 10,
-    title_fontsize: int = 12,
-    ylabel_fontsize: int = 14,
+    fontsize: int | None = None,
+    title_fontsize: int | None = None,
+    axes_label_fontsize: int | None = None,
+    legend_fontsize: int | None = None,
+    tick_fontsize: int | None = None,
     hatch_color=(0.2,) * 3,
-    ref_lines: list = None,
+    rotate_labels: bool = False,
+    use_legend: bool = True,
 ):
     """
     Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
@@ -283,20 +280,13 @@ def visualize_crlb_comparison(
 
     # --- Plotting ---
     num_optimized_wavefronts = len(loss_function_names)
-    num_boxplot_groups = 0
-    if show_plane_waves:
-        num_boxplot_groups += 1
-    if show_random_wavefronts:
-        num_boxplot_groups += 1
 
     new_fig = ax is None
     if new_fig:
         # Adjust figure width based on number of boxplot groups
-        fig_width = (
-            7 + 2.5 * num_boxplot_groups + 0.5 * num_optimized_wavefronts
-        )
+
         fig, ax = plt.subplots(
-            figsize=(max(10, fig_width), 7)
+            figsize=(0.5 * num_optimized_wavefronts, 7)
         )  # Ensure a minimum width
 
     cur_x_position = 0
@@ -311,7 +301,7 @@ def visualize_crlb_comparison(
 
     # plt.rcParams["hatch.color"] = hatch_color
 
-    if show_optimized and optimized_crlbs_joint is not None:
+    if optimized_crlbs_joint is not None:
 
         x_positions_optimized = cur_x_position + np.arange(
             num_optimized_wavefronts
@@ -342,7 +332,7 @@ def visualize_crlb_comparison(
                 # rect.set_alpha(joint_alpha)
                 # rect._alpha = joint_alpha
 
-    if show_optimized and optimized_crlbs_scalar is not None:
+    if optimized_crlbs_scalar is not None:
         # for i, optimized_crlb_scalar in enumerate(optimized_crlbs_scalar):
         for p in range(num_params):
             offset = (p - (num_params - 1) / 2) * bar_width
@@ -359,6 +349,111 @@ def visualize_crlb_comparison(
             )
             for rect in scalar_bar:
                 rect._hatch_color = hatch_color
+
+        # # optimized_max = np.max(optimized_crlbs_joint, axis=0)
+        # optimized_det = optimized_crlbs_joint[
+        #     loss_function_names.index("D-optimality")
+        # ]
+        # plot_reference_lines(
+        #     optimized_det, box_positions_random, "D-optimality"
+        # )
+
+    # Final plot adjustments
+    ax.set_xticks(xtick_positions)
+    if rotate_labels:
+        ax.set_xticklabels(
+            xtick_labels, rotation=25, ha="right", fontsize=tick_fontsize
+        )
+    else:
+        ax.set_xticklabels(xtick_labels, fontsize=tick_fontsize)
+
+    ax.set_title(title, fontsize=title_fontsize)
+    ax.set_ylabel(y_label, fontsize=axes_label_fontsize)
+    ax.grid(True, linestyle=":", alpha=1.0, zorder=-1)
+    ax.set_ylim(ylim)
+
+    if use_legend:
+        # Prevent label duplicates
+        handles, labels = ax.get_legend_handles_labels()
+        labels_unique = dict(zip(labels, handles))
+        ncols_legend = 2
+        ax.legend(
+            labels_unique.values(),
+            labels_unique.keys(),
+            title="Parameters",
+            fontsize=fontsize,
+            ncols=ncols_legend,
+            handler_map={
+                matplotlib.container.BarContainer: DoubleHatchHandler(),
+                matplotlib.patches.Patch: DoubleHatchHandler(),
+            },  # increase density of hatches
+        )
+    if new_fig:
+        plt.tight_layout()
+        plt.show()
+
+
+def visualize_crlb_boxplot(
+    loss_function_names: list,
+    param_legends: list,
+    plane_wave_crlbs_joint: np.ndarray = None,
+    random_wavefronts_crlbs_joint: np.ndarray = None,
+    title: str = "CRLB Comparison",
+    num_random_samples: int = 100,
+    ax: matplotlib.axes._axes.Axes = None,
+    bar_width: float = 0.22,
+    y_label: str = None,
+    ylim=None,
+    joint_opacity: float = 0.7,
+    hatches: tuple = ("/", "\\", "x"),
+    fontsize: int | None = None,
+    title_fontsize: int | None = None,
+    axes_label_fontsize: int | None = None,
+    legend_fontsize: int | None = None,
+    tick_fontsize: int | None = None,
+    hatch_color=(0.2,) * 3,
+    ref_lines: list = None,
+    rotate_labels: bool = False,
+    use_legend: bool = False,
+):
+    """
+    Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
+    Adapted from original script's block 9.
+
+    Args:
+        optimized_wavefronts (dict): Wavefronts to plot (name:coeffs). Coeffs are numpy arrays.
+        F_operator_tensor (np.ndarray): Fisher operator tensor (numpy format).
+        photon_budget (float): Photon budget for normalization.
+        param_names (list): Names of the parameters being estimated.
+        sim_kwargs (dict, optional): Simulation keyword arguments, for plane waves.
+        angles_deg (np.ndarray, optional): Array of angles in degrees, for plane waves.
+        kx_array (np.ndarray, optional): Array of kx values, for plane waves & N_in.
+        figure_title (str, optional): Title for the plot.
+        show_plane_waves (bool, optional): Whether to compute and show plane wave CRLBs.
+        show_random_wavefronts (bool, optional): Whether to compute and show random wavefront CRLBs.
+        num_random_samples (int, optional): Number of random wavefronts to sample.
+    """
+
+    num_params = len(param_legends)
+    param_legends_joint = ["joint " + legend for legend in param_legends]
+    param_legends_scalar = ["scalar " + legend for legend in param_legends]
+
+    new_fig = ax is None
+    if new_fig:
+        # Adjust figure width based on number of boxplot groups
+        fig, ax = plt.subplots(figsize=(4, 7))  # Ensure a minimum width
+
+    cur_x_position = 0
+    xtick_positions = np.array([], dtype=float)
+    xtick_labels = []
+
+    # Colors for parameters (e.g., CRLB_x, CRLB_z, CRLB_theta)
+    # Ensure enough colors if num_params > 3
+    prop_cycle = plt.rcParams["axes.prop_cycle"]
+    colors = prop_cycle.by_key()["color"]
+    param_colors = [colors[i % len(colors)] for i in range(num_params)]
+
+    # plt.rcParams["hatch.color"] = hatch_color
 
     def plot_reference_lines(
         ref_values, positions, label, bar_width=bar_width
@@ -378,7 +473,7 @@ def visualize_crlb_comparison(
             )
 
     # Boxplots for plane waves
-    if show_plane_waves and plane_wave_crlbs_joint is not None:
+    if plane_wave_crlbs_joint is not None:
         # current_xtick_pos += 1.0  # Spacing before boxplot group
         box_positions_plane = [
             cur_x_position + (i - (num_params - 1) / 2) * bar_width * 1.2
@@ -407,19 +502,19 @@ def visualize_crlb_comparison(
             patch.set_alpha(joint_opacity)
             patch.set_hatch(hatch)
 
-        xtick_labels.append("Plane Waves")
+        xtick_labels.append("Plane\nWaves")
 
         # Show largest CRLB of optimized wavefronts as dashed line:
 
-        optimized_det = optimized_crlbs_joint[
-            loss_function_names.index("D-optimality")
-        ]
-        plot_reference_lines(
-            optimized_det, box_positions_plane, "D-optimality"
-        )
+        # optimized_det = optimized_crlbs_joint[
+        #     loss_function_names.index("D-optimality")
+        # ]
+        # plot_reference_lines(
+        #     optimized_det, box_positions_plane, "D-optimality"
+        # )
 
     # Boxplots for plane waves
-    if show_random_wavefronts and random_wavefronts_crlbs_joint is not None:
+    if random_wavefronts_crlbs_joint is not None:
         # current_xtick_pos += 1.0  # Spacing before boxplot group
         box_positions_random = [
             cur_x_position + (i - (num_params - 1) / 2) * bar_width * 1.2
@@ -449,44 +544,44 @@ def visualize_crlb_comparison(
 
         xtick_labels.append(f"Random WFs\n({num_random_samples} samples)")
 
-        # optimized_max = np.max(optimized_crlbs_joint, axis=0)
-        optimized_det = optimized_crlbs_joint[
-            loss_function_names.index("D-optimality")
-        ]
-        plot_reference_lines(
-            optimized_det, box_positions_random, "D-optimality"
-        )
+        # # optimized_max = np.max(optimized_crlbs_joint, axis=0)
+        # optimized_det = optimized_crlbs_joint[
+        #     loss_function_names.index("D-optimality")
+        # ]
+        # plot_reference_lines(
+        #     optimized_det, box_positions_random, "D-optimality"
+        # )
 
     # Final plot adjustments
     ax.set_xticks(xtick_positions)
-    # Rotate labels only if there are many or they are long
-    if len(xtick_labels) > 5 or any(len(label) > 10 for label in xtick_labels):
+    if rotate_labels:
         ax.set_xticklabels(
-            xtick_labels, rotation=25, ha="right", fontsize=fontsize
+            xtick_labels, rotation=25, ha="right", fontsize=tick_fontsize
         )
     else:
-        ax.set_xticklabels(xtick_labels, fontsize=fontsize)
+        ax.set_xticklabels(xtick_labels, fontsize=tick_fontsize)
 
     ax.set_title(title, fontsize=title_fontsize)
-    ax.set_ylabel(y_label, fontsize=ylabel_fontsize)
+    ax.set_ylabel(y_label, fontsize=axes_label_fontsize)
     ax.grid(True, linestyle=":", alpha=1.0, zorder=-1)
     ax.set_ylim(ylim)
 
-    # Prevent label duplicates
-    handles, labels = ax.get_legend_handles_labels()
-    labels_unique = dict(zip(labels, handles))
-    ncols_legend = 2 if show_optimized else 1
-    ax.legend(
-        labels_unique.values(),
-        labels_unique.keys(),
-        title="Parameters",
-        fontsize=fontsize,
-        ncols=ncols_legend,
-        handler_map={
-            matplotlib.container.BarContainer: DoubleHatchHandler(),
-            matplotlib.patches.Patch: DoubleHatchHandler(),
-        },  # increase density of hatches
-    )
+    if use_legend:
+        # Prevent label duplicates
+        handles, labels = ax.get_legend_handles_labels()
+        labels_unique = dict(zip(labels, handles))
+        ncols_legend = 1
+        ax.legend(
+            labels_unique.values(),
+            labels_unique.keys(),
+            title="Parameters",
+            fontsize=legend_fontsize,
+            ncols=ncols_legend,
+            handler_map={
+                matplotlib.container.BarContainer: DoubleHatchHandler(),
+                matplotlib.patches.Patch: DoubleHatchHandler(),
+            },  # increase density of hatches
+        )
     if new_fig:
         plt.tight_layout()
         plt.show()

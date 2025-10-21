@@ -1,6 +1,7 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from cmap import Colormap
 from matplotlib.collections import PathCollection
 from matplotlib.patches import ConnectionPatch, Rectangle
 from matplotlib.path import get_path_collection_extents
@@ -193,3 +194,23 @@ def combine_path_collections(
     combined_pc.set_offsets(np.array(all_offsets))
 
     return combined_pc
+
+
+def register_turbo(force=False, verbose=False):
+
+    turbo = Colormap("google:turbo").to_mpl()
+
+    try:
+        matplotlib.colormaps.register(cmap=turbo, name="turbo", force=force)
+    except ValueError as e:
+        if verbose:
+            print("Warning: ", e.args[0])
+
+    try:
+        matplotlib.colormaps.register(
+            cmap=turbo.reversed(), name="turbo_r", force=force
+        )
+        print("lol")
+    except ValueError as e:
+        if verbose:
+            print("Warning: ", e.args[0])

@@ -19,7 +19,10 @@ from scipy.signal.windows import tukey
 from scipy.spatial.distance import cdist
 from scipy.special import hankel1
 
+from scatteringlibs.matplotlibmagic import register_turbo
 from scatteringlibs.storable import Storable
+
+register_turbo()
 
 
 def _flux_amplitude_2d(k0, kx):
@@ -527,13 +530,14 @@ class CoupledDipoleSimulator(Storable):
             if movable_kwargs is None:
                 movable_kwargs = {}
             movable_kwargs_default = dict(
-                c="red",
+                facecolors="none",
+                edgecolors="r",
+                s=80,
                 marker="o",
-                s=10,
                 label="Scatterers",
             )
             movable_kwargs_default.update(movable_kwargs)
-            ax.scatter(
+            movable_plot = ax.scatter(
                 self.movable_scatterers[0, :] / self.lambda_0,
                 self.movable_scatterers[1, :] / self.lambda_0,
                 **movable_kwargs_default,
@@ -543,13 +547,14 @@ class CoupledDipoleSimulator(Storable):
             if frozen_kwargs is None:
                 frozen_kwargs = {}
             frozen_kwargs_default = dict(
-                c="r",
+                facecolors="none",
+                edgecolors="r",
+                s=80,
                 marker="s",
-                s=10,
                 label="Static scatterers",
             )
             frozen_kwargs_default.update(frozen_kwargs)
-            ax.scatter(
+            frozen_plot = ax.scatter(
                 self.frozen_scatterers[0, :] / self.lambda_0,
                 self.frozen_scatterers[1, :] / self.lambda_0,
                 **frozen_kwargs_default,
@@ -571,6 +576,7 @@ class CoupledDipoleSimulator(Storable):
             )
             plt.tight_layout()
             plt.show()
+        return dict(movable_plot=movable_plot, frozen_plot=frozen_plot)
 
     def _visualize(
         self,
@@ -580,6 +586,7 @@ class CoupledDipoleSimulator(Storable):
         figsize=(10, 8),
         ax=None,
         use_colorbar=True,
+        use_legend=True,
         imshow_kwargs=None,
         movable_kwargs=None,
         frozen_kwargs=None,
@@ -600,24 +607,30 @@ class CoupledDipoleSimulator(Storable):
 
         if imshow_kwargs is None:
             imshow_kwargs = {}
+
+        imshow_kwargs_default = dict(
+            shading="auto",
+            cmap="turbo",
+        )
+        imshow_kwargs_default.update(imshow_kwargs)
+
         field_img = ax.pcolormesh(
             self.Z_grid / self.lambda_0,
             self.X_grid / self.lambda_0,
             display_function(self.E_total),
-            shading="auto",
-            cmap="viridis",
             **imshow_kwargs,
         )
 
-        self.visualize_scatterers(
+        scatter_plots = self.visualize_scatterers(
             movable_kwargs=movable_kwargs, frozen_kwargs=frozen_kwargs, ax=ax
         )
 
         ax.set_title(title)
 
-        if legend_kwargs is None:
-            legend_kwargs = {}
-        ax.legend(**legend_kwargs)
+        if use_legend:
+            if legend_kwargs is None:
+                legend_kwargs = {}
+            ax.legend(**legend_kwargs)
         ax.set_xlabel(r"$z/\lambda$")
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")
@@ -627,12 +640,17 @@ class CoupledDipoleSimulator(Storable):
             # of ax and the padding between cax and ax will be fixed at 0.05 inch.
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.1)
-            # plt.colorbar(im, cax=cax)
             plt.colorbar(field_img, cax=cax, label=colorbar_label)
+            # plt.colorbar(field_img, ax=ax)
         if newfig:
             plt.tight_layout()
             plt.show()
-            return fig, ax
+        return dict(
+            ax=ax,
+            field_img=field_img,
+            movable_plot=scatter_plots["movable_plot"],
+            frozen_plot=scatter_plots["frozen_plot"],
+        )
 
     def visualize_intensity(
         self,
@@ -640,6 +658,7 @@ class CoupledDipoleSimulator(Storable):
         dpi=100.0,
         ax=None,
         use_colorbar=True,
+        use_legend=True,
         figsize=(10, 8),
         imshow_kwargs=None,
         movable_kwargs=None,
@@ -660,6 +679,7 @@ class CoupledDipoleSimulator(Storable):
             dpi=dpi,
             ax=ax,
             use_colorbar=use_colorbar,
+            use_legend=use_legend,
             figsize=figsize,
             imshow_kwargs=imshow_kwargs,
             movable_kwargs=movable_kwargs,

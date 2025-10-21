@@ -7,6 +7,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib.axes._axes import Axes
 from pareto_plot_nuisance import ParetoGroup, pareto_plot, pareto_plot_sweep
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
@@ -15,39 +16,42 @@ from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
 from scatteringlibs.matplotlibmagic import (
     PlotGroup,
     make_leftax_look_like_inset,
+    register_turbo,
 )
+
+register_turbo()
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
-# sys.exit()
+sys.exit()
 
 # %% Loading in data
-# project_name = "quasirandom_longrun - Copy"
+project_name = "quasirandom_longrun"
 # project_name = "quasirandom"
-project_name = "square"
+# project_name = "square"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 fisher_calc = FisherMatrix.load(folder=data_folder)
 loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
-# loss_functions_sweep_dict = LossFunctionsDict.load(
-#     name="LossFunctionsSweepDict", folder=data_folder
-# )
+loss_functions_sweep_dict = LossFunctionsDict.load(
+    name="LossFunctionsSweepDict", folder=data_folder
+)
 
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
     print(f"\t- {lf_name}")
 
-# %%
-for loss_function in loss_functions_dict.values():
-    loss_function._J *= 4
+
 # %% Plotting parameters
 DPI = 300
 TEXTWIDTH = 5.90666  # inches
 FONTSIZE = 10
-TITLE_FONTSIZE = 14
-YLABEL_FONTSIZE = 12
-SUBPLOT_ANNOTATION_FONTSIZE = 24
+TITLE_FONTSIZE = 10
+AXES_LABEL_FONTSIZE = 8
+LEGEND_FONTSIZE = 8
+TICK_FONTSIZE = 6
+SUBPLOT_ANNOTATION_FONTSIZE = 14
 
 GRID_KWARGS = dict(which="both", linestyle=":")
 
@@ -57,33 +61,54 @@ save_folder = Path("../figures")
 plt.rcdefaults()
 plt.rcParams.update(
     {
-        "font.size": 10,  # Main text
-        "axes.labelsize": 10,  # Axis labels
-        "legend.fontsize": 9,  # Legend
-        "xtick.labelsize": 8,  # X-tick labels
-        "ytick.labelsize": 8,  # Y-tick labels
-        "axes.titlesize": 10,  # Title
+        "font.size": FONTSIZE,  # Main text
+        "axes.labelsize": AXES_LABEL_FONTSIZE,  # Axis labels
+        "legend.fontsize": LEGEND_FONTSIZE,  # Legend
+        "xtick.labelsize": TICK_FONTSIZE,  # X-tick labels
+        "ytick.labelsize": TICK_FONTSIZE,  # Y-tick labels
+        "axes.titlesize": TITLE_FONTSIZE,  # Title
     }
 )
 
 
-def annotate_subplots_abc(axes, format_str="{})"):
+def annotate_subplots_abc(
+    axes: list[Axes],
+    format_str: str = "{})",
+    background: str = "white",
+    **annotate_kwargs,
+):
     """
     Generates a), b), etc. in the corner of a subplot.
 
+    Args:
+        axes: list of matplotlib Axes that should be annotated
+        format_str: string builder that is used to annotate. Every {} will be
+            replaced by a, b, etc
+        background: either 'white' or 'dark'.
+        **annotate_kwargs: keyword args that are passed to plt.annotate.
     """
+
+    default_annotate_args = dict(
+        xy=(0, 1),
+        xycoords="axes fraction",
+        textcoords="offset fontsize",
+        xytext=(+0.5, -0.5),
+        verticalalignment="top",
+        fontsize=SUBPLOT_ANNOTATION_FONTSIZE,
+        bbox=dict(pad=3.0, edgecolor="none"),
+    )
+
+    if background == "white":
+        default_annotate_args["bbox"].update(dict(facecolor="w"))
+    elif background == "dark":
+        default_annotate_args["bbox"].update(dict(facecolor="#00000080"))
+        default_annotate_args.update(c="w")
+
+    default_annotate_args.update(annotate_kwargs)
+
     for i in range(len(axes)):
         label = string.ascii_lowercase[i]
-        axes[i].annotate(
-            format_str.format(label),
-            xy=(0, 1),
-            xycoords="axes fraction",
-            textcoords="offset fontsize",
-            xytext=(+0.5, -0.5),
-            verticalalignment="top",
-            fontsize=SUBPLOT_ANNOTATION_FONTSIZE,
-            bbox=dict(facecolor="w", edgecolor="none", pad=3.0),
-        )
+        axes[i].annotate(format_str.format(label), **default_annotate_args)
 
 
 # %% Incident plane wave
@@ -137,7 +162,7 @@ plt.show()
 # %% -
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
-lf_names = ["x", "phi", "z"]
+lf_names = ["x", "z", "phi", "x_inv", "z_inv", "phi_inv", "det"]
 # lf_names = ["det", "tr_inv", "spec_rad"]
 # lf_names = [
 #     "x",
@@ -180,14 +205,14 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         title=f"Maximum Information State for {name}",
         # title=f"",
         ax=ax,
-        # imshow_kwargs=dict(vmax=91),
+        imshow_kwargs=dict(cmap="turbo"),
         movable_kwargs=dict(
             marker="o", facecolors="none", edgecolors="r", s=80, c=None
         ),
         frozen_kwargs=dict(
             marker="s", facecolors="none", edgecolors="r", s=80, c=None
         ),
-        legend_kwargs=dict(fontsize=9),
+        # legend_kwargs=dict(fontsize=9),
         use_colorbar=use_colorbar,
         **colorbar_label,
     )
@@ -275,6 +300,83 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         plt.savefig(optimized_path)
         print(f"Saved plot to {optimized_path}")
     plt.show()
+
+# %% Double optimized plot
+
+from mpl_toolkits.axes_grid1 import ImageGrid
+
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+
+lf1 = loss_functions_dict["z"]
+lf2 = loss_functions_dict["det"]
+
+sim2 = sim.copy()
+
+fig = plt.figure(figsize=(0.985 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
+# fig = plt.figure(figsize=(6, 4), dpi=DPI)
+axes = ImageGrid(
+    fig,
+    111,
+    nrows_ncols=(1, 2),
+    axes_pad=0.15,
+    share_all=True,  # Shares both X and Y axes
+    cbar_location="right",
+    cbar_mode="edge",
+    cbar_size="5%",
+    cbar_pad=0.1,
+)
+
+
+sim.set_input_field_amplitudes(lf1.wavefront)
+sim2.set_input_field_amplitudes(lf2.wavefront)
+
+sim.compute_total_field()
+sim2.compute_total_field()
+
+max_intensity = np.max([np.abs(sim.E_total) ** 2, np.abs(sim2.E_total) ** 2])
+
+plots = sim.visualize_intensity(
+    ax=axes[0],
+    colorbar_label=None,
+    title="",
+    imshow_kwargs=dict(cmap="turbo", clim=(0, max_intensity)),
+    use_colorbar=False,
+    use_legend=False,
+)
+plots2 = sim2.visualize_intensity(
+    ax=axes[1],
+    colorbar_label=None,
+    title="",
+    imshow_kwargs=dict(cmap="turbo", clim=(0, max_intensity)),
+    use_colorbar=False,
+    use_legend=False,
+)
+# plt.colorbar()
+
+axes.cbar_axes[0].colorbar(plots2["field_img"])
+
+annotate_subplots_abc(axes, format_str="({})", background="dark")
+
+# axes[1].set_ylabel("")
+# axes.cbar_axes[0].legend([plots2['frozen_plot']], ['lol'], loc='best')
+# axes[0].legend([plots2['frozen_plot']], ['lol'])
+fig.legend(
+    *axes[1].get_legend_handles_labels(),
+    ncols=2,
+    bbox_to_anchor=(0.49, -0.01),
+    loc="upper center",
+)
+
+
+plt.tight_layout(pad=0)
+if save_plots:
+    optimized_path = (
+        save_folder
+        / f"{project_name}_optimized_double_{lf1.name}_{lf2.name}.png"
+    )
+    fig.savefig(optimized_path, dpi=DPI, bbox_inches=0)
+    print(f"Saved plot to {optimized_path}")
+plt.show()
 # %% 1) Bar plot of CRLBs
 
 
@@ -283,12 +385,12 @@ barplot_lossfunctions = [
     "z",
     "phi",
     # "tr",
-    # "tr_norm",
+    "tr_norm",
     "det",
-    # "tr_inv",
+    "tr_inv",
     "spec_rad",
-    "dropped_spec_rad",
-    "partial_spec_rad",
+    # "dropped_spec_rad",
+    # "partial_spec_rad",
 ]
 
 loss_functions_dict_bar = loss_functions_dict.select_only(
@@ -317,18 +419,27 @@ random_wavefronts_crlbs_joint, random_wavefronts_crlbs_scalar = (
     random_wavefronts_crlbs
 )
 
-loss_function_names = loss_functions_dict_bar.displaynames()
+loss_function_names = loss_functions_dict_bar.shortnames()
+
+plt.rcdefaults()
+# plt.rcParams['axes.labelsize'] = 110
+# plt.rcParams['xtick.minor.size'] = 10
+# plt.rcParams['xtick.major.size'] = 10
+# # plt.rcParams['xtick.labelsize'] = 100
+# plt.rcParams['xtick.color'] = 'g'
+# plt.rcParams['font.size'] = 20
 
 fig, axes = plt.subplots(
     ncols=2,
-    figsize=(14, 6),
+    # figsize=(14, 6),
+    figsize=(1.0 * TEXTWIDTH, 0.4 * TEXTWIDTH),
     width_ratios=[len(loss_function_names) + 1, 2 + 1],
     dpi=DPI,
     layout="constrained",
 )
 
 
-crlbanalysis.visualize_crlb_comparison(
+crlbanalysis.visualize_crlb_barplot(
     loss_function_names=loss_function_names,
     param_legends=[
         "CRLB of x",
@@ -337,45 +448,35 @@ crlbanalysis.visualize_crlb_comparison(
     ],
     optimized_crlbs_joint=optimized_crlbs_joint,
     optimized_crlbs_scalar=optimized_crlbs_scalar,
-    show_plane_waves=False,
-    show_random_wavefronts=False,
-    show_optimized=True,
     ax=axes[0],
-    title="Optimized Wavefronts",
-    fontsize=FONTSIZE,
-    title_fontsize=TITLE_FONTSIZE,
-    ylabel_fontsize=YLABEL_FONTSIZE,
-    ylim=(-0.000, 0.0185),
+    # title="Optimized Wavefronts",
+    title="",
+    tick_fontsize=6,
+    ylim=(-0.000, None),
     hatch_color=(0.8,) * 3,
     joint_opacity=0.65,
     y_label=r"CRLB (wavelengths)",
+    rotate_labels=False,
 )
 
-crlbanalysis.visualize_crlb_comparison(
+crlbanalysis.visualize_crlb_boxplot(
     loss_function_names=loss_function_names,
     param_legends=[
         "CRLB of x",
         "CRLB of z",
         r"CRLB of $\phi$",
     ],
-    optimized_crlbs_joint=optimized_crlbs_joint,
-    # optimized_crlbs_scalar=optimized_crlbs_scalar,
     plane_wave_crlbs_joint=plane_wave_crlbs_joint,
-    # plane_wave_crlbs_scalar=plane_wave_crlbs_scalar,
     random_wavefronts_crlbs_joint=random_wavefronts_crlbs_joint,
-    # random_wavefronts_crlbs_scalar=random_wavefronts_crlbs_scalar,
-    show_optimized=False,
-    show_plane_waves=True,
-    show_random_wavefronts=True,
     ax=axes[1],
     y_label=None,
     ylim=(-0.002, None),
-    title="Plane Waves and Random Wavefronts",
-    fontsize=FONTSIZE,
-    title_fontsize=TITLE_FONTSIZE,
+    # title="Plane Waves and Random Wavefronts",
+    title="",
+    fontsize=6,
     ref_lines=[0, 0.0185],
 )
-annotate_subplots_abc(axes)
+annotate_subplots_abc(axes, background="white")
 
 make_leftax_look_like_inset(
     fig, leftax=axes[0], rightax=axes[1], moveticksright=True
@@ -500,7 +601,7 @@ y_idx = 0  # Display X on y-axis
 
 include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
 # include_plot_indices = [(5, 2)]
-# include_plot_indices = [(5,0)]
+include_plot_indices = [(1, 5)]
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
     fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
@@ -529,7 +630,7 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         use_logscale=False,
         adjust_text_kwargs=dict(
             force_static=0.5,
-            force_text=0.7,
+            force_text=0.5,
             force_explode=(0.5, 0.5),
             force_pull=0.1,
             expand=(2.0, 2.5),
@@ -541,8 +642,10 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         ),
         x_avoid=x_avoid,
         y_avoid=y_avoid,
-        xlim=(0.0017 * wavelength_unit, 0.009 * wavelength_unit),
-        ylim=(0.00340 * wavelength_unit, 0.0056 * wavelength_unit),
+        # xlim=(0.0017 * wavelength_unit, 0.009 * wavelength_unit),
+        # ylim=(0.00340 * wavelength_unit, 0.0056 * wavelength_unit),
+        xlim=None,
+        ylim=None,
         wavelength_unit=wavelength_unit,
     )
 

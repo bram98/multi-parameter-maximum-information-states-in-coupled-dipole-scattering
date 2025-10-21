@@ -21,7 +21,8 @@ class LossFunctionsDict(Storable, dict):
     """
 
     def select_only(self, keys):
-        selection = {key: value for key, value in self.items() if key in keys}
+        # selection = {key: value for key, value in self.items() if key in keys}
+        selection = {key: self[key] for key in keys}
         return LossFunctionsDict(**selection)
 
     def names(self):

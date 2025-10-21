@@ -25,15 +25,16 @@ sys.exit()
 
 # %%
 
-data_folder = "../data/quasirandom_longrun"  # Where to save state
+# data_folder = "../data/quasirandom_longrun"  # Where to save state
+data_folder = "../data/quasirandom_longrun_dist2-1"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(1, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(1.1, 0.0), number=6, small_dist=0.786, start_index=5
 )
 
 frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(-1, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(-1.1, 0.0), number=6, small_dist=0.786, start_index=22
 )
 # movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
 # frozen_dipoles = None
@@ -368,7 +369,7 @@ loss_functions_dict["dropped_tr_inv"] = LossFunction(
     lr_decay=0.2,
     lr_decay_step_size=1000,
 )
-loss_functions_dict["tr_norm"] = LossFunction(
+loss_functions_dict["dropped_tr_norm"] = LossFunction(
     lossfunctions.normalized_trace_of_F,
     "dropped_tr_norm",
     displayname="Normalized Trace (dropped)",
@@ -424,8 +425,8 @@ for loss_function in loss_functions_dict.values():
     #     continue
     # loss_function.displayname = "Determinant"
     loss_function.visualize(
-        base_sim_for_vis,
-        base_sim_for_vis.k_x_array,
+        sim_for_vis,
+        k_x_array,
         title=f"Maximum Information State for {loss_function.displayname}",
         dpi=300,
     )
@@ -450,49 +451,49 @@ loss_functions_sweep_dict = LossFunctionsDict()
 # sweep_dict["xz_inv"]
 
 
-# loss_functions_sweep_dict["xz_scalar"] = LossFunctionSweep(
-#     lossfunctions.sweep_xz_F,
-#     name="xz_scalar",
-#     displayname=f"Interpolation x-z (scalar)",
-#     # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-#     shortname=rf"$x\leftrightarrow z$ (scalar)",
-#     maximize=True,
-#     method="eig",
-#     n_sweep=50,
-# )
+loss_functions_sweep_dict["xz_scalar"] = LossFunctionSweep(
+    lossfunctions.sweep_xz_F,
+    name="xz_scalar",
+    displayname=f"Interpolation x-z (scalar)",
+    # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
+    shortname=rf"$x\leftrightarrow z$ (scalar)",
+    maximize=True,
+    method="eig",
+    n_sweep=50,
+)
 
 
-# loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
-#     lossfunctions.sweep_xz_inv_J,
-#     name="xz_joint",
-#     displayname=f"Interpolation x-z (joint)",
-#     # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-#     shortname=rf"$x\leftrightarrow z$ (joint)",
-#     maximize=False,
-#     method="torch",
-#     n_sweep=50,
-#     steps_init=2000,
-#     steps=1000,
-#     lr=1e-2,
-#     multiruns=3,
-#     E_init_strength=0.5,
-# )
-for eps in [1, 0.1, 0, -0.1, -0.5]:
-    loss_functions_sweep_dict[f"xz_joint_eps{eps}"] = LossFunctionSweep(
-        lossfunctions.sweep_xz_inv_J_eps(eps),
-        name=f"xz_joint_eps{eps}",
-        displayname=f"Interpolation x-z (joint)",
-        # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-        shortname=rf"$x\leftrightarrow z$ (joint)",
-        maximize=False,
-        method="torch",
-        n_sweep=50,
-        steps_init=10000,
-        steps=6000,
-        lr=2e-2,
-        multiruns=5,
-        E_init_strength=0.2,
-    )
+loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
+    lossfunctions.sweep_xz_inv_J,
+    name="xz_joint",
+    displayname=f"Interpolation x-z (joint)",
+    # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
+    shortname=rf"$x\leftrightarrow z$ (joint)",
+    maximize=False,
+    method="torch",
+    n_sweep=50,
+    steps_init=10000,
+    steps=10000,
+    lr=1e-2,
+    multiruns=10,
+    E_init_strength=0.5,
+)
+# for eps in [1, 0.1, 0, -0.1, -0.5]:
+#     loss_functions_sweep_dict[f"xz_joint_eps{eps}"] = LossFunctionSweep(
+#         lossfunctions.sweep_xz_inv_J_eps(eps),
+#         name=f"xz_joint_eps{eps}",
+#         displayname=f"Interpolation x-z (joint)",
+#         # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
+#         shortname=rf"$x\leftrightarrow z$ (joint)",
+#         maximize=False,
+#         method="torch",
+#         n_sweep=50,
+#         steps_init=10000,
+#         steps=6000,
+#         lr=2e-2,
+#         multiruns=5,
+#         E_init_strength=0.2,
+#     )
 # %%
 """
 Optimize sweeps
@@ -517,7 +518,7 @@ for loss_function in loss_functions_sweep_dict.values():
     if loss_function.method == "torch" and loss_function._Js is not None:
         optimizer.plot_torch_loss_sweep(
             loss_function.loss_history,
-            first_step=200,
+            first_step=-1000,
             title=f"{loss_function.displayname} Optimization Loss",
         )
 
@@ -537,8 +538,8 @@ if save_state:
 from scipy.optimize import curve_fit
 
 ss = [
-    # loss_functions_sweep_dict["xz_scalar"],
-    loss_functions_sweep_dict["xz_joint_eps0.1"],
+    loss_functions_sweep_dict["xz_scalar"],
+    # loss_functions_sweep_dict["xz_joint_eps0.1"],
 ]
 for name, s in loss_functions_sweep_dict.items():
     J_invs = [np.linalg.inv(J) for J in s.Js]
