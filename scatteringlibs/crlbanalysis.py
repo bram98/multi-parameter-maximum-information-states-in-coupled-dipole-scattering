@@ -558,8 +558,10 @@ def visualize_crlb_boxplot(
         ax.set_xticklabels(
             xtick_labels, rotation=25, ha="right", fontsize=tick_fontsize
         )
+        print(tick_fontsize)
     else:
-        ax.set_xticklabels(xtick_labels, fontsize=tick_fontsize)
+        ax.set_xticklabels(xtick_labels, fontsize=None)
+        print(tick_fontsize, plt.rcParams["xtick.labelsize"])
 
     ax.set_title(title, fontsize=title_fontsize)
     ax.set_ylabel(y_label, fontsize=axes_label_fontsize)

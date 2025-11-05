@@ -585,6 +585,7 @@ class CoupledDipoleSimulator(Storable):
         dpi=100,
         figsize=(10, 8),
         ax=None,
+        use_scatterers=True,
         use_colorbar=True,
         use_legend=True,
         imshow_kwargs=None,
@@ -621,16 +622,21 @@ class CoupledDipoleSimulator(Storable):
             **imshow_kwargs,
         )
 
-        scatter_plots = self.visualize_scatterers(
-            movable_kwargs=movable_kwargs, frozen_kwargs=frozen_kwargs, ax=ax
-        )
+        if use_scatterers:
+            scatter_plots = self.visualize_scatterers(
+                movable_kwargs=movable_kwargs,
+                frozen_kwargs=frozen_kwargs,
+                ax=ax,
+            )
+        else:
+            scatter_plots = dict(movable_plot=None, frozen_plot=None)
 
         ax.set_title(title)
 
         if use_legend:
             if legend_kwargs is None:
                 legend_kwargs = {}
-            ax.legend(**legend_kwargs)
+            legend = ax.legend(**legend_kwargs)
         ax.set_xlabel(r"$z/\lambda$")
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")
@@ -650,16 +656,18 @@ class CoupledDipoleSimulator(Storable):
             field_img=field_img,
             movable_plot=scatter_plots["movable_plot"],
             frozen_plot=scatter_plots["frozen_plot"],
+            legend=legend,
         )
 
     def visualize_intensity(
         self,
         title="Custom Input State",
-        dpi=100.0,
+        dpi=100,
+        figsize=(10, 8),
         ax=None,
+        use_scatterers=True,
         use_colorbar=True,
         use_legend=True,
-        figsize=(10, 8),
         imshow_kwargs=None,
         movable_kwargs=None,
         frozen_kwargs=None,
@@ -677,10 +685,11 @@ class CoupledDipoleSimulator(Storable):
             display_function=lambda field: np.abs(field) ** 2,
             title=title,
             dpi=dpi,
+            figsize=figsize,
             ax=ax,
+            use_scatterers=use_scatterers,
             use_colorbar=use_colorbar,
             use_legend=use_legend,
-            figsize=figsize,
             imshow_kwargs=imshow_kwargs,
             movable_kwargs=movable_kwargs,
             frozen_kwargs=frozen_kwargs,

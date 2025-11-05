@@ -425,7 +425,7 @@ plt.rcdefaults()
 # plt.rcParams['axes.labelsize'] = 110
 # plt.rcParams['xtick.minor.size'] = 10
 # plt.rcParams['xtick.major.size'] = 10
-# # plt.rcParams['xtick.labelsize'] = 100
+plt.rcParams["xtick.labelsize"] = 100
 # plt.rcParams['xtick.color'] = 'g'
 # plt.rcParams['font.size'] = 20
 
@@ -451,7 +451,7 @@ crlbanalysis.visualize_crlb_barplot(
     ax=axes[0],
     # title="Optimized Wavefronts",
     title="",
-    tick_fontsize=6,
+    tick_fontsize=None,
     ylim=(-0.000, None),
     hatch_color=(0.8,) * 3,
     joint_opacity=0.65,
@@ -676,10 +676,10 @@ zero_index = np.argmin(np.abs(sim.k_x_array))
 E_kx_array[zero_index] = 1
 sim.set_input_field_amplitudes(E_kx_array / 2.17, flux_normalize=True)
 
-fig, ax = sim.visualize_intensity(title="Field Intensity Over Slab", dpi=DPI)
+sim.visualize_intensity(title="Field Intensity Over Slab", dpi=DPI)
 
 if save_plots:
-    fig.savefig(save_folder / f"{project_name}_zero_angle.png")
+    plt.savefig(save_folder / f"{project_name}_zero_angle.png")
 
     sim.animate_time_evolution(
         frames=3,
@@ -694,6 +694,8 @@ if save_plots:
 n_frames = 2 * len(E_kx_array) - 2
 # %%
 
+fig, ax = plt.subplots()
+
 
 def init():
     pass
@@ -702,6 +704,8 @@ def init():
 def update(i):
     global E_kx_array
     print(f"\rAnimating frame {i+1:>2} / {n_frames} ", end="")
+    fig.clear()
+    ax.clear()
     # Boomerang effect, quite wasteful to redo the computations but oh well
     # i = i + 1
     i = min(2 * len(E_kx_array) - 2 - i, i)
@@ -722,3 +726,213 @@ if save_plots:
     ani.save(save_folder / f"{fig_name}.mp4")
 
 plt.show()
+
+# %% Sensitivity animation
+"""
+Animate shifting the dipoles
+"""
+# import placedipoles
+
+lf = loss_functions_dict["x"]
+# wavefront = "max_info"
+# wavefront = 'planewave'
+wavefront = "min_info"
+
+optimizer = Optimizer(F_operator_tensor=fisher_calc.F)
+lf.optimize(optimizer, num_eig=-1)
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+k_x_array = sim.k_x_array
+
+if wavefront == "max_info":
+    sim.set_input_field_kx(k_x_array, lf.wavefronts[0])
+elif wavefront == "planewave":
+    sim.set_input_field_kx([0], [1])
+elif wavefront == "min_info":
+    sim.set_input_field_kx(k_x_array, lf.wavefronts[-1])
+
+
+movable_dipoles_orig = sim.movable_scatterers.copy()
+frozen_dipoles_orig = sim.frozen_scatterers.copy()
+
+x = np.linspace(-1, 1, num=7)
+
+
+# %%%
+
+# --- 1. PRE-COMPUTATION ("PRELOADING") ---
+
+
+x = np.linspace(-0.1, 0.1, num=30)
+# x = np.fft.fftshift(x) # Start animation at zero devation
+
+precomputed_frames = []
+global_vmin = np.inf
+global_vmax = -np.inf
+
+# Loop through all states, run the simulation, and store the results
+for dx in x:
+    print(f"\rStarting pre-computation... {dx:.2f} / {x[-1]:.2f}\t\t", end="")
+    # Run the simulation logic
+    movable_dipoles = placedipoles.shift_and_rotate_dipoles(
+        movable_dipoles_orig, dx, 0, 0
+    )
+    sim.set_scatterers(movable_scatterers=movable_dipoles)
+    sim.reset()
+    sim.compute_total_field()
+    # Get the results
+    intensity_map = np.abs(sim.E_total) ** 2
+    E_total = sim.E_total.copy()
+    movable_pos = sim.movable_scatterers.copy()
+
+    # Store them
+    precomputed_frames.append(
+        {
+            "intensity": intensity_map,
+            "movable_pos": movable_pos,
+            "E_total": sim.E_total.copy(),
+        }
+    )
+
+    # Update global color limits
+    if intensity_map.min() < global_vmin:
+        global_vmin = intensity_map.min()
+    if intensity_map.max() > global_vmax:
+        global_vmax = intensity_map.max()
+
+print("Global max:", global_vmax)
+global_vmax = 30
+global_vmin = 0
+print(f"\nPre-computation complete for {len(precomputed_frames)} frames.")
+
+# %%%
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+# --- 2. ANIMATION ---
+
+# We need these from the simulator object to set up the plot
+X_grid_lambda = sim.X_grid / sim.lambda_0
+Z_grid_lambda = sim.Z_grid / sim.lambda_0
+frozen_pos_lambda = frozen_dipoles_orig / sim.lambda_0
+
+# # These will hold the artist objects
+# fig, axes = plt.subplots(
+#     ncols=2, figsize=(16, 8), dpi=DPI, sharey=True, gridspec_kw={'wspace': 0, 'width_ratios':[1,.5]}
+# )  # Use the same figsize as your original
+# ax = axes[0]
+# ax2 = axes[1]
+
+
+fig, ax = plt.subplots(figsize=(12, 8), dpi=DPI)
+divider = make_axes_locatable(ax)
+ax2 = divider.append_axes("right", size="50%", pad=0.0)
+ax2.set_yticks([])
+
+field_img = None
+movable_plot = None
+abs_plot = None
+
+
+def init():
+    global field_img, movable_plot, ax, ax2, fig, frozen_plot, legend, abs_plot, re_plot, im_plot, x_out
+
+    # Clear figure and add axes (like in the previous solution)
+    ax.cla()
+    ax2.cla()
+
+    ax2.set_yticks([])
+
+    # Get data for the first frame
+    first_frame_data = precomputed_frames[0]
+
+    imshow_kwargs = {
+        "vmin": global_vmin,
+        "vmax": global_vmax,
+    }
+
+    plots = sim.visualize_intensity(
+        title="",
+        ax=ax,
+        imshow_kwargs=imshow_kwargs,
+        dpi=DPI,
+        use_colorbar=False,
+        legend_kwargs=dict(fontsize=12),
+    )
+    ax.axvline(x=4, c="r", ls="--")
+    ax2.axvline(x=0, c="r", ls="--")
+    field_img = plots["field_img"]
+    movable_plot = plots["movable_plot"]
+    frozen_plot = plots["frozen_plot"]
+    legend = plots["legend"]
+
+    E_out = first_frame_data["E_total"][:, -1]
+    x_out = X_grid_lambda[:, -1]
+    re_plot = ax2.plot(np.real(E_out), x_out, label="Real part of output")[0]
+    im_plot = ax2.plot(np.imag(E_out), x_out, label="Imag. part of output")[0]
+    # abs_plot = ax2.plot(np.abs(E_out), x_out, -np.abs(E_out), x_out)[0]
+    ax2.set_xlim(-3, 3)
+    ax2.set_xticks([])
+    # ax2.set_yticks([])
+    ax2.legend(loc="upper right", fontsize=12, framealpha=1)
+    # ax.set_aspect('equal')
+    # fig.subplots_adjust(wspace=0)
+    plt.tight_layout(pad=0.0)
+
+    return (field_img, movable_plot, frozen_plot, legend, abs_plot)
+
+
+def update(i):
+    # Get the pre-computed data for this frame
+    frame_data = precomputed_frames[i]
+
+    field_img.set_array(frame_data["intensity"])
+
+    # # Update the positions of the movable scatterers
+    movable_pos_lambda = frame_data["movable_pos"].T / sim.lambda_0
+    movable_plot.set_offsets(movable_pos_lambda)
+
+    E_out = frame_data["E_total"][:, -1]
+    re_plot.set_data(np.real(E_out), x_out)
+    im_plot.set_data(np.imag(E_out), x_out)
+    # abs_plot.set_data(np.abs(E_out), x_out, -np.abs(E_out), x_out)
+
+    # fig.subplots_adjust(wspace=0)
+
+    return (
+        field_img,
+        movable_plot,
+        frozen_plot,
+        legend,
+        abs_plot,
+        re_plot,
+        im_plot,
+    )
+
+
+# Create the animation
+# blit=True is the key to smoothness!
+
+frames = np.arange(2 * len(precomputed_frames) - 2)
+frames = np.min([frames, len(frames) - frames], axis=0)
+# frames = np.fft.fftshift(frames) # start at zero deviation
+ani = matplotlib.animation.FuncAnimation(
+    fig,
+    update,
+    init_func=init,
+    frames=frames,
+    blit=False,
+    interval=40,
+    repeat=True,
+    repeat_delay=0,
+)
+
+# To see it in a notebook, you might use:
+# from IPython.display import HTML
+# HTML(ani.to_jshtml())
+
+# Or to save it:
+if save_plots:
+    animation_time_s = 3
+    fps = int(np.round(len(frames) / animation_time_s))
+    fig_name = f"{project_name}_sensitivity_animation_{wavefront}"
+    ani.save(save_folder / f"{fig_name}.gif", fps=fps)
+    ani.save(save_folder / f"{fig_name}.mp4", fps=fps)

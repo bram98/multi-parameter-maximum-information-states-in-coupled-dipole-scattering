@@ -96,6 +96,7 @@ class LossFunction(Storable):
         self.method = method
 
         self._wavefront = None
+        self._wavefronts = None  # Used in eig_optimize with n_eig > 1
         self._J = None
         self.bestval = None
         self.loss_history = None
@@ -163,8 +164,17 @@ class LossFunction(Storable):
             bestval, wavefront = optimizer.eig_optimize_F_general(
                 self.loss_function, maximize=self.maximize, num=num_eig
             )
-            self._wavefront = LossFunction.normalize_wavefront(wavefront)
-            self.bestval = bestval
+            if num_eig == 1:
+                self._wavefront = LossFunction.normalize_wavefront(wavefront)
+                self.bestval = bestval
+            else:
+                self._wavefronts = np.array(
+                    [
+                        LossFunction.normalize_wavefront(wf)
+                        for wf in wavefront.T
+                    ]
+                )
+                self.bestvals = bestval
 
         elif self.method == "torch":
             steps = steps or self.steps
@@ -247,6 +257,15 @@ class LossFunction(Storable):
             )
 
         return self._wavefront
+
+    @property
+    def wavefronts(self):
+        if self._wavefronts is None:
+            raise ValueError(
+                "Wavefronts are not defined. Please run optimizer first."
+            )
+
+        return self._wavefronts
 
     # @wavefront.setter
     # def wavefront(self, wavefront):
