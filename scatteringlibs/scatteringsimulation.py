@@ -637,6 +637,8 @@ class CoupledDipoleSimulator(Storable):
             if legend_kwargs is None:
                 legend_kwargs = {}
             legend = ax.legend(**legend_kwargs)
+        else:
+            legend = None
         ax.set_xlabel(r"$z/\lambda$")
         ax.set_ylabel(r"$x/\lambda$")
         ax.set_aspect("equal")

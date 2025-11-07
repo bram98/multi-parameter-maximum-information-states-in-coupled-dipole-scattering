@@ -26,7 +26,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
-project_name = "quasirandom_longrun"
+project_name = "quasirandom_longrun_dist2-1"
 # project_name = "quasirandom"
 # project_name = "square"
 data_folder = f"../data/{project_name}"
@@ -307,10 +307,30 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 
-lf1 = loss_functions_dict["z"]
+lf1 = loss_functions_dict["x"]
 lf2 = loss_functions_dict["det"]
 
 sim2 = sim.copy()
+
+
+sim.set_input_field_amplitudes(lf1.wavefront)
+sim2.set_input_field_amplitudes(lf2.wavefront)
+
+sim.compute_total_field()
+sim2.compute_total_field()
+
+intensity = np.abs(sim.E_total) ** 2
+intensity2 = np.abs(sim.E_total) ** 2
+plt.hist(intensity.flatten(), bins=100, range=(10, 100))
+plt.hist(intensity2.flatten(), bins=100, range=(10, 100))
+plt.xticks(range(10, 100, 5))
+plt.yscale("log")
+plt.show()
+
+
+# max_intensity = np.max([np.abs(sim.E_total) ** 2, np.abs(sim2.E_total) ** 2])
+max_intensity = 60
+
 
 fig = plt.figure(figsize=(0.985 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
 # fig = plt.figure(figsize=(6, 4), dpi=DPI)
@@ -326,14 +346,6 @@ axes = ImageGrid(
     cbar_pad=0.1,
 )
 
-
-sim.set_input_field_amplitudes(lf1.wavefront)
-sim2.set_input_field_amplitudes(lf2.wavefront)
-
-sim.compute_total_field()
-sim2.compute_total_field()
-
-max_intensity = np.max([np.abs(sim.E_total) ** 2, np.abs(sim2.E_total) ** 2])
 
 plots = sim.visualize_intensity(
     ax=axes[0],
@@ -353,7 +365,10 @@ plots2 = sim2.visualize_intensity(
 )
 # plt.colorbar()
 
-axes.cbar_axes[0].colorbar(plots2["field_img"])
+# Set color of intensities over max_intensity
+plots["field_img"].cmap.set_over("r")
+plots2["field_img"].cmap.set_over("r")
+axes.cbar_axes[0].colorbar(plots2["field_img"], extend="max")
 
 annotate_subplots_abc(axes, format_str="({})", background="dark")
 
@@ -363,8 +378,8 @@ annotate_subplots_abc(axes, format_str="({})", background="dark")
 fig.legend(
     *axes[1].get_legend_handles_labels(),
     ncols=2,
-    bbox_to_anchor=(0.49, -0.01),
-    loc="upper center",
+    bbox_to_anchor=(0.49, 0.9),
+    loc="lower center",
 )
 
 
@@ -425,14 +440,14 @@ plt.rcdefaults()
 # plt.rcParams['axes.labelsize'] = 110
 # plt.rcParams['xtick.minor.size'] = 10
 # plt.rcParams['xtick.major.size'] = 10
-plt.rcParams["xtick.labelsize"] = 100
+# plt.rcParams["xtick.labelsize"] = 100
 # plt.rcParams['xtick.color'] = 'g'
 # plt.rcParams['font.size'] = 20
 
 fig, axes = plt.subplots(
     ncols=2,
     # figsize=(14, 6),
-    figsize=(1.0 * TEXTWIDTH, 0.4 * TEXTWIDTH),
+    figsize=(2.0 * TEXTWIDTH, 2 * 0.4 * TEXTWIDTH),
     width_ratios=[len(loss_function_names) + 1, 2 + 1],
     dpi=DPI,
     layout="constrained",
@@ -549,7 +564,7 @@ pareto_groups = [
 ]
 pareto_groups_sweep = [
     PlotGroup(
-        loss_functions_sweep_dict.select_only("xz_joint"),
+        loss_functions_sweep_dict.select_only(["xz_joint"]),
         legend_label="Interpolation",
         color="green",
         linestyle="-",
@@ -557,57 +572,29 @@ pareto_groups_sweep = [
         # marker="x",
     ),
 ]
-# pareto_groups_sweep = [
-#     PlotGroup(
-#         loss_functions_sweep_dict.select_only("xz_joint_eps1"),
-#         legend_label="$\epsilon=1.0$",
-#         color="purple",
-#         linestyle="-",
-#         marker="",
-#         # marker="x",
-#     ),
-#     PlotGroup(
-#         loss_functions_sweep_dict.select_only("xz_joint_eps0.1"),
-#         legend_label="$\epsilon=0.1$",
-#         color="green",
-#         linestyle="-",
-#         marker="",
-#     ),
-#     PlotGroup(
-#         loss_functions_sweep_dict.select_only("xz_joint_eps0"),
-#         legend_label="$\epsilon=0.0$",
-#         color="red",
-#         linestyle="-",
-#         marker="",
-#     ),
-#     PlotGroup(
-#         loss_functions_sweep_dict.select_only("xz_joint_eps-0.1"),
-#         legend_label="$\epsilon=-0.1$",
-#         color="blue",
-#         linestyle="-",
-#         marker="",
-#     ),
-#     PlotGroup(
-#         loss_functions_sweep_dict.select_only("xz_joint_eps-0.5"),
-#         legend_label="$\epsilon=-1.0$",
-#         color="orange",
-#         linestyle="-",
-#         marker="",
-#     ),
-# ]
+
 
 x_idx = 1  # Display Z on x-axis
 y_idx = 0  # Display X on y-axis
 
+"""
+Use this line to plot all the components incrementally. (1, 4) means plot 1 
+pareto_groups_sweep plot and 4 pareto_groups plots.
+"""
 include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
-# include_plot_indices = [(5, 2)]
 include_plot_indices = [(1, 5)]
+
+
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
     fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
 
-    wavelength_unit_order = -3
+    wavelength_unit_order = 0
     wavelength_unit = 10 ** (-wavelength_unit_order)
+    if wavelength_unit_order == 0:
+        wavelength_unit_str = ""
+    else:
+        wavelength_unit_str = rf"$10^{{{wavelength_unit_order}}}$ "
 
     x_avoid, y_avoid = pareto_plot_sweep(
         pareto_groups_sweep[:sweep_index],
@@ -622,8 +609,8 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         pareto_groups[:scatter_index],
         x_idx,
         y_idx,
-        xlabel=rf"CRLB for $z$ ($10^{{{wavelength_unit_order}}}$ wavelenghts)",
-        ylabel=rf"CRLB for $x$ ($10^{{{wavelength_unit_order}}}$ wavelenghts)",
+        xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
+        ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
         title=r"Nuisance Aware Optimality Criteria",
         ax=ax,
         grid_kwargs=GRID_KWARGS,
@@ -734,9 +721,9 @@ Animate shifting the dipoles
 # import placedipoles
 
 lf = loss_functions_dict["x"]
-# wavefront = "max_info"
+wavefront = "max_info"
 # wavefront = 'planewave'
-wavefront = "min_info"
+# wavefront = "min_info"
 
 optimizer = Optimizer(F_operator_tensor=fisher_calc.F)
 lf.optimize(optimizer, num_eig=-1)
@@ -762,7 +749,7 @@ x = np.linspace(-1, 1, num=7)
 # --- 1. PRE-COMPUTATION ("PRELOADING") ---
 
 
-x = np.linspace(-0.1, 0.1, num=30)
+x = np.linspace(-0.2, 0.2, num=30)
 # x = np.fft.fftshift(x) # Start animation at zero devation
 
 precomputed_frames = []
@@ -800,7 +787,7 @@ for dx in x:
         global_vmax = intensity_map.max()
 
 print("Global max:", global_vmax)
-global_vmax = 30
+global_vmax = 26
 global_vmin = 0
 print(f"\nPre-computation complete for {len(precomputed_frames)} frames.")
 
@@ -831,6 +818,8 @@ field_img = None
 movable_plot = None
 abs_plot = None
 
+plt.rcParams["axes.labelsize"] = 10
+
 
 def init():
     global field_img, movable_plot, ax, ax2, fig, frozen_plot, legend, abs_plot, re_plot, im_plot, x_out
@@ -847,6 +836,7 @@ def init():
     imshow_kwargs = {
         "vmin": global_vmin,
         "vmax": global_vmax,
+        "cmap": "viridis",
     }
 
     plots = sim.visualize_intensity(
@@ -869,7 +859,9 @@ def init():
     re_plot = ax2.plot(np.real(E_out), x_out, label="Real part of output")[0]
     im_plot = ax2.plot(np.imag(E_out), x_out, label="Imag. part of output")[0]
     # abs_plot = ax2.plot(np.abs(E_out), x_out, -np.abs(E_out), x_out)[0]
+    ax.tick_params(axis="both", which="major", labelsize=10)
     ax2.set_xlim(-3, 3)
+    ax2.set_ylim(np.min(sim.x_vis), np.max(sim.x_vis))
     ax2.set_xticks([])
     # ax2.set_yticks([])
     ax2.legend(loc="upper right", fontsize=12, framealpha=1)
@@ -933,6 +925,12 @@ ani = matplotlib.animation.FuncAnimation(
 if save_plots:
     animation_time_s = 3
     fps = int(np.round(len(frames) / animation_time_s))
-    fig_name = f"{project_name}_sensitivity_animation_{wavefront}"
-    ani.save(save_folder / f"{fig_name}.gif", fps=fps)
-    ani.save(save_folder / f"{fig_name}.mp4", fps=fps)
+
+    fig_name = f"sensitivity_animation_{wavefront}"
+    optimized_path = save_folder / Path(f"sensitivity_anim_{project_name}")
+    optimized_path.parents[0].mkdir(exist_ok=True)
+    optimized_path.mkdir(exist_ok=True)
+    DPI = 150
+    ani.save(optimized_path / f"{fig_name}.gif", fps=fps, dpi=DPI)
+    ani.save(optimized_path / f"{fig_name}.mp4", fps=fps, dpi=DPI)
+    print(f"Saved sensitivity animation to {optimized_path}/{fig_name}")

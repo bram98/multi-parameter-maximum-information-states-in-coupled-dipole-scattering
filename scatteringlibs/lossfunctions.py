@@ -1,8 +1,11 @@
 # scatteringlibs/lossfunctions.py
-from typing import Callable
+
+from collections.abc import Callable, Iterable
+from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
@@ -20,7 +23,22 @@ class LossFunctionsDict(Storable, dict):
     also select a subset using the .select_only() method.
     """
 
-    def select_only(self, keys):
+    optimization_settings = [
+        "steps",
+        "lr",
+        "lr_decay",
+        "lr_decay_step_size",
+        "multiruns",
+        "n_sweep",
+        "E_init_strength",
+        "steps_init",
+    ]
+
+    def select_only(self, keys: Iterable[str]):
+        if isinstance(keys, str):
+            raise ValueError(
+                "Argument 'keys' should be list or similar, not str."
+            )
         # selection = {key: value for key, value in self.items() if key in keys}
         selection = {key: self[key] for key in keys}
         return LossFunctionsDict(**selection)
@@ -33,6 +51,53 @@ class LossFunctionsDict(Storable, dict):
 
     def shortnames(self):
         return [lf.shortname for lf in self.values()]
+
+    def load_optimization_settings(
+        self, name: str | Path = None, folder: str | Path = "."
+    ) -> None:
+        file_path = Path(folder) / Path(name).with_suffix(".yaml")
+        with open(file_path, "r") as stream:
+            settings = yaml.safe_load(stream)
+
+        for name, lf in self.items():
+            try:
+                for setting, value in settings[name].items():
+                    setattr(lf, setting, value)
+            except KeyError as e:
+                if not lf.method == "eig":
+                    print(
+                        f"Warning: no lossfunction called {e} in '{file_path}' "
+                    )
+
+    def save_optimization_settings(
+        self, name: str | Path = None, folder: str | Path = "."
+    ) -> None:
+
+        file_path = Path(folder) / Path(name).with_suffix(".yaml")
+
+        data = {}
+
+        for name, lf in self.items():
+            if lf.method == "eig":
+                continue
+            lf_settings = {}
+
+            for optimization_setting in self.optimization_settings:
+                if not hasattr(lf, optimization_setting):
+                    continue
+                lf_settings[optimization_setting] = getattr(
+                    lf, optimization_setting
+                )
+            data[name] = lf_settings
+
+        with open(file_path, "w", encoding="utf8") as outfile:
+            yaml.dump(
+                data,
+                outfile,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
 
 class LossFunction(Storable):
@@ -67,10 +132,10 @@ class LossFunction(Storable):
 
     def __init__(
         self,
-        loss_function,
-        name,
-        displayname=None,
-        shortname=None,
+        loss_function: Callable,
+        name: str,
+        displayname: str = None,
+        shortname: str = None,
         maximize=True,
         method="eig",
         steps=2000,

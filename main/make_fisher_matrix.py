@@ -27,7 +27,7 @@ sys.exit()
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 data_folder = "../data/quasirandom_longrun_dist2-1"  # Where to save state
-save_state = True  # If True, save state to disk
+save_state = False  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
     center=(1.1, 0.0), number=6, small_dist=0.786, start_index=5
@@ -77,6 +77,7 @@ sim_for_vis.visualize_intensity(
         s=100, marker="o", edgecolors="r", c="none", facecolors="none"
     ),
 )
+print()
 
 # %% 3) Build partial derivatives for each param => dS[mu]
 param_names = ["shiftX", "shiftZ", "rotation"]
@@ -379,10 +380,14 @@ loss_functions_dict["dropped_tr_norm"] = LossFunction(
 )
 
 
-# %%
+# %% Optimize
 """
 Optimize
 """
+loss_functions_dict.load_optimization_settings(
+    "quick", folder="../optimization_settings"
+)
+
 
 loss_function: LossFunction
 for loss_function in loss_functions_dict.values():
@@ -392,11 +397,6 @@ for loss_function in loss_functions_dict.values():
         optimizer,
         seed=2025,
         verbose=True,
-        lr=0.1,
-        lr_decay=0.8,
-        lr_decay_step_size=500,
-        steps=10000,
-        multiruns=5,
     )
 
 

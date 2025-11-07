@@ -25,7 +25,7 @@ else:
 
 
 class Storable:
-    def save(self, name: str = None, folder: str = ".") -> None:
+    def save(self, name: str = None, folder: str | Path = ".") -> None:
 
         folder_path = Path(folder)
 
