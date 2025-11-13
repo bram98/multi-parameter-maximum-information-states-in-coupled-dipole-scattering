@@ -279,6 +279,7 @@ class LossFunction(Storable):
                 result["bestvec"]
             )
             self.bestval = result["bestval"]
+            print()
             # print(result)
 
         self._J = optimizer.J_fisher_info_matrix(self._wavefront)
@@ -382,8 +383,10 @@ class LossFunctionSweep(LossFunction):
             lr_decay_step_size=lr_decay_step_size,
             multiruns=multiruns,
         )
+        self.alpha_min = alpha_min
+        self.alpha_max = alpha_max
+        self.n_sweep = n_sweep
 
-        self.alpha = np.linspace(alpha_min, alpha_max, num=n_sweep)
         self._wavefronts = None
         self._Js = None
         self.steps_init = steps_init
@@ -550,7 +553,48 @@ class LossFunctionSweep(LossFunction):
 
     @property
     def n_sweep(self):
-        return len(self.alpha)
+        return self._n_sweep
+
+    @n_sweep.setter
+    def n_sweep(self, n_sweep):
+        self._n_sweep = n_sweep
+        self._dirty_alpha = True
+
+    @property
+    def alpha_min(self):
+        return self._alpha_min
+
+    @alpha_min.setter
+    def alpha_min(self, alpha_min):
+        self._alpha_min = alpha_min
+        self._dirty_alpha = True
+
+    @property
+    def alpha_max(self):
+        return self._alpha_max
+
+    @alpha_max.setter
+    def alpha_max(self, alpha_max):
+        self._alpha_max = alpha_max
+        self._dirty_alpha = True
+
+    @property
+    def alpha(self):
+        if self._dirty_alpha:
+            self._alpha = np.linspace(
+                self._alpha_min, self._alpha_max, num=self._n_sweep
+            )
+            self._dirty_alpha = False
+        return self._alpha
+
+    @alpha.setter
+    def alpha(self, alpha):
+        alpha = np.asarray(alpha)
+        self._alpha = alpha
+        self._alpha_min = np.min(alpha)
+        self._alpha_max = np.max(alpha)
+        self._n_sweep = len(alpha)
+        self._dirty_alpha = False
 
     @property
     def wavefronts(self):
@@ -578,6 +622,12 @@ class LossFunctionSweep(LossFunction):
         raise ValueError(
             "wavefront not defined for LossFunctionSweep. Do you mean wavefronts?"
         )
+
+    def __str__(self):
+        return f"<LossFunctionSweep {self.name}>"
+
+    def __repr__(self):
+        return f"<LossFunctionSweep {self.name}>"
 
 
 def single_param_F(i: int) -> Callable:
@@ -638,7 +688,7 @@ def trace_of_F(F: np.ndarray) -> np.ndarray:
 
 
 def F_weighted(F: np.ndarray, w) -> np.ndarray:
-    eig_max = [np.linalg.eigvalsh(F[i, i])[-1] for i in range(3)]
+    eig_max = [np.linalg.eigvalsh(F[i, i])[-1] for i in range(F.shape[0])]
     scale_factors = 1 / np.sqrt(eig_max)
     scale_factors = np.outer(w, w)  # Create matrix
     scale_factors = scale_factors[:, :, np.newaxis, np.newaxis]
@@ -686,8 +736,27 @@ def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
 def dropped_lossfunction(
     loss_function: Callable, nuisance_param_index: int = 2
 ) -> Callable:
+    """
+    Turns any lossfunction into a lossfunction where the nuisance parameter is
+    dropped. This version works for the torch optimization and so works
+    with J as torch tensor.
+    """
     return lambda J: loss_function(
         compute_J_interest_drop_nuisance(J, nuisance_param_index)
+    )
+
+
+def dropped_lossfunction_F(
+    loss_function: Callable, nuisance_param_index: int = 2
+) -> Callable:
+    """
+    Turns any lossfunction into a lossfunction where the nuisance parameter is
+    dropped. This version works for the eigenvalue optimization and so works
+    with the F array.
+    """
+
+    return lambda F: loss_function(
+        compute_F_interest_drop_nuisance(F, nuisance_param_index)
     )
 
 
@@ -715,6 +784,21 @@ def compute_J_interest_drop_nuisance(
     ]
 
     return J_drop
+
+
+def compute_F_interest_drop_nuisance(
+    F_full: np.ndarray, nuisance_param_index: int | Iterable = 2
+) -> np.ndarray:
+    if (
+        not hasattr(nuisance_param_index, "__len__")
+        and int(nuisance_param_index) == nuisance_param_index
+    ):  # check if int
+        nuisance_param_index = [nuisance_param_index]
+    F_drop = F_full.copy()
+    F_drop = np.delete(F_drop, nuisance_param_index, axis=0)
+    F_drop = np.delete(F_drop, nuisance_param_index, axis=1)
+
+    return F_drop
 
 
 def compute_J_interest_given_nuisance(
@@ -1122,12 +1206,16 @@ def sweep_xz_F(alpha):
     # def xz_F(F):
     #     return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
     def xz_F(F):
-        return (1 - alpha) * F[0, 0] + alpha * F[1, 1]
+        # Normalize by largest eigenvalue for better spacing
+        f0 = np.linalg.eigvalsh(F[0, 0])[-1]
+        f1 = np.linalg.eigvalsh(F[1, 1])[-1]
+        return (1 - alpha) * F[0, 0] / f0 + alpha * F[1, 1] / f1
 
     return xz_F
 
 
 def sweep_xz_inv_J(alpha):
+
     def xz_inv_J(J):
         J_inv = torch.linalg.inv(J)
         return (1 - alpha) * J_inv[0, 0] + alpha * J_inv[1, 1]

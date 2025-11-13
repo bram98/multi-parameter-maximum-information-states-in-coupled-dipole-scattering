@@ -1,0 +1,9 @@
+xz_joint:
+  steps: 1000
+  lr: 0.01
+  lr_decay: null
+  lr_decay_step_size: 500
+  multiruns: null
+  n_sweep: 50
+  E_init_strength: 0.5
+  steps_init: 2000

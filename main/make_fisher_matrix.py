@@ -15,6 +15,7 @@ from scatteringlibs.lossfunctions import (
     LossFunctionsDict,
     LossFunctionSweep,
     dropped_lossfunction,
+    dropped_lossfunction_F,
     partial_lossfunction,
 )
 from scatteringlibs.optimizer import Optimizer
@@ -26,22 +27,23 @@ sys.exit()
 # %%
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
-data_folder = "../data/quasirandom_longrun_dist2-1"  # Where to save state
-save_state = False  # If True, save state to disk
+# data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
+data_folder = "../data/quasirandom_shortrun"  # Where to save state
+save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(1.1, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(1.0, 0.0), number=6, small_dist=0.786, start_index=5
 )
 
 frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(-1.1, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(-1.0, 0.0), number=6, small_dist=0.786, start_index=22
 )
 # movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
 # frozen_dipoles = None
 
 # %% 2) simulator geometry and input space
 
-N_modes = 45
+N_modes = 150
 lambda_0 = 1.0
 NA_out = 0.95
 
@@ -129,10 +131,12 @@ if save_state:
     fisher_calc.save(folder=data_folder)
 
     print(f"Saved simulator and Fisher matrix to '{data_folder}'")
-# %%
+# %% Lossfunctions
+
 
 loss_functions_dict = LossFunctionsDict()
 
+# %%% Full
 # Single parameters
 for i, param in enumerate(["x", "z", r"\phi"]):
     name = param.replace("\\", "")
@@ -158,11 +162,6 @@ for i, param in enumerate(["x", "z", r"\phi"]):
         shortname=rf"${param}$ (joint)",
         maximize=False,
         method="torch",
-        steps=5000,
-        lr=1e-1,
-        lr_decay=0.2,
-        lr_decay_step_size=500,
-        multiruns=3,
     )
 
 # Trace
@@ -202,10 +201,6 @@ loss_functions_dict["det"] = LossFunction(
     shortname=r"D-Opt.",
     maximize=True,
     method="torch",
-    steps=2000,
-    lr=1e-2,
-    lr_decay=0.2,
-    lr_decay_step_size=500,
 )
 
 
@@ -217,11 +212,6 @@ loss_functions_dict["spec_rad"] = LossFunction(
     shortname=r"E-Opt.",
     maximize=True,
     method="torch",
-    steps=4000,
-    lr=1e-1,
-    lr_decay=0.1,
-    lr_decay_step_size=500,
-    multiruns=None,
 )
 
 # Trace of inverse - A-optimality
@@ -232,14 +222,9 @@ loss_functions_dict["tr_inv"] = LossFunction(
     shortname=r"A-Opt.",
     maximize=False,
     method="torch",
-    steps=4000,
-    lr=1e-1,
-    lr_decay=0.2,
-    lr_decay_step_size=1000,
-    multiruns=3,
 )
 
-# %%
+# %%% Partial
 """
 All partial fisher loss functions. Used to optimize under presence of nuisance
 parameters
@@ -265,10 +250,6 @@ loss_functions_dict["partial_det"] = LossFunction(
     shortname=rf"D-Opt",
     maximize=True,
     method="torch",
-    steps=2000,
-    lr=1e-2,
-    lr_decay=0.2,
-    lr_decay_step_size=500,
 )
 
 # Partial Spectral Radius
@@ -279,11 +260,6 @@ loss_functions_dict["partial_spec_rad"] = LossFunction(
     shortname=rf"E-Opt.",
     maximize=True,
     method="torch",
-    steps=4000,
-    lr=1e-1,
-    lr_decay=0.1,
-    lr_decay_step_size=1000,
-    multiruns=None,
 )
 
 
@@ -295,15 +271,10 @@ loss_functions_dict["partial_tr_inv"] = LossFunction(
     shortname=rf"A-Opt.",
     maximize=False,
     method="torch",
-    steps=4000,
-    multiruns=3,
-    lr=1e-1,
-    lr_decay=0.2,
-    lr_decay_step_size=1000,
 )
 
 
-# %%
+# %%% Dropped
 """
 All fisher loss functions where all information on the nuisance parameter is 
 dropped. This is to compare with partial fisher information
@@ -314,17 +285,6 @@ dropped_fisher_latex = (
     rf"{{{parameter_of_interest_latex}{parameter_of_interest_latex}}}"
 )
 
-# # Single parameters
-# for i, param in enumerate(["x", "z"]):
-#     loss_functions_dict[f"dropped_{param}"] = LossFunction(
-#         dropped_lossfunction(lossfunctions.single_param_F(i), nuisance_index),
-#         f"dropped_{param}",
-#         displayname=f"Single parameter {param} (dropped)",
-#         shortname=rf"$\mathcal{{J}}_{dropped_fisher_latex}$)",
-#         maximize=True,
-#         method="torch",
-#         steps=2000,
-#     )
 
 # dropped Determinant
 loss_functions_dict["dropped_det"] = LossFunction(
@@ -334,10 +294,6 @@ loss_functions_dict["dropped_det"] = LossFunction(
     shortname=rf"D-Opt.",
     maximize=True,
     method="torch",
-    steps=2000,
-    lr=1e-2,
-    lr_decay=0.2,
-    lr_decay_step_size=500,
 )
 
 # dropped Spectral Radius
@@ -348,11 +304,6 @@ loss_functions_dict["dropped_spec_rad"] = LossFunction(
     shortname=rf"E-Opt.",
     maximize=True,
     method="torch",
-    steps=4000,
-    lr=1e-1,
-    lr_decay=0.1,
-    lr_decay_step_size=1000,
-    multiruns=None,
 )
 
 
@@ -364,14 +315,11 @@ loss_functions_dict["dropped_tr_inv"] = LossFunction(
     shortname=rf"A-Opt.",
     maximize=False,
     method="torch",
-    steps=4000,
-    multiruns=3,
-    lr=1e-1,
-    lr_decay=0.2,
-    lr_decay_step_size=1000,
 )
 loss_functions_dict["dropped_tr_norm"] = LossFunction(
-    lossfunctions.normalized_trace_of_F,
+    dropped_lossfunction_F(
+        lossfunctions.normalized_trace_of_F, nuisance_index
+    ),
     "dropped_tr_norm",
     displayname="Normalized Trace (dropped)",
     shortname=r"$\operatorname{tr}_N J$",
@@ -400,7 +348,7 @@ for loss_function in loss_functions_dict.values():
     )
 
 
-# %%
+# %% Check Convergence
 """
 Check convergence by showing loss histories
 """
@@ -414,7 +362,7 @@ for loss_function in loss_functions_dict.values():
         )
 
 
-# %%
+# %% Visualize
 """
 Visualize optimized wavefronts and scatterers
 """
@@ -431,7 +379,7 @@ for loss_function in loss_functions_dict.values():
         dpi=300,
     )
 
-# %%
+# %% Save loss functions
 """
 Save results to be used in other scripts
 """
@@ -441,11 +389,11 @@ if save_state:
     print(f"Saved loss functions to '{data_folder}'")
 
 
-# %% Lossfunctions that contain a sweep over a parameter
+# %% Sweep loss functions
 """
 Lossfunctions that contain a sweep over a parameter
 """
-# %%
+
 loss_functions_sweep_dict = LossFunctionsDict()
 
 # sweep_dict["xz_inv"]
@@ -471,33 +419,17 @@ loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
     shortname=rf"$x\leftrightarrow z$ (joint)",
     maximize=False,
     method="torch",
-    n_sweep=50,
-    steps_init=10000,
-    steps=10000,
-    lr=1e-2,
-    multiruns=10,
-    E_init_strength=0.5,
 )
-# for eps in [1, 0.1, 0, -0.1, -0.5]:
-#     loss_functions_sweep_dict[f"xz_joint_eps{eps}"] = LossFunctionSweep(
-#         lossfunctions.sweep_xz_inv_J_eps(eps),
-#         name=f"xz_joint_eps{eps}",
-#         displayname=f"Interpolation x-z (joint)",
-#         # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
-#         shortname=rf"$x\leftrightarrow z$ (joint)",
-#         maximize=False,
-#         method="torch",
-#         n_sweep=50,
-#         steps_init=10000,
-#         steps=6000,
-#         lr=2e-2,
-#         multiruns=5,
-#         E_init_strength=0.2,
-#     )
-# %%
+
+
+# %% Optimize sweeps
 """
 Optimize sweeps
 """
+
+loss_functions_sweep_dict.load_optimization_settings(
+    "quick_sweep", folder="../optimization_settings"
+)
 
 loss_function: LossFunctionSweep
 for loss_function in loss_functions_sweep_dict.values():
@@ -509,7 +441,7 @@ for loss_function in loss_functions_sweep_dict.values():
         verbose=True,
     )
 
-# %% Loss history plots for sweep
+# %% Check convergence
 """
 Check convergence by showing loss histories of sweeps
 """
@@ -522,7 +454,7 @@ for loss_function in loss_functions_sweep_dict.values():
             title=f"{loss_function.displayname} Optimization Loss",
         )
 
-# %%
+# %% Save sweep loss functions
 """
 Save results of sweep to be used in other scripts
 """
@@ -543,6 +475,8 @@ ss = [
 ]
 for name, s in loss_functions_sweep_dict.items():
     J_invs = [np.linalg.inv(J) for J in s.Js]
+    zs = np.array([J[1, 1] for J in s.Js])
+    xs = np.array([J[0, 0] for J in s.Js])
     z = np.array([J_inv[1, 1] for J_inv in J_invs])
     x = np.array([J_inv[0, 0] for J_inv in J_invs])
     plt.plot(z[:], x[:], label=name)
@@ -555,10 +489,20 @@ def f(z, m, n, c, z0, x0):
     return (c / (z - z0) ** m) ** (1 / n) + x0
 
 
-p, cov = curve_fit(f, z, x, p0=(1, 1, 1e-6, 0, 0))
+def f2(z, m, n, r, b, z0, x0):
+    return (np.abs(r - b * (np.abs(z - z0)) ** m)) ** (1 / n) + x0
 
-plt.figure()
-plt.plot(z, f(z, *p), label="fit")
+
+def f_lin(z, c, z0, x0):
+    return c * (z - z0) + x0
+
+
+p, cov = curve_fit(f2, z, x, p0=(-1, -1, 100.0, 1.5, 0, 0.042))
+# p, cov = curve_fit(f_lin, 1/z, 1/x, p0=(-1., 50, 20))
+p = (-1, -1, 100.0, 1.5, 0, 0.042)
+# plt.figure()
+plt.plot(z, f2(z, *p), label="fit")
+# plt.plot(1/z, f_lin(1/z, *p), label="fit")
 # plt.xscale("log")
 # plt.yscale("log")
 plt.legend()
@@ -566,7 +510,6 @@ plt.title(
     r"Interpolation of Scalar CRLB: $\langle E|\left((1-\alpha)F_{xx} + \alpha F_{zz}\right)|E\rangle$"
 )
 plt.show()
-
 
 # %%
 """

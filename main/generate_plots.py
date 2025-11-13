@@ -26,7 +26,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
-project_name = "quasirandom_longrun_dist2-1"
+project_name = "quasirandom_longrun - Copy"
 # project_name = "quasirandom"
 # project_name = "square"
 data_folder = f"../data/{project_name}"
@@ -564,11 +564,19 @@ pareto_groups = [
 ]
 pareto_groups_sweep = [
     PlotGroup(
+        loss_functions_sweep_dict.select_only(["xz_scalar"]),
+        legend_label="Interpolation",
+        color="purple",
+        linestyle="-",
+        marker=".",
+        # marker="x",
+    ),
+    PlotGroup(
         loss_functions_sweep_dict.select_only(["xz_joint"]),
         legend_label="Interpolation",
         color="green",
         linestyle="-",
-        marker="",
+        marker=".",
         # marker="x",
     ),
 ]
@@ -582,7 +590,7 @@ Use this line to plot all the components incrementally. (1, 4) means plot 1
 pareto_groups_sweep plot and 4 pareto_groups plots.
 """
 include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
-include_plot_indices = [(1, 5)]
+include_plot_indices = [(3, 5)]
 
 
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
@@ -616,7 +624,7 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         grid_kwargs=GRID_KWARGS,
         use_logscale=False,
         adjust_text_kwargs=dict(
-            force_static=0.5,
+            force_static=0.9,
             force_text=0.5,
             force_explode=(0.5, 0.5),
             force_pull=0.1,
@@ -631,7 +639,7 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         y_avoid=y_avoid,
         # xlim=(0.0017 * wavelength_unit, 0.009 * wavelength_unit),
         # ylim=(0.00340 * wavelength_unit, 0.0056 * wavelength_unit),
-        xlim=None,
+        xlim=(None, None),
         ylim=None,
         wavelength_unit=wavelength_unit,
     )
