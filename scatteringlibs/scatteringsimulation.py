@@ -520,6 +520,8 @@ class CoupledDipoleSimulator(Storable):
         title=None,
     ):
         """Visualizes the positions of scatterers within the slab."""
+        movable_plot = None
+        frozen_plot = None
         newfig = ax is None
         if newfig:
             if figsize is None:
