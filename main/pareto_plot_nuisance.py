@@ -82,6 +82,7 @@ def pareto_plot(
     xlim=None,
     ylim=None,
     wavelength_unit: float = 1.0,
+    photon_budget: float = 1.0,
 ):
     new_fig = ax is None
     if new_fig:
@@ -98,8 +99,12 @@ def pareto_plot(
 
         texts, points = pareto_plot_single(
             loss_functions_dict.shortnames(),
-            x_data=crlbs_joint[:, x_idx] * wavelength_unit,
-            y_data=crlbs_joint[:, y_idx] * wavelength_unit,
+            x_data=crlbs_joint[:, x_idx]
+            * wavelength_unit
+            / np.sqrt(photon_budget),
+            y_data=crlbs_joint[:, y_idx]
+            * wavelength_unit
+            / np.sqrt(photon_budget),
             marker=pareto_group.marker,
             legend_label=pareto_group.legend_label,
             color=pareto_group.color,
@@ -237,6 +242,7 @@ def pareto_plot_sweep(
     xlabel: str = None,
     ylabel: str = None,
     wavelength_unit: float = 1.0,
+    photon_budget: float = 1.0,
 ):
     new_fig = ax is None
     if new_fig:
@@ -261,8 +267,16 @@ def pareto_plot_sweep(
         # )
         crlbs_sweep_joint = np.array(crlbs_sweep_joint)
 
-        x_data = crlbs_sweep_joint[:, :, x_idx].T * wavelength_unit
-        y_data = crlbs_sweep_joint[:, :, y_idx].T * wavelength_unit
+        x_data = (
+            crlbs_sweep_joint[:, :, x_idx].T
+            * wavelength_unit
+            / np.sqrt(photon_budget)
+        )
+        y_data = (
+            crlbs_sweep_joint[:, :, y_idx].T
+            * wavelength_unit
+            / np.sqrt(photon_budget)
+        )
 
         texts, points = pareto_plot_sweep_single(
             # pareto_group.loss_functions_dict.shortnames(),

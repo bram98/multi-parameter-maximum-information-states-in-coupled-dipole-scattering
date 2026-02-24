@@ -15,11 +15,10 @@ from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
 from scatteringlibs.matplotlibmagic import (
     PlotGroup,
+    add_dots_to_legend,
     make_leftax_look_like_inset,
     register_turbo,
 )
-
-register_turbo()
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
@@ -27,6 +26,11 @@ sys.exit()
 
 # %% Loading in data
 project_name = "quasirandom_longrun - Copy"
+project_name = "quasirandom_shortrun_dist2-8"
+# project_name = "quasirandom_shortrun_dist2-6"
+# project_name = "quasirandom_shortrun_dist2-4"
+# project_name = "quasirandom_shortrun_dist3-0"
+
 # project_name = "quasirandom"
 # project_name = "square"
 data_folder = f"../data/{project_name}"
@@ -52,6 +56,7 @@ AXES_LABEL_FONTSIZE = 8
 LEGEND_FONTSIZE = 8
 TICK_FONTSIZE = 6
 SUBPLOT_ANNOTATION_FONTSIZE = 14
+PHOTON_BUDGET = 1e3
 
 GRID_KWARGS = dict(which="both", linestyle=":")
 
@@ -249,7 +254,7 @@ lf_names = [
     "spec_rad",
 ]
 
-fig, ax = plt.subplots(nrows=5, ncols=2, figsize=(0.95 * TEXTWIDTH,))
+fig, ax = plt.subplots(nrows=5, ncols=2, figsize=(0.95 * TEXTWIDTH, None))
 
 for lf in loss_functions_dict.select_only(lf_names).values():
 
@@ -309,6 +314,7 @@ sim = CoupledDipoleSimulator.load(folder=data_folder)
 
 lf1 = loss_functions_dict["x"]
 lf2 = loss_functions_dict["det"]
+# lf1 = loss_functions_dict["tr_norm"]
 
 sim2 = sim.copy()
 
@@ -319,20 +325,20 @@ sim2.set_input_field_amplitudes(lf2.wavefront)
 sim.compute_total_field()
 sim2.compute_total_field()
 
-intensity = np.abs(sim.E_total) ** 2
-intensity2 = np.abs(sim.E_total) ** 2
+intensity = np.abs([sim.E_total, sim2.E_total]) ** 2
+# intensity2 = np.abs(sim2.E_total) ** 2
 plt.hist(intensity.flatten(), bins=100, range=(10, 100))
-plt.hist(intensity2.flatten(), bins=100, range=(10, 100))
+# plt.hist(intensity2.flatten(), bins=100, range=(10, 100))
 plt.xticks(range(10, 100, 5))
 plt.yscale("log")
 plt.show()
 
 
 # max_intensity = np.max([np.abs(sim.E_total) ** 2, np.abs(sim2.E_total) ** 2])
-max_intensity = 60
+max_intensity = 65
 
 
-fig = plt.figure(figsize=(0.985 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
+fig = plt.figure(figsize=(0.495 * TEXTWIDTH, 0.27 * TEXTWIDTH), dpi=DPI)
 # fig = plt.figure(figsize=(6, 4), dpi=DPI)
 axes = ImageGrid(
     fig,
@@ -366,8 +372,8 @@ plots2 = sim2.visualize_intensity(
 # plt.colorbar()
 
 # Set color of intensities over max_intensity
-plots["field_img"].cmap.set_over("r")
-plots2["field_img"].cmap.set_over("r")
+plots["field_img"].cmap.set_over("w")
+plots2["field_img"].cmap.set_over("w")
 axes.cbar_axes[0].colorbar(plots2["field_img"], extend="max")
 
 annotate_subplots_abc(axes, format_str="({})", background="dark")
@@ -375,10 +381,16 @@ annotate_subplots_abc(axes, format_str="({})", background="dark")
 # axes[1].set_ylabel("")
 # axes.cbar_axes[0].legend([plots2['frozen_plot']], ['lol'], loc='best')
 # axes[0].legend([plots2['frozen_plot']], ['lol'])
+
+handles, labels, handler_map = add_dots_to_legend(
+    axes[1].get_legend_handles_labels()
+)
 fig.legend(
-    *axes[1].get_legend_handles_labels(),
+    handles,
+    labels,
+    handler_map=handler_map,
     ncols=2,
-    bbox_to_anchor=(0.49, 0.9),
+    bbox_to_anchor=(0.5, 0.95),
     loc="lower center",
 )
 
@@ -389,10 +401,10 @@ if save_plots:
         save_folder
         / f"{project_name}_optimized_double_{lf1.name}_{lf2.name}.png"
     )
-    fig.savefig(optimized_path, dpi=DPI, bbox_inches=0)
+    fig.savefig(optimized_path, dpi=DPI, bbox_inches="tight")
     print(f"Saved plot to {optimized_path}")
 plt.show()
-# %% 1) Bar plot of CRLBs
+# %% Bar plot of CRLBs
 
 
 barplot_lossfunctions = [
@@ -411,19 +423,21 @@ barplot_lossfunctions = [
 loss_functions_dict_bar = loss_functions_dict.select_only(
     barplot_lossfunctions
 )
+PHOTON_BUDGET = 1e3
 
 optimized_crlbs = crlbanalysis.compute_crlb_for_optimized(
-    loss_functions_dict_bar
+    loss_functions_dict_bar,
+    photon_budget=PHOTON_BUDGET,
 )
 plane_wave_crlbs = crlbanalysis.compute_crlb_for_planewaves(
     sim_kwargs=sim.get_kwargs(),
     F_operator_tensor=fisher_calc.F,
-    photon_budget=1.0,
+    photon_budget=PHOTON_BUDGET,
     kx_array=sim.k_x_array,
 )
 random_wavefronts_crlbs = crlbanalysis.compute_crlb_for_random_wavefronts(
     F_operator_tensor=fisher_calc.F,
-    photon_budget=1.0,
+    photon_budget=PHOTON_BUDGET,
     num_samples=100,
 )
 
@@ -436,23 +450,23 @@ random_wavefronts_crlbs_joint, random_wavefronts_crlbs_scalar = (
 
 loss_function_names = loss_functions_dict_bar.shortnames()
 
-plt.rcdefaults()
-# plt.rcParams['axes.labelsize'] = 110
-# plt.rcParams['xtick.minor.size'] = 10
-# plt.rcParams['xtick.major.size'] = 10
-# plt.rcParams["xtick.labelsize"] = 100
-# plt.rcParams['xtick.color'] = 'g'
-# plt.rcParams['font.size'] = 20
 
 fig, axes = plt.subplots(
     ncols=2,
     # figsize=(14, 6),
-    figsize=(2.0 * TEXTWIDTH, 2 * 0.4 * TEXTWIDTH),
+    figsize=(1.4 * TEXTWIDTH, 0.7 * TEXTWIDTH),
     width_ratios=[len(loss_function_names) + 1, 2 + 1],
     dpi=DPI,
     layout="constrained",
 )
 
+
+wavelength_unit_order = -3
+wavelength_unit = 10 ** (-wavelength_unit_order)
+if wavelength_unit_order == 0:
+    wavelength_unit_str = ""
+else:
+    wavelength_unit_str = rf"$10^{{{wavelength_unit_order}}}$ "
 
 crlbanalysis.visualize_crlb_barplot(
     loss_function_names=loss_function_names,
@@ -466,12 +480,15 @@ crlbanalysis.visualize_crlb_barplot(
     ax=axes[0],
     # title="Optimized Wavefronts",
     title="",
-    tick_fontsize=None,
+    xtick_fontsize=None,
+    ytick_fontsize=None,
+    axes_label_fontsize=None,
     ylim=(-0.000, None),
     hatch_color=(0.8,) * 3,
     joint_opacity=0.65,
-    y_label=r"CRLB (wavelengths)",
+    y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
     rotate_labels=False,
+    wavelength_unit=wavelength_unit,
 )
 
 crlbanalysis.visualize_crlb_boxplot(
@@ -485,11 +502,13 @@ crlbanalysis.visualize_crlb_boxplot(
     random_wavefronts_crlbs_joint=random_wavefronts_crlbs_joint,
     ax=axes[1],
     y_label=None,
-    ylim=(-0.002, None),
+    ylim=(0, None),
     # title="Plane Waves and Random Wavefronts",
     title="",
-    fontsize=6,
-    ref_lines=[0, 0.0185],
+    fontsize=None,
+    # ref_lines=[0, 0.0185*PHOTON_BUDGET],
+    # ref_lines=[0, 500],
+    wavelength_unit=wavelength_unit,
 )
 annotate_subplots_abc(axes, background="white")
 
@@ -499,13 +518,15 @@ make_leftax_look_like_inset(
 fig.set_constrained_layout_pads(wspace=0.1)
 
 if save_plots:
-    plt.savefig(save_folder / f"{project_name}_crlb_barplot.png")
-    plt.savefig(save_folder / f"{project_name}_crlb_barplot.pdf")
-    print(f"Saved CRLB bar plot to '{data_folder}'")
+
+    fig_name = f"{project_name}_crlb_barplot_PB-{PHOTON_BUDGET:.2e}"
+    plt.savefig(save_folder / (fig_name + ".png"))
+    plt.savefig(save_folder / (fig_name + ".pdf"))
+    print(f"Saved CRLB bar plot to '{save_folder}\{fig_name}'")
 plt.show()
 
 
-# %% 2) Pareto plot
+# %% Pareto plot
 
 """
 Select the different loss functions (optimality criteria) from the 
@@ -515,9 +536,11 @@ loss_functions_dict
 lf_dict_single_param = loss_functions_dict.select_only(["x", "z"])
 lf_dict_single_param_inv = loss_functions_dict.select_only(["x_inv", "z_inv"])
 lf_dict_dropped = loss_functions_dict.select_only(
-    ["dropped_det", "dropped_spec_rad", "dropped_tr_inv"]
+    ["dropped_det", "dropped_spec_rad", "dropped_tr_inv", "dropped_tr_norm"]
 )
-lf_dict_full = loss_functions_dict.select_only(["det", "spec_rad", "tr_inv"])
+lf_dict_full = loss_functions_dict.select_only(
+    ["det", "spec_rad", "tr_inv", "tr_norm"]
+)
 lf_dict_partial = loss_functions_dict.select_only(
     [
         "partial_det",
@@ -533,31 +556,32 @@ Control the formatting of the different groups here.
 pareto_groups = [
     PlotGroup(
         lf_dict_single_param,
-        legend_label="Single-param. optimality",
+        # legend_label="Single-param. optimality",
+        legend_label="Scalar",
         color="purple",
         marker=".",
     ),
     PlotGroup(
         lf_dict_single_param_inv,
-        legend_label="Three-param. optimality",
+        legend_label="Joint (full)",
         color="green",
         marker="^",
     ),
     PlotGroup(
         lf_dict_full,
-        legend_label="Three-param. optimality",
+        legend_label="Joint (full)",
         color="green",
         marker="^",
     ),
     PlotGroup(
         lf_dict_dropped,
-        legend_label="Two-param. optimality",
+        legend_label="Subblock",
         color="red",
         marker="x",
     ),
     PlotGroup(
         lf_dict_partial,
-        legend_label="Two-param. optimality (partial)",
+        legend_label="Partial",
         color="blue",
         marker="s",
     ),
@@ -568,7 +592,7 @@ pareto_groups_sweep = [
         legend_label="Interpolation",
         color="purple",
         linestyle="-",
-        marker=".",
+        marker="",
         # marker="x",
     ),
     PlotGroup(
@@ -576,7 +600,7 @@ pareto_groups_sweep = [
         legend_label="Interpolation",
         color="green",
         linestyle="-",
-        marker=".",
+        marker="",
         # marker="x",
     ),
 ]
@@ -592,12 +616,16 @@ pareto_groups_sweep plot and 4 pareto_groups plots.
 include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
 include_plot_indices = [(3, 5)]
 
+PHOTON_BUDGET = 1e3
 
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
+    # fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
+    fig, ax = plt.subplots(
+        figsize=(0.95 * TEXTWIDTH, 0.7 * TEXTWIDTH), dpi=DPI
+    )
 
-    wavelength_unit_order = 0
+    wavelength_unit_order = -3
     wavelength_unit = 10 ** (-wavelength_unit_order)
     if wavelength_unit_order == 0:
         wavelength_unit_str = ""
@@ -610,46 +638,64 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         y_idx,
         ax=ax,
         wavelength_unit=wavelength_unit,
+        photon_budget=PHOTON_BUDGET,
     )
-    # line = np.linspace(0, 10)
-    # plt.plot(line, line, ls='-', c='#AAA', lw=1)
+
+    # x_avoid += [0.228]
+    # y_avoid += [0.252]
     pareto_plot(
         pareto_groups[:scatter_index],
         x_idx,
         y_idx,
         xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
         ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
-        title=r"Nuisance Aware Optimality Criteria",
+        # title=r"Nuisance Aware Optimality Criteria",
+        title="",
         ax=ax,
         grid_kwargs=GRID_KWARGS,
         use_logscale=False,
+        # adjust_text_kwargs=dict(
+        #     force_static=0.7,
+        #     force_text=0.9,
+        #     force_explode=(0.1, 0.1),
+        #     force_pull=0.3,
+        #     expand=(1.8, 1.8),
+        #     min_arrow_len=40,
+        #     iter_lim=1000,
+        #     avoid_self=True,
+        #     max_move=(100, 100),
+        #     ensure_inside_axes=True,
+        # ),
         adjust_text_kwargs=dict(
-            force_static=0.9,
-            force_text=0.5,
-            force_explode=(0.5, 0.5),
-            force_pull=0.1,
-            expand=(2.0, 2.5),
+            force_static=0.24,
+            force_text=0.2,
+            force_explode=(0.0, 0.0),
+            force_pull=0.15,
+            expand=(1.8, 1.8),
             min_arrow_len=40,
             iter_lim=1000,
             avoid_self=True,
-            max_move=(100, 100),
+            max_move=(5000, 5000),
             ensure_inside_axes=True,
         ),
         x_avoid=x_avoid,
         y_avoid=y_avoid,
-        # xlim=(0.0017 * wavelength_unit, 0.009 * wavelength_unit),
-        # ylim=(0.00340 * wavelength_unit, 0.0056 * wavelength_unit),
-        xlim=(None, None),
-        ylim=None,
+        # xlim=(0.2*PHOTON_BUDGET, None),
+        # ylim=(0.233*PHOTON_BUDGET, 0.288*PHOTON_BUDGET),
         wavelength_unit=wavelength_unit,
+        photon_budget=PHOTON_BUDGET,
     )
 
+    # Plot  z = x
+    x = np.array([0, 1000])
+    plt.plot(x, x, ls="-", c="#AAA", lw=1, alpha=0.5)
+
     if save_plots:
-        fig_name = f"{project_name}_pareto_plot_nuisance_fig{i}"
+        fig_name = f"{project_name}_pareto_plot_nuisance_PB-{PHOTON_BUDGET:.2e}_fig{i}"
         plt.savefig(save_folder / f"{fig_name}.png")
         plt.savefig(save_folder / f"{fig_name}.pdf")
         print(f"Saved pareto plot to '{fig_name}'")
-
+ax.set_aspect("equal")
 plt.show()
 
 

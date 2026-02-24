@@ -7,11 +7,20 @@ from scatteringlibs.storable import Storable
 
 class FisherMatrix(Storable):
     """
-    A class to compute and manage multiparameter Fisher matrices from dS matrices.
+    A class to compute and manage multiparameter Fisher matrices from dS
+    matrices. The Fisher matrix F is lazily computed and gets reset when you
+    modify dS or use_heterodyne.
     """
 
     def __init__(
-        self, dS=None, param_names=None, delta=None, seed=None, r_param=None
+        self,
+        dS=None,
+        S=None,
+        use_heterodyne=True,
+        param_names=None,
+        delta=None,
+        seed=None,
+        r_param=None,
     ):
         self._nparams = None
         self._nhilbert_in = None
@@ -21,14 +30,20 @@ class FisherMatrix(Storable):
         self._r_param = r_param
         self._delta = delta
         self._param_names = param_names
+        self._use_heterodyne = use_heterodyne
 
         if dS is None:
             self._dS = None
         else:
             self.dS = np.asarray(dS)  # This will trigger the setter.
 
+        if S is None:
+            self._S = None
+        else:
+            self._S = np.asarray(S)
+
     @staticmethod
-    def F_from_dS(dS):
+    def F_from_dS(dS, use_heterodyne=True):
         """
         Computes the Fisher matrix from dS.
         Assumes dS is shape (nparams, N_out, N_in).
@@ -39,6 +54,11 @@ class FisherMatrix(Storable):
         N_out, N_in = dS.shape[1], dS.shape[2]
         F = np.zeros((nparams, nparams, N_in, N_in), dtype=complex)
 
+        if use_heterodyne:
+            coefficient = 1  # heterodyne detection
+        else:
+            coefficient = 2  # homodyne detection
+
         for mu in range(nparams):
             for nu in range(nparams):
                 dS_mu_dagger = dS[mu].conjugate().T  # Shape (N_in, N_out)
@@ -46,7 +66,7 @@ class FisherMatrix(Storable):
 
                 term1 = dS_mu_dagger @ dS[nu]  # Shape (N_in, N_in)
                 term2 = dS_nu_dagger @ dS[mu]  # Shape (N_in, N_in)
-                F[mu, nu, :, :] = 2.0 * (term1 + term2)
+                F[mu, nu, :, :] = coefficient * (term1 + term2)
         return F
 
     @property
@@ -57,7 +77,7 @@ class FisherMatrix(Storable):
         if self._F is None:
             if self._dS is None:
                 raise ValueError("dS is not defined")
-            self._F = FisherMatrix.F_from_dS(self.dS)
+            self._F = FisherMatrix.F_from_dS(self.dS, self.use_heterodyne)
         return self._F
 
     @property
@@ -92,6 +112,37 @@ class FisherMatrix(Storable):
         """
         self.dS = dS_val
         return self
+
+    @property
+    def S(self):
+        """
+        Getter for S
+        """
+        return self._S
+
+    @S.setter
+    def S(self, S_val):
+        """
+        Setter for dS
+        """
+        self._S = S_val
+
+    @property
+    def use_heterodyne(self):
+        """
+        Getter for use_heterodyne
+        """
+        return self._use_heterodyne
+
+    @use_heterodyne.setter
+    def use_heterodyne(self, use_heterodyne_val):
+        """
+        Setter for use_heterodyne
+        """
+        if bool(use_heterodyne_val) != use_heterodyne_val:
+            raise ValueError("use_heterodyne should be bool")
+        self._use_heterodyne = bool(use_heterodyne_val)
+        self._F = None
 
     def random(
         self,

@@ -3,9 +3,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cmap import Colormap
 from matplotlib.collections import PathCollection
+from matplotlib.legend_handler import HandlerTuple
+from matplotlib.lines import Line2D
 from matplotlib.patches import ConnectionPatch, Rectangle
 from matplotlib.path import get_path_collection_extents
 from matplotlib.transforms import Affine2D
+
+"""
+These functions are to implement specific things in plotting. These functions
+can be quite convoluted and to prevent polluting the plotting logic, they are 
+stashed away in "matplotlibmagic".
+"""
 
 
 class PlotGroup:
@@ -214,3 +222,69 @@ def register_turbo(force=False, verbose=False):
     except ValueError as e:
         if verbose:
             print("Warning: ", e.args[0])
+
+
+register_turbo()
+
+
+class CenteringHandlerTuple(HandlerTuple):
+    def create_artists(
+        self,
+        legend,
+        orig_handle,
+        xdescent,
+        ydescent,
+        width,
+        height,
+        fontsize,
+        trans,
+    ):
+        # 1. Let the parent class create the artists (red marker + black dot)
+        # artists[0] -> The red marker (from original handle)
+        # artists[1] -> The black dot (from dot_handle)
+        artists = super().create_artists(
+            legend,
+            orig_handle,
+            xdescent,
+            ydescent,
+            width,
+            height,
+            fontsize,
+            trans,
+        )
+        for artist in artists:
+            if isinstance(artist, Line2D):
+                artist.set_markevery(None)
+
+        # print()
+        bbox = artists[0].get_tightbbox()
+        # 2. Grab the dot artist
+        dot_artist = artists[-1]
+
+        # 3. Force the dot to the exact center of the legend key area
+        dot_artist.set_xdata([(bbox.x0 + bbox.x1) / 2])
+        dot_artist.set_ydata([(bbox.y0 + bbox.y1) / 2])
+
+        # 4. Apply the correct transformation so it moves with the legend
+        dot_artist.set_transform(trans)
+
+        return artists
+
+
+def add_dots_to_legend(handles_and_labels, **plot_kwargs):
+    default_plot_kwargs = dict(
+        marker="o",  # Use 'o', not '.'
+        color="black",  # Fill color
+        markeredgewidth=0,  # No edge (pure fill)
+        markersize=2,
+        linestyle="None",
+    )
+    default_plot_kwargs.update(plot_kwargs)
+    dot_handle = Line2D([], [], **default_plot_kwargs)
+    handles, labels = handles_and_labels
+    handles = [(handle, dot_handle) for handle in handles]
+
+    # Handles are normally placed next to each other. This line ensures they
+    # are placed on top of each other.
+    handler_map = {tuple: CenteringHandlerTuple(ndivide=1)}
+    return handles, labels, handler_map

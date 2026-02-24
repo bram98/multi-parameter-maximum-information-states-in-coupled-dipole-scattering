@@ -11,6 +11,8 @@ from scatteringlibs.matplotlibmagic import PlotGroup
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
+sys.exit()
+
 
 # %% -1) define functions
 def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
@@ -78,7 +80,7 @@ single_run_iterations = 4000
 
 
 # %%
-project_name = "quasirandom_longrun"
+project_name = "quasirandom_shortrun_dist2-8"
 data_folder = f"../data/{project_name}"
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
@@ -379,7 +381,7 @@ crlbs_styles_z = {"z": dict(label="z", marker=".")}
 crlbs_styles_x.update(crlb_styles)
 crlbs_styles_z.update(crlb_styles)
 
-fig, axes = plt.subplots(nrows=2, ncols=2)
+fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 8))
 plot_crlb(
     axes[1, 0], crlb_estimates, crlbs_styles_x, phi_deviations[::], param_idx=1
 )
@@ -704,7 +706,8 @@ fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
 #     f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
 #     fontsize=16,
 # )
-
+idx_x = 0
+idx_z = 1
 # Plot for X parameter on the left column
 plot_performance_on_axes(axes[:, 0], "X", idx_x, 0)
 axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)

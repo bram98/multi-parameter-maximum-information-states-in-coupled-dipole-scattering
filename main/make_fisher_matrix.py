@@ -28,22 +28,22 @@ sys.exit()
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
-data_folder = "../data/quasirandom_shortrun"  # Where to save state
+data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
 save_state = True  # If True, save state to disk
 # %% 1) define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(1.0, 0.0), number=6, small_dist=0.786, start_index=5
+    center=(1.4, 0.0), number=6, small_dist=0.786, start_index=5
 )
 
 frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(-1.0, 0.0), number=6, small_dist=0.786, start_index=22
+    center=(-1.4, 0.0), number=6, small_dist=0.786, start_index=23
 )
 # movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
 # frozen_dipoles = None
 
 # %% 2) simulator geometry and input space
 
-N_modes = 150
+N_modes = 45
 lambda_0 = 1.0
 NA_out = 0.95
 
@@ -85,6 +85,8 @@ print()
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3
 
+S, _ = sim.build_scattering_matrix(flux_normalize=True)
+
 print("Calculating dS for 3 parameters...")
 dS_tensor = placedipoles.calculate_dS_for_3_parameters(
     sim.get_kwargs(),
@@ -97,7 +99,7 @@ dS_tensor = placedipoles.calculate_dS_for_3_parameters(
 print(f"Built dS tensor with shape: {dS_tensor.shape}")
 # %% 4) Build the Fisher-operator array and set global variables
 fisher_calc = FisherMatrix(
-    dS=dS_tensor, param_names=param_names, delta=delta_param
+    dS=dS_tensor, S=S, param_names=param_names, delta=delta_param
 )
 F_tensor_operator = fisher_calc.F
 
@@ -333,7 +335,9 @@ loss_functions_dict["dropped_tr_norm"] = LossFunction(
 Optimize
 """
 loss_functions_dict.load_optimization_settings(
-    "quick", folder="../optimization_settings"
+    "thorough",
+    folder="../optimization_settings",
+    # "quick", folder="../optimization_settings"
 )
 
 
@@ -428,7 +432,9 @@ Optimize sweeps
 """
 
 loss_functions_sweep_dict.load_optimization_settings(
-    "quick_sweep", folder="../optimization_settings"
+    # "quick_sweep", folder="../optimization_settings"
+    "thorough_sweep",
+    folder="../optimization_settings",
 )
 
 loss_function: LossFunctionSweep

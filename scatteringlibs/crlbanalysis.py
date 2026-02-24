@@ -97,6 +97,7 @@ def normalize_wavefront(
 
 def compute_crlb_for_optimized(
     loss_functions_dict: LossFunctionsDict,
+    photon_budget: float = 1.0,
 ) -> np.ndarray:
     crlb_optimized_joint = []
     crlb_optimized_scalar = []
@@ -105,8 +106,12 @@ def compute_crlb_for_optimized(
         crlb_optimized_joint.append(compute_joint_crlb_from_J(J))
         crlb_optimized_scalar.append(compute_scalar_crlb_from_J(J))
 
-    crlb_optimized_joint = np.array(crlb_optimized_joint)
-    crlb_optimized_scalar = np.array(crlb_optimized_scalar)
+    crlb_optimized_joint = np.array(crlb_optimized_joint) / np.sqrt(
+        photon_budget
+    )
+    crlb_optimized_scalar = np.array(crlb_optimized_scalar) / np.sqrt(
+        photon_budget
+    )
     return crlb_optimized_joint, crlb_optimized_scalar
 
 
@@ -251,10 +256,12 @@ def visualize_crlb_barplot(
     title_fontsize: int | None = None,
     axes_label_fontsize: int | None = None,
     legend_fontsize: int | None = None,
-    tick_fontsize: int | None = None,
+    xtick_fontsize: int | None = None,
+    ytick_fontsize: int | None = None,
     hatch_color=(0.2,) * 3,
     rotate_labels: bool = False,
     use_legend: bool = True,
+    wavelength_unit: float = 1.0,
 ):
     """
     Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
@@ -319,7 +326,7 @@ def visualize_crlb_barplot(
             offset = (p - (num_params - 1) / 2) * bar_width
             joined_bar = ax.bar(
                 x_positions_optimized + offset,
-                optimized_crlbs_joint[:, p],
+                optimized_crlbs_joint[:, p] * wavelength_unit,
                 width=bar_width,
                 label=param_legends_joint[p],
                 color=(param_colors[p], joint_opacity),
@@ -338,7 +345,7 @@ def visualize_crlb_barplot(
             offset = (p - (num_params - 1) / 2) * bar_width
             scalar_bar = ax.bar(
                 x_positions_optimized + offset,
-                optimized_crlbs_scalar[:, p],
+                optimized_crlbs_scalar[:, p] * wavelength_unit,
                 width=bar_width,
                 label=param_legends_scalar[p],
                 color=param_colors[p],
@@ -362,11 +369,12 @@ def visualize_crlb_barplot(
     ax.set_xticks(xtick_positions)
     if rotate_labels:
         ax.set_xticklabels(
-            xtick_labels, rotation=25, ha="right", fontsize=tick_fontsize
+            xtick_labels, rotation=25, ha="right", fontsize=xtick_fontsize
         )
     else:
-        ax.set_xticklabels(xtick_labels, fontsize=tick_fontsize)
+        ax.set_xticklabels(xtick_labels, fontsize=xtick_fontsize)
 
+    ax.tick_params(axis="y", labelsize=ytick_fontsize)
     ax.set_title(title, fontsize=title_fontsize)
     ax.set_ylabel(y_label, fontsize=axes_label_fontsize)
     ax.grid(True, linestyle=":", alpha=1.0, zorder=-1)
@@ -410,11 +418,13 @@ def visualize_crlb_boxplot(
     title_fontsize: int | None = None,
     axes_label_fontsize: int | None = None,
     legend_fontsize: int | None = None,
-    tick_fontsize: int | None = None,
+    xtick_fontsize: int | None = None,
+    ytick_fontsize: int | None = None,
     hatch_color=(0.2,) * 3,
     ref_lines: list = None,
     rotate_labels: bool = False,
     use_legend: bool = False,
+    wavelength_unit: float = 1.0,
 ):
     """
     Visualizes and compares Cramer-Rao Lower Bounds (CRLBs) for various input wavefronts.
@@ -486,7 +496,7 @@ def visualize_crlb_boxplot(
         cur_x_position += 1
 
         bp_plane = ax.boxplot(
-            plane_wave_crlbs_joint,
+            plane_wave_crlbs_joint * wavelength_unit,
             positions=box_positions_plane,
             widths=bar_width * 1.1,  # Slightly wider boxes
             patch_artist=True,  # Fill with color
@@ -526,7 +536,7 @@ def visualize_crlb_boxplot(
         cur_x_position += 1
 
         bp_random = ax.boxplot(
-            random_wavefronts_crlbs_joint,
+            random_wavefronts_crlbs_joint * wavelength_unit,
             positions=box_positions_random,
             widths=bar_width * 1.1,  # Slightly wider boxes
             patch_artist=True,  # Fill with color
@@ -556,13 +566,14 @@ def visualize_crlb_boxplot(
     ax.set_xticks(xtick_positions)
     if rotate_labels:
         ax.set_xticklabels(
-            xtick_labels, rotation=25, ha="right", fontsize=tick_fontsize
+            xtick_labels, rotation=25, ha="right", fontsize=xtick_fontsize
         )
         print(tick_fontsize)
     else:
-        ax.set_xticklabels(xtick_labels, fontsize=None)
-        print(tick_fontsize, plt.rcParams["xtick.labelsize"])
+        ax.set_xticklabels(xtick_labels, fontsize=xtick_fontsize)
+        # print(tick_fontsize, plt.rcParams["xtick.labelsize"])
 
+    ax.tick_params(axis="y", labelsize=ytick_fontsize)
     ax.set_title(title, fontsize=title_fontsize)
     ax.set_ylabel(y_label, fontsize=axes_label_fontsize)
     ax.grid(True, linestyle=":", alpha=1.0, zorder=-1)
