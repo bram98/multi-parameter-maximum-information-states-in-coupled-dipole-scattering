@@ -9,7 +9,11 @@ from adjustText import adjust_text
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
-from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
+from scatteringlibs.lossfunctions import (
+    LossFunction,
+    LossFunctionsDict,
+    LossFunctionSweep,
+)
 from scatteringlibs.matplotlibmagic import (
     PlotGroup,
     get_bounding_boxes_scatter_plot,
@@ -323,7 +327,7 @@ def pareto_plot_sweep(
         # objects=bboxes,
         **adjust_text_kwargs_final
     )
-    plt.tight_layout()
+    # plt.tight_layout()
 
     if new_fig:
         plt.show()
@@ -401,3 +405,9 @@ def pareto_plot_sweep_single(
         plt.show()
 
     return texts, points
+
+
+def interpolate_J(J1: np.ndarray, J2: np.ndarray, name: str, n_interp=50):
+    lf_sweep = LossFunctionSweep(lambda x: None, name, n_sweep=n_interp)
+    lf_sweep._Js = [(1 - alpha) * J1 + alpha * J2 for alpha in lf_sweep.alpha]
+    return lf_sweep

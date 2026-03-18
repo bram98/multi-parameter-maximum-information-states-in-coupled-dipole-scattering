@@ -388,7 +388,7 @@ def visualize_crlb_barplot(
         ax.legend(
             labels_unique.values(),
             labels_unique.keys(),
-            title="Parameters",
+            # title="Parameters",
             fontsize=fontsize,
             ncols=ncols_legend,
             handler_map={
@@ -568,7 +568,7 @@ def visualize_crlb_boxplot(
         ax.set_xticklabels(
             xtick_labels, rotation=25, ha="right", fontsize=xtick_fontsize
         )
-        print(tick_fontsize)
+        # print(tick_fontsize)
     else:
         ax.set_xticklabels(xtick_labels, fontsize=xtick_fontsize)
         # print(tick_fontsize, plt.rcParams["xtick.labelsize"])
@@ -587,7 +587,7 @@ def visualize_crlb_boxplot(
         ax.legend(
             labels_unique.values(),
             labels_unique.keys(),
-            title="Parameters",
+            # title="Parameters",
             fontsize=legend_fontsize,
             ncols=ncols_legend,
             handler_map={

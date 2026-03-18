@@ -1,4 +1,4 @@
-# %%
+# %% Import Libraries
 import string
 import sys
 from pathlib import Path
@@ -8,7 +8,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.axes._axes import Axes
-from pareto_plot_nuisance import ParetoGroup, pareto_plot, pareto_plot_sweep
+from pareto_plot_nuisance import (
+    ParetoGroup,
+    interpolate_J,
+    pareto_plot,
+    pareto_plot_sweep,
+)
 
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
@@ -61,7 +66,8 @@ PHOTON_BUDGET = 1e3
 GRID_KWARGS = dict(which="both", linestyle=":")
 
 save_plots = False
-save_folder = Path("../figures")
+save_folder = Path(f"../figures/{project_name}/")
+save_folder.mkdir(parents=True, exist_ok=True)
 
 plt.rcdefaults()
 plt.rcParams.update(
@@ -118,7 +124,7 @@ def annotate_subplots_abc(
 
 # %% Incident plane wave
 
-planewave = np.zeros_like(sim.E_kx_array)
+planewave = np.zeros_like(sim.k_x_array)
 k_x_array = sim.k_x_array
 planewave[np.argmin(np.abs(k_x_array))] = 1
 
@@ -139,7 +145,7 @@ if save_plots:
     print(f"Saved plot to {save_folder}")
 plt.show()
 
-# %%
+# %% 3D test
 from matplotlib import cm
 
 # fig, ax = plt.subplots(subplot_kw=dict(projection='3d'))
@@ -164,7 +170,7 @@ plt.axis("off")
 ax.set_zlim(0, 20)
 
 plt.show()
-# %% -
+# %% Plot optimized states
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 lf_names = ["x", "z", "phi", "x_inv", "z_inv", "phi_inv", "det"]
@@ -486,7 +492,8 @@ crlbanalysis.visualize_crlb_barplot(
     ylim=(-0.000, None),
     hatch_color=(0.8,) * 3,
     joint_opacity=0.65,
-    y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
+    # y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
+    y_label=rf"Cramér-Rao Lower Bound",
     rotate_labels=False,
     wavelength_unit=wavelength_unit,
 )
@@ -563,13 +570,13 @@ pareto_groups = [
     ),
     PlotGroup(
         lf_dict_single_param_inv,
-        legend_label="Joint (full)",
+        legend_label="Full",
         color="green",
         marker="^",
     ),
     PlotGroup(
         lf_dict_full,
-        legend_label="Joint (full)",
+        legend_label="Full",
         color="green",
         marker="^",
     ),
@@ -589,7 +596,7 @@ pareto_groups = [
 pareto_groups_sweep = [
     PlotGroup(
         loss_functions_sweep_dict.select_only(["xz_scalar"]),
-        legend_label="Interpolation",
+        legend_label="Linear\nCombination",
         color="purple",
         linestyle="-",
         marker="",
@@ -597,7 +604,7 @@ pareto_groups_sweep = [
     ),
     PlotGroup(
         loss_functions_sweep_dict.select_only(["xz_joint"]),
-        legend_label="Interpolation",
+        legend_label="Linear\nCombination",
         color="green",
         linestyle="-",
         marker="",
@@ -611,7 +618,8 @@ y_idx = 0  # Display X on y-axis
 
 """
 Use this line to plot all the components incrementally. (1, 4) means plot 1 
-pareto_groups_sweep plot and 4 pareto_groups plots.
+pareto_groups_sweep plot and 4 pareto_groups plots. Nice for presentations to
+introduce elements one at a time.
 """
 include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
 include_plot_indices = [(3, 5)]
@@ -654,18 +662,6 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         ax=ax,
         grid_kwargs=GRID_KWARGS,
         use_logscale=False,
-        # adjust_text_kwargs=dict(
-        #     force_static=0.7,
-        #     force_text=0.9,
-        #     force_explode=(0.1, 0.1),
-        #     force_pull=0.3,
-        #     expand=(1.8, 1.8),
-        #     min_arrow_len=40,
-        #     iter_lim=1000,
-        #     avoid_self=True,
-        #     max_move=(100, 100),
-        #     ensure_inside_axes=True,
-        # ),
         adjust_text_kwargs=dict(
             force_static=0.24,
             force_text=0.2,
@@ -695,8 +691,61 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         plt.savefig(save_folder / f"{fig_name}.png")
         plt.savefig(save_folder / f"{fig_name}.pdf")
         print(f"Saved pareto plot to '{fig_name}'")
-ax.set_aspect("equal")
+# ax.set_aspect("equal")
 plt.show()
+
+# %% Measurement interpolation
+"""
+How much Fisher information do we get if we measure state 1 for fraction alpha
+of the measurement time and state 2 for fraction (1-alpha) of the measurement 
+time. Do we outperform using multiparameter maximum information states?
+"""
+multiparam_sweep = loss_functions_sweep_dict["xz_joint"]
+J1 = multiparam_sweep.Js[0]
+J2 = multiparam_sweep.Js[-1]
+interp_sweep = interpolate_J(J1, J2, "xz_joint_J_interp")
+interp_sweep_dict = LossFunctionsDict(xz_joint_J_interp=interp_sweep)
+
+pareto_groups_sweep = [
+    PlotGroup(
+        loss_functions_sweep_dict.select_only(["xz_joint"]),
+        legend_label="Interpolation",
+        color="green",
+        linestyle="-",
+        marker=".",
+    ),
+    PlotGroup(
+        interp_sweep_dict,
+        legend_label="Time Sharing",
+        color="k",
+        linestyle="-",
+        marker="^",
+    ),
+]
+
+
+x_idx = 1  # Display Z on x-axis
+y_idx = 0  # Display X on y-axis
+
+wavelength_unit_order = 0
+wavelength_unit = 10 ** (-wavelength_unit_order)
+if wavelength_unit_order == 0:
+    wavelength_unit_str = ""
+else:
+    wavelength_unit_str = rf"$10^{{{wavelength_unit_order}}}$ "
+
+
+fig, ax = plt.subplots(figsize=(0.5 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
+x_avoid, y_avoid = pareto_plot_sweep(
+    pareto_groups_sweep,
+    x_idx,
+    y_idx,
+    ax=ax,
+    wavelength_unit=wavelength_unit,
+    grid_kwargs=GRID_KWARGS,
+    xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
+    ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
+)
 
 
 # %%
