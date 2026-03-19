@@ -12,13 +12,13 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 
 # %% -1) define functions
-def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
+def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
     with the quantum mechanical model where the variance of a quadrature
     measurement is 1/2.
     """
-    signal_field = E * np.sqrt(total_photons)
+    signal_field = E * np.sqrt(photon_budget)
     # The variance of the noise on each quadrature (real, imag) is 1/2.
     # Therefore, the standard deviation is sqrt(0.5).
     noise_std_dev = np.sqrt(0.5)
@@ -35,7 +35,7 @@ def measure_heterodyne(E, total_photons, nsamples=None, seed=None):
             size=(nsamples, *E_real.shape),
             random_state=rng,
         )
-    return field_samples.view(np.complex128) / np.sqrt(total_photons)
+    return field_samples.view(np.complex128) / np.sqrt(photon_budget)
 
 
 def best_estimate_multi(Z_noisy, E0, dE_vectors, J_inv):
@@ -88,13 +88,19 @@ loss_functions_sweep_dict = LossFunctionsDict.load(
     name="LossFunctionsSweepDict", folder=data_folder
 )
 
+
+original_movable_dipoles = sim.movable_scatterers.copy()
+original_frozen_dipoles = sim.frozen_scatterers.copy()
+
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
     print(f"\t- {lf_name}")
 
+# %%
 
+sim.visualize_intensity()
 # %% 6) Run simulation with the multi-parameter estimator
-total_photons = 1e3
+photon_budget = 1e5
 N_estimations = int(1e3)
 theta0_rad = 0.0
 x_true_pos = 0.0
@@ -103,79 +109,129 @@ N_deviations = 25
 max_deviation = 0.1
 theta_deviations = np.linspace(-max_deviation, max_deviation, N_deviations)
 
-# Lists to store results for each strategy
+# # Lists to store results for each strategy
 all_estimates_nuisance_aware = []
 all_estimates_subdet_xz = []
 all_estimates_full_fim = []
 all_estimates_mis_x = []
 
-print("\nPre-calculating estimator components...")
-sim = CoupledDipoleSimulator(**sim_kwargs)
-nominal_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-    movable_dipoles_line, 0, 0, 0
-)
-# if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-#     sim.scatterers = np.hstack((frozen_dipoles_line, nominal_movable_dipoles))
-# else:
-#     sim.scatterers = nominal_movable_dipoles
+
+# print("\nPre-calculating estimator components...")
+# sim = CoupledDipoleSimulator(**sim_kwargs)
+# nominal_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
+#     movable_dipoles_line, 0, 0, 0
+# )
+# # if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+# #     sim.scatterers = np.hstack((frozen_dipoles_line, nominal_movable_dipoles))
+# # else:
+# #     sim.scatterers = nominal_movable_dipoles
+
+# sim.set_scatterers(
+#     movable_scatterers=nominal_movable_dipoles,
+#     frozen_scatterers=frozen_dipoles_line,
+# )
+
+
+# if verbose_plotting:
+#     sim.visualize_intensity()
+#     sim.reset()
+
+# # Define keys based on optimality criterion
+# nuisance_aware_wf_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
+# subdet_xz_wf_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
+# full_fim_wf_key = f"FullFIM_{OPTIMALITY_CRITERION}opt"
+
+# # --- Estimator Components Setup ---
+# # Nuisance-Aware (Marginal FIM)
+# print(f"\nSetting up components for: {nuisance_aware_wf_key}")
+# wf_nuisance_aware = optimized_wavefronts[nuisance_aware_wf_key]
+# dE_nuisance_aware = [
+#     dS_tensor[i] @ wf_nuisance_aware for i in range(len(param_names))
+# ]
+# sim.set_input_field_kx(kx_array, wf_nuisance_aware)
+# E0_nuisance_aware = sim.compute_output_fields_direct()
+# J_nuisance_aware = fisher_matrices_for_wavefronts[nuisance_aware_wf_key]
+# J_inv_nuisance_aware = np.linalg.inv(J_nuisance_aware)
+
+# # Sub-determinant XZ
+# print(f"Setting up components for: {subdet_xz_wf_key}")
+# wf_subdet_xz = optimized_wavefronts[subdet_xz_wf_key]
+# dE_subdet_xz_est = [
+#     dS_tensor[param_names.index("shiftX")] @ wf_subdet_xz,
+#     dS_tensor[param_names.index("shiftZ")] @ wf_subdet_xz,
+# ]
+# sim.set_input_field_kx(kx_array, wf_subdet_xz)
+# E0_subdet_xz = sim.compute_output_fields_direct()
+# J_subdet_xz_full = fisher_matrices_for_wavefronts[subdet_xz_wf_key]
+# idx_x, idx_z = param_names.index("shiftX"), param_names.index("shiftZ")
+# J_subdet_xz_2x2 = J_subdet_xz_full[np.ix_([idx_x, idx_z], [idx_x, idx_z])]
+# J_inv_subdet_xz_2x2 = np.linalg.inv(J_subdet_xz_2x2)
+
+# # Full FIM
+# print(f"Setting up components for: {full_fim_wf_key}")
+# wf_full_fim = optimized_wavefronts[full_fim_wf_key]
+# dE_full_fim = [dS_tensor[i] @ wf_full_fim for i in range(len(param_names))]
+# sim.set_input_field_kx(kx_array, wf_full_fim)
+# E0_full_fim = sim.compute_output_fields_direct()
+# J_full_fim = fisher_matrices_for_wavefronts[full_fim_wf_key]
+# J_inv_full_fim = np.linalg.inv(J_full_fim)
+
+# # MIS_x
+# print("Setting up components for: MIS_x")
+# wf_mis_x = optimized_wavefronts["MIS_x"]
+# dE_mis_x = dS_tensor[param_names.index("shiftX")] @ wf_mis_x
+# sim.set_input_field_kx(kx_array, wf_mis_x)
+# E0_mis_x = sim.compute_output_fields_direct()
+# J_mis_x_full = fisher_matrices_for_wavefronts["MIS_x"]
+kx_array = sim.k_x_array
+dS = fisher_calc.dS
+S = fisher_calc.S
+param_names = fisher_calc.param_names
+
+optimality_criterion = "det"
+lf = {}
+wf = {}
+E0 = {}
+dE = {}
+J = {}
+used_params = {}
+all_estimates = {}
+
+strategies = ["nuisance_aware", "full_fim", "subdet_xz", "mis_x"]
+
+# Partial (nuisance aware)
+lf["nuisance_aware"] = loss_functions_dict[f"partial_{optimality_criterion}"]
+lf["full_fim"] = loss_functions_dict[f"{optimality_criterion}"]
+lf["subdet_xz"] = loss_functions_dict[f"dropped_{optimality_criterion}"]
+lf["mis_x"] = loss_functions_dict["x"]
+
+used_params["nuisance_aware"] = range(3)
+used_params["full_fim"] = range(3)
+used_params["subdet_xz"] = [0, 1]
+used_params["mis_x"] = [0]
+
+
+for strategy in strategies:
+    wf[strategy] = lf[strategy].wavefront
+    E0[strategy] = S @ wf[strategy]
+    dE[strategy] = [dS[i] @ wf[strategy] for i in used_params[strategy]]
+    J_indices = np.ix_(used_params[strategy], used_params[strategy])
+    J[strategy] = lf[strategy].J[J_indices]
+    all_estimates[strategy] = []
 
 sim.set_scatterers(
-    movable_scatterers=nominal_movable_dipoles,
-    frozen_scatterers=frozen_dipoles_line,
+    movable_scatterers=original_movable_dipoles,
+    frozen_scatterers=original_frozen_dipoles,
 )
+sim.reset()
+sim.set_input_field_kx(kx_array, wf["full_fim"])
 
+# Compute E0 exactly how E_true will be computed
+E2 = sim.compute_output_fields_direct()
 
-if verbose_plotting:
-    sim.visualize_intensity()
-    sim.reset()
+plt.plot(E2)
+plt.plot(E0["full_fim"])
 
-# Define keys based on optimality criterion
-nuisance_aware_wf_key = f"NuisanceAware_{OPTIMALITY_CRITERION}opt_Marginal"
-subdet_xz_wf_key = f"Subdet_XZ_{OPTIMALITY_CRITERION}opt"
-full_fim_wf_key = f"FullFIM_{OPTIMALITY_CRITERION}opt"
-
-# --- Estimator Components Setup ---
-# Nuisance-Aware (Marginal FIM)
-print(f"\nSetting up components for: {nuisance_aware_wf_key}")
-wf_nuisance_aware = optimized_wavefronts[nuisance_aware_wf_key]
-dE_nuisance_aware = [
-    dS_tensor[i] @ wf_nuisance_aware for i in range(len(param_names))
-]
-sim.set_input_field_kx(kx_array, wf_nuisance_aware)
-E0_nuisance_aware = sim.compute_output_fields_direct()
-J_nuisance_aware = fisher_matrices_for_wavefronts[nuisance_aware_wf_key]
-J_inv_nuisance_aware = np.linalg.inv(J_nuisance_aware)
-
-# Sub-determinant XZ
-print(f"Setting up components for: {subdet_xz_wf_key}")
-wf_subdet_xz = optimized_wavefronts[subdet_xz_wf_key]
-dE_subdet_xz_est = [
-    dS_tensor[param_names.index("shiftX")] @ wf_subdet_xz,
-    dS_tensor[param_names.index("shiftZ")] @ wf_subdet_xz,
-]
-sim.set_input_field_kx(kx_array, wf_subdet_xz)
-E0_subdet_xz = sim.compute_output_fields_direct()
-J_subdet_xz_full = fisher_matrices_for_wavefronts[subdet_xz_wf_key]
-idx_x, idx_z = param_names.index("shiftX"), param_names.index("shiftZ")
-J_subdet_xz_2x2 = J_subdet_xz_full[np.ix_([idx_x, idx_z], [idx_x, idx_z])]
-J_inv_subdet_xz_2x2 = np.linalg.inv(J_subdet_xz_2x2)
-
-# Full FIM
-print(f"Setting up components for: {full_fim_wf_key}")
-wf_full_fim = optimized_wavefronts[full_fim_wf_key]
-dE_full_fim = [dS_tensor[i] @ wf_full_fim for i in range(len(param_names))]
-sim.set_input_field_kx(kx_array, wf_full_fim)
-E0_full_fim = sim.compute_output_fields_direct()
-J_full_fim = fisher_matrices_for_wavefronts[full_fim_wf_key]
-J_inv_full_fim = np.linalg.inv(J_full_fim)
-
-# MIS_x
-print("Setting up components for: MIS_x")
-wf_mis_x = optimized_wavefronts["MIS_x"]
-dE_mis_x = dS_tensor[param_names.index("shiftX")] @ wf_mis_x
-sim.set_input_field_kx(kx_array, wf_mis_x)
-E0_mis_x = sim.compute_output_fields_direct()
-J_mis_x_full = fisher_matrices_for_wavefronts["MIS_x"]
 
 print("\nStarting estimation loop...")
 for i, theta_dev in enumerate(theta_deviations):
@@ -185,7 +241,7 @@ for i, theta_dev in enumerate(theta_deviations):
     )
     theta_true = theta0_rad + theta_dev
     true_movable_dipoles = placedipoles.shift_and_rotate_dipoles(
-        movable_dipoles_line, x_true_pos, z_true_pos, theta_true
+        original_movable_dipoles, x_true_pos, z_true_pos, theta_true
     )
     # if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
     #     sim.scatterers = np.hstack((frozen_dipoles_line, true_movable_dipoles))
@@ -194,117 +250,100 @@ for i, theta_dev in enumerate(theta_deviations):
 
     sim.set_scatterers(
         movable_scatterers=true_movable_dipoles,
-        frozen_scatterers=frozen_dipoles_line,
+        frozen_scatterers=original_frozen_dipoles,
     )
 
     sim.reset()
 
     # --- Run Estimations for Each Strategy ---
-    # Nuisance-Aware
-    sim.set_input_field_kx(kx_array, wf_nuisance_aware)
-    E_true = sim.compute_output_fields_direct()
-    Z_noisy = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations, seed=i * 10
-    )
-    estimates = np.array(
-        [
-            best_estimate_multi(
-                Z, E0_nuisance_aware, dE_nuisance_aware, J_inv_nuisance_aware
+    for j, strategy in enumerate(strategies):
+        sim.reset()
+        sim.set_input_field_kx(kx_array, wf[strategy])
+
+        E_true = sim.compute_output_fields_direct()
+        Z_noisy = measure_heterodyne(
+            E_true, photon_budget, nsamples=N_estimations, seed=i * 10 + j
+        )
+        estimates = np.array(
+            [
+                best_estimate_multi(
+                    Z, E0[strategy], dE[strategy], np.linalg.inv(J[strategy])
+                )
+                for Z in Z_noisy
+            ]
+        )
+        all_estimates[strategy].append(estimates)
+        if strategy == "full_fim":
+
+            # sim.visualize_intensity()
+            print(
+                np.mean(estimates, axis=0),
+                "---",
+                x_true_pos,
+                z_true_pos,
+                theta_true,
             )
-            for Z in Z_noisy
-        ]
-    )
-    all_estimates_nuisance_aware.append(estimates)
 
-    # Sub-determinant XZ
-    sim.set_input_field_kx(kx_array, wf_subdet_xz)
-    E_true = sim.compute_output_fields_direct()
-    Z_noisy = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 1
-    )
-    estimates = np.array(
-        [
-            best_estimate_multi(
-                Z, E0_subdet_xz, dE_subdet_xz_est, J_inv_subdet_xz_2x2
-            )
-            for Z in Z_noisy
-        ]
-    )
-    all_estimates_subdet_xz.append(estimates)
-
-    # Full FIM
-    sim.set_input_field_kx(kx_array, wf_full_fim)
-    E_true = sim.compute_output_fields_direct()
-    Z_noisy = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 2
-    )
-    estimates = np.array(
-        [
-            best_estimate_multi(Z, E0_full_fim, dE_full_fim, J_inv_full_fim)
-            for Z in Z_noisy
-        ]
-    )
-    all_estimates_full_fim.append(estimates)
-
-    # MIS_x
-    sim.set_input_field_kx(kx_array, wf_mis_x)
-    E_true = sim.compute_output_fields_direct()
-    Z_noisy = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations, seed=i * 10 + 3
-    )
-    estimates = np.array(
-        [best_estimate(Z, dE_mis_x, E0_mis_x) for Z in Z_noisy]
-    )
-    all_estimates_mis_x.append(estimates)
 
 print("\nSimulation loop finished.")
 
 
 # %% 7) Plotting Bias and Precision for X and Z Parameters
-def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
+def plot_performance_on_axes(axes, param_name, param_index):
     """
     Plots bias and precision for a given parameter on a set of two axes.
     `axes` should be a tuple or list of two axes: (ax_bias, ax_precision).
     """
     ax1, ax2 = axes
 
-    # Calculate Bias
-    bias_nuisance_aware = [
-        np.mean(est[:, idx_in_3param]) - x_true_pos
-        for est in all_estimates_nuisance_aware
-    ]
-    bias_subdet_xz = [
-        np.mean(est[:, idx_in_2param]) - x_true_pos
-        for est in all_estimates_subdet_xz
-        if idx_in_2param is not None
-    ]
-    bias_full_fim = [
-        np.mean(est[:, idx_in_3param]) - x_true_pos
-        for est in all_estimates_full_fim
-    ]
-    bias_mis_x = (
-        [np.mean(est) - x_true_pos for est in all_estimates_mis_x]
-        if param_name == "X"
-        else None
-    )
+    bias = {}
+    std = {}
+    for strategy in strategies:
+        idx = np.where(np.array(used_params[strategy]) == param_index)[0]
+        bias[strategy] = [
+            np.mean(est[:, idx]) - x_true_pos
+            for est in all_estimates[strategy]
+        ]
+        std[strategy] = [
+            np.std(est[:, idx]) for est in all_estimates[strategy]
+        ]
+    # # Calculate Bias
+    # bias_nuisance_aware = [
+    #     np.mean(est[:, idx_in_3param]) - x_true_pos
+    #     for est in all_estimates_nuisance_aware
+    # ]
+    # bias_subdet_xz = [
+    #     np.mean(est[:, idx_in_2param]) - x_true_pos
+    #     for est in all_estimates_subdet_xz
+    #     if idx_in_2param is not None
+    # ]
+    # bias_full_fim = [
+    #     np.mean(est[:, idx_in_3param]) - x_true_pos
+    #     for est in all_estimates_full_fim
+    # ]
+    # bias_mis_x = (
+    #     [np.mean(est) - x_true_pos for est in all_estimates_mis_x]
+    #     if param_name == "X"
+    #     else None
+    # )
 
-    # Calculate Standard Deviation
-    std_nuisance_aware = [
-        np.std(est[:, idx_in_3param]) for est in all_estimates_nuisance_aware
-    ]
-    std_subdet_xz = [
-        np.std(est[:, idx_in_2param])
-        for est in all_estimates_subdet_xz
-        if idx_in_2param is not None
-    ]
-    std_full_fim = [
-        np.std(est[:, idx_in_3param]) for est in all_estimates_full_fim
-    ]
-    std_mis_x = (
-        [np.std(est) for est in all_estimates_mis_x]
-        if param_name == "X"
-        else None
-    )
+    # # Calculate Standard Deviation
+    # std_nuisance_aware = [
+    #     np.std(est[:, idx_in_3param]) for est in all_estimates_nuisance_aware
+    # ]
+    # std_subdet_xz = [
+    #     np.std(est[:, idx_in_2param])
+    #     for est in all_estimates_subdet_xz
+    #     if idx_in_2param is not None
+    # ]
+    # std_full_fim = [
+    #     np.std(est[:, idx_in_3param]) for est in all_estimates_full_fim
+    # ]
+    # std_mis_x = (
+    #     [np.std(est) for est in all_estimates_mis_x]
+    #     if param_name == "X"
+    #     else None
+    # )
 
     # Calculate CRLBs for each deviation
     # crlb_prefactor = 1 / np.sqrt(2)
@@ -314,105 +353,105 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
     crlb_full_fim_list = []
     crlb_mis_x_list = []
 
-    print(
-        f"\nRecalculating CRLB for each nuisance deviation for {param_name}-parameter..."
-    )
-    for i, theta_dev in enumerate(theta_deviations):
-        print(
-            f"\rCalculating CRLB for deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
-            end="     ",
-        )
-        # Recalculate dS for the current deviation
-        dS_tensor_dev = placedipoles.calculate_dS_for_3_parameters(
-            sim_kwargs,
-            angles_deg,
-            movable_dipoles=placedipoles.shift_and_rotate_dipoles(
-                movable_dipoles_line, 0, 0, theta_dev
-            ),
-            frozen_dipoles=frozen_dipoles_line,
-            delta_param=delta_param,
-            flux_normalize=True,
-        )
-        fisher_calc_dev = FisherMatrix(
-            dS=dS_tensor_dev, param_names=param_names, delta=delta_param
-        )
-        optimizer_dev = Optimizer(
-            F_operator_tensor=fisher_calc_dev.F, device=optimizer_device
-        )
+    # print(
+    #     f"\nRecalculating CRLB for each nuisance deviation for {param_name}-parameter..."
+    # )
+    # for i, theta_dev in enumerate(theta_deviations):
+    #     print(
+    #         f"\rCalculating CRLB for deviation {i+1}/{len(theta_deviations)}: {theta_dev:.4f} rad",
+    #         end="     ",
+    #     )
+    #     # Recalculate dS for the current deviation
+    #     dS_tensor_dev = placedipoles.calculate_dS_for_3_parameters(
+    #         sim_kwargs,
+    #         angles_deg,
+    #         movable_dipoles=placedipoles.shift_and_rotate_dipoles(
+    #             movable_dipoles_line, 0, 0, theta_dev
+    #         ),
+    #         frozen_dipoles=frozen_dipoles_line,
+    #         delta_param=delta_param,
+    #         flux_normalize=True,
+    #     )
+    #     fisher_calc_dev = FisherMatrix(
+    #         dS=dS_tensor_dev, param_names=param_names, delta=delta_param
+    #     )
+    #     optimizer_dev = Optimizer(
+    #         F_operator_tensor=fisher_calc_dev.F, device=optimizer_device
+    #     )
 
-        # Nuisance-Aware
-        J_nuisance_aware_dev = optimizer_dev.J_fisher_info_matrix(
-            wf_nuisance_aware
-        )
-        J_inv_nuisance_aware_dev = np.linalg.inv(J_nuisance_aware_dev)
-        crlb_nuisance_aware_list.append(
-            crlb_prefactor
-            * np.sqrt(J_inv_nuisance_aware_dev[idx_in_3param, idx_in_3param])
-        )
+    #     # Nuisance-Aware
+    #     J_nuisance_aware_dev = optimizer_dev.J_fisher_info_matrix(
+    #         wf_nuisance_aware
+    #     )
+    #     J_inv_nuisance_aware_dev = np.linalg.inv(J_nuisance_aware_dev)
+    #     crlb_nuisance_aware_list.append(
+    #         crlb_prefactor
+    #         * np.sqrt(J_inv_nuisance_aware_dev[idx_in_3param, idx_in_3param])
+    #     )
 
-        # Sub-determinant XZ
-        if idx_in_2param is not None:
-            J_subdet_xz_full_dev = optimizer_dev.J_fisher_info_matrix(
-                wf_subdet_xz
-            )
-            J_subdet_xz_2x2_dev = J_subdet_xz_full_dev[
-                np.ix_([idx_x, idx_z], [idx_x, idx_z])
-            ]
-            J_inv_subdet_xz_2x2_dev = np.linalg.inv(J_subdet_xz_2x2_dev)
-            crlb_subdet_xz_list.append(
-                crlb_prefactor
-                * np.sqrt(
-                    J_inv_subdet_xz_2x2_dev[idx_in_2param, idx_in_2param]
-                )
-            )
+    #     # Sub-determinant XZ
+    #     if idx_in_2param is not None:
+    #         J_subdet_xz_full_dev = optimizer_dev.J_fisher_info_matrix(
+    #             wf_subdet_xz
+    #         )
+    #         J_subdet_xz_2x2_dev = J_subdet_xz_full_dev[
+    #             np.ix_([idx_x, idx_z], [idx_x, idx_z])
+    #         ]
+    #         J_inv_subdet_xz_2x2_dev = np.linalg.inv(J_subdet_xz_2x2_dev)
+    #         crlb_subdet_xz_list.append(
+    #             crlb_prefactor
+    #             * np.sqrt(
+    #                 J_inv_subdet_xz_2x2_dev[idx_in_2param, idx_in_2param]
+    #             )
+    #         )
 
-        # Full FIM
-        J_full_fim_dev = optimizer_dev.J_fisher_info_matrix(wf_full_fim)
-        J_inv_full_fim_dev = np.linalg.inv(J_full_fim_dev)
-        crlb_full_fim_list.append(
-            crlb_prefactor
-            * np.sqrt(J_inv_full_fim_dev[idx_in_3param, idx_in_3param])
-        )
+    #     # Full FIM
+    #     J_full_fim_dev = optimizer_dev.J_fisher_info_matrix(wf_full_fim)
+    #     J_inv_full_fim_dev = np.linalg.inv(J_full_fim_dev)
+    #     crlb_full_fim_list.append(
+    #         crlb_prefactor
+    #         * np.sqrt(J_inv_full_fim_dev[idx_in_3param, idx_in_3param])
+    #     )
 
-        # MIS_x
-        if param_name == "X":
-            J_mis_x_full_dev = optimizer_dev.J_fisher_info_matrix(wf_mis_x)
-            crlb_mis_x_list.append(
-                crlb_prefactor * np.sqrt(1 / J_mis_x_full_dev[idx_x, idx_x])
-            )
-    if crlb_subdet_xz_list:
-        crlb_subdet_xz = np.array(crlb_subdet_xz_list)
-    else:
-        crlb_subdet_xz = None
+    #     # MIS_x
+    #     if param_name == "X":
+    #         J_mis_x_full_dev = optimizer_dev.J_fisher_info_matrix(wf_mis_x)
+    #         crlb_mis_x_list.append(
+    #             crlb_prefactor * np.sqrt(1 / J_mis_x_full_dev[idx_x, idx_x])
+    #         )
+    # if crlb_subdet_xz_list:
+    #     crlb_subdet_xz = np.array(crlb_subdet_xz_list)
+    # else:
+    #     crlb_subdet_xz = None
 
-    if crlb_mis_x_list:
-        crlb_mis_x = np.array(crlb_mis_x_list)
-    else:
-        crlb_mis_x = None
+    # if crlb_mis_x_list:
+    #     crlb_mis_x = np.array(crlb_mis_x_list)
+    # else:
+    #     crlb_mis_x = None
 
-    crlb_nuisance_aware = np.array(crlb_nuisance_aware_list)
-    crlb_full_fim = np.array(crlb_full_fim_list)
+    # crlb_nuisance_aware = np.array(crlb_nuisance_aware_list)
+    # crlb_full_fim = np.array(crlb_full_fim_list)
 
     # --- Define Plotting Styles ---
     # Inspired by result_Pareto_frontier.py
     opt_criterion_label = f"{OPTIMALITY_CRITERION}-Opt."
     styles = {
-        "FullFIM": {
+        "full_fim": {
             "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
             "color": "#1f77b4",  # Blue
             "marker": "o",
         },
-        "Subdet_XZ": {
+        "subdet_xz": {
             "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi}})$",
             "color": "#ff7f0e",  # Orange
             "marker": "s",
         },
-        "NuisanceAware": {
+        "nuisance_aware": {
             "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
             "color": "#2ca02c",  # Green
             "marker": "d",
         },
-        "MIS_x": {
+        "mis_x": {
             "label": r"MIS$_x$",
             "color": "#d62728",  # Red
             "marker": "^",
@@ -421,48 +460,58 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
 
     # --- Bias Plot ---
     # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
-    ax1.plot(
-        theta_deviations,
-        bias_full_fim,
-        marker=styles["FullFIM"]["marker"],
-        linestyle="-",
-        label=styles["FullFIM"]["label"],
-        color=styles["FullFIM"]["color"],
-        markersize=8,
-        lw=2,
-    )
-    if bias_subdet_xz:
+    for strategy in strategies:
         ax1.plot(
             theta_deviations,
-            bias_subdet_xz,
-            marker=styles["Subdet_XZ"]["marker"],
+            bias[strategy],
             linestyle="-",
-            label=styles["Subdet_XZ"]["label"],
-            color=styles["Subdet_XZ"]["color"],
             markersize=8,
             lw=2,
+            **styles[strategy],
         )
-    ax1.plot(
-        theta_deviations,
-        bias_nuisance_aware,
-        marker=styles["NuisanceAware"]["marker"],
-        linestyle="-",
-        label=styles["NuisanceAware"]["label"],
-        color=styles["NuisanceAware"]["color"],
-        markersize=8,
-        lw=2,
-    )
-    if bias_mis_x:
-        ax1.plot(
-            theta_deviations,
-            bias_mis_x,
-            marker=styles["MIS_x"]["marker"],
-            linestyle="-",
-            label=styles["MIS_x"]["label"],
-            color=styles["MIS_x"]["color"],
-            markersize=8,
-            lw=2,
-        )
+
+    # ax1.plot(
+    #     theta_deviations,
+    #     bias_full_fim,
+    #     marker=styles["FullFIM"]["marker"],
+    #     linestyle="-",
+    #     label=styles["FullFIM"]["label"],
+    #     color=styles["FullFIM"]["color"],
+    #     markersize=8,
+    #     lw=2,
+    # )
+    # if bias_subdet_xz:
+    #     ax1.plot(
+    #         theta_deviations,
+    #         bias_subdet_xz,
+    #         marker=styles["Subdet_XZ"]["marker"],
+    #         linestyle="-",
+    #         label=styles["Subdet_XZ"]["label"],
+    #         color=styles["Subdet_XZ"]["color"],
+    #         markersize=8,
+    #         lw=2,
+    #     )
+    # ax1.plot(
+    #     theta_deviations,
+    #     bias_nuisance_aware,
+    #     marker=styles["NuisanceAware"]["marker"],
+    #     linestyle="-",
+    #     label=styles["NuisanceAware"]["label"],
+    #     color=styles["NuisanceAware"]["color"],
+    #     markersize=8,
+    #     lw=2,
+    # )
+    # if bias_mis_x:
+    #     ax1.plot(
+    #         theta_deviations,
+    #         bias_mis_x,
+    #         marker=styles["MIS_x"]["marker"],
+    #         linestyle="-",
+    #         label=styles["MIS_x"]["label"],
+    #         color=styles["MIS_x"]["color"],
+    #         markersize=8,
+    #         lw=2,
+    #     )
     ax1.axhline(0, color="k", linestyle="--", label="Unbiased")
     ax1.set_ylabel(
         f"Estimation Bias of $\hat{{{param_name.lower()}}}$", fontsize=14
@@ -473,101 +522,101 @@ def plot_performance_on_axes(axes, param_name, idx_in_3param, idx_in_2param):
 
     # --- Precision Plot ---
     # Order: FullFIM, Subdet, Nuisance-Aware, MIS_x
-    ax2.plot(
-        theta_deviations,
-        np.mean(std_full_fim)
-        * np.ones_like(
-            theta_deviations
-        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
-        linestyle="--",
-        label=styles["FullFIM"]["label"],
-        color=styles["FullFIM"]["color"],
-        lw=2,
-    )
-    if std_subdet_xz:
-        ax2.plot(
-            theta_deviations,
-            np.mean(std_subdet_xz)
-            * np.ones_like(
-                theta_deviations
-            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
-            linestyle="--",
-            label=styles["Subdet_XZ"]["label"],
-            color=styles["Subdet_XZ"]["color"],
-            lw=2,
-        )
-    ax2.plot(
-        theta_deviations,
-        np.mean(std_nuisance_aware)
-        * np.ones_like(
-            theta_deviations
-        ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
-        linestyle="--",
-        label=styles["NuisanceAware"]["label"],
-        color=styles["NuisanceAware"]["color"],
-        lw=2,
-    )
-    if std_mis_x:
-        ax2.plot(
-            theta_deviations,
-            np.mean(std_mis_x)
-            * np.ones_like(
-                theta_deviations
-            ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
-            linestyle="--",
-            label=styles["MIS_x"]["label"],
-            color=styles["MIS_x"]["color"],
-            lw=2,
-        )
+    # ax2.plot(
+    #     theta_deviations,
+    #     np.mean(std_full_fim)
+    #     * np.ones_like(
+    #         theta_deviations
+    #     ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+    #     linestyle="--",
+    #     label=styles["FullFIM"]["label"],
+    #     color=styles["FullFIM"]["color"],
+    #     lw=2,
+    # )
+    # if std_subdet_xz:
+    #     ax2.plot(
+    #         theta_deviations,
+    #         np.mean(std_subdet_xz)
+    #         * np.ones_like(
+    #             theta_deviations
+    #         ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+    #         linestyle="--",
+    #         label=styles["Subdet_XZ"]["label"],
+    #         color=styles["Subdet_XZ"]["color"],
+    #         lw=2,
+    #     )
+    # ax2.plot(
+    #     theta_deviations,
+    #     np.mean(std_nuisance_aware)
+    #     * np.ones_like(
+    #         theta_deviations
+    #     ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+    #     linestyle="--",
+    #     label=styles["NuisanceAware"]["label"],
+    #     color=styles["NuisanceAware"]["color"],
+    #     lw=2,
+    # )
+    # if std_mis_x:
+    #     ax2.plot(
+    #         theta_deviations,
+    #         np.mean(std_mis_x)
+    #         * np.ones_like(
+    #             theta_deviations
+    #         ),  # estimator is only dependent on noise and therefore invariant for changes in nuisance deviation
+    #         linestyle="--",
+    #         label=styles["MIS_x"]["label"],
+    #         color=styles["MIS_x"]["color"],
+    #         lw=2,
+    #     )
 
-    # --- CRLB Plotting ---
-    ax2.plot(
-        theta_deviations,
-        crlb_full_fim / np.sqrt(total_photons),
-        color=styles["FullFIM"]["color"],
-        marker=styles["FullFIM"]["marker"],
-        linestyle="-",
-        label=f"CRLB " + styles["FullFIM"]["label"],
-    )
-    if crlb_subdet_xz is not None:
-        ax2.plot(
-            theta_deviations,
-            crlb_subdet_xz / np.sqrt(total_photons),
-            color=styles["Subdet_XZ"]["color"],
-            marker=styles["Subdet_XZ"]["marker"],
-            linestyle="-",
-            label=f"CRLB " + styles["Subdet_XZ"]["label"],
-        )
-    ax2.plot(
-        theta_deviations,
-        crlb_nuisance_aware / np.sqrt(total_photons),
-        color=styles["NuisanceAware"]["color"],
-        marker=styles["NuisanceAware"]["marker"],
-        linestyle="-",
-        label=f"CRLB " + styles["NuisanceAware"]["label"],
-    )
-    if crlb_mis_x is not None:
-        ax2.plot(
-            theta_deviations,
-            crlb_mis_x / np.sqrt(total_photons),
-            color=styles["MIS_x"]["color"],
-            marker=styles["MIS_x"]["marker"],
-            linestyle="-",
-            label="CRLB " + styles["MIS_x"]["label"],
-        )
+    # # --- CRLB Plotting ---
+    # ax2.plot(
+    #     theta_deviations,
+    #     crlb_full_fim / np.sqrt(photon_budget),
+    #     color=styles["FullFIM"]["color"],
+    #     marker=styles["FullFIM"]["marker"],
+    #     linestyle="-",
+    #     label=f"CRLB " + styles["FullFIM"]["label"],
+    # )
+    # if crlb_subdet_xz is not None:
+    #     ax2.plot(
+    #         theta_deviations,
+    #         crlb_subdet_xz / np.sqrt(photon_budget),
+    #         color=styles["Subdet_XZ"]["color"],
+    #         marker=styles["Subdet_XZ"]["marker"],
+    #         linestyle="-",
+    #         label=f"CRLB " + styles["Subdet_XZ"]["label"],
+    #     )
+    # ax2.plot(
+    #     theta_deviations,
+    #     crlb_nuisance_aware / np.sqrt(photon_budget),
+    #     color=styles["NuisanceAware"]["color"],
+    #     marker=styles["NuisanceAware"]["marker"],
+    #     linestyle="-",
+    #     label=f"CRLB " + styles["NuisanceAware"]["label"],
+    # )
+    # if crlb_mis_x is not None:
+    #     ax2.plot(
+    #         theta_deviations,
+    #         crlb_mis_x / np.sqrt(photon_budget),
+    #         color=styles["MIS_x"]["color"],
+    #         marker=styles["MIS_x"]["marker"],
+    #         linestyle="-",
+    #         label="CRLB " + styles["MIS_x"]["label"],
+    #     )
 
-    ax2.set_xlabel(
-        "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
-        fontsize=14,
-    )
-    ax2.set_ylabel(
-        f"Estimation Error (Std. Dev. of $\hat{{{param_name.lower()}}}$)",
-        fontsize=14,
-    )
-    ax2.legend(fontsize=12)
-    ax2.grid(True, which="both", linestyle=":", alpha=0.6)
-    ax2.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
-    ax2.set_ylim(bottom=0)
+    # ax2.set_xlabel(
+    #     "Nuisance Parameter Deviation ($\\theta_{true} - \\theta_0$) [rad]",
+    #     fontsize=14,
+    # )
+    # ax2.set_ylabel(
+    #     f"Estimation Error (Std. Dev. of $\hat{{{param_name.lower()}}}$)",
+    #     fontsize=14,
+    # )
+    # ax2.legend(fontsize=12)
+    # ax2.grid(True, which="both", linestyle=":", alpha=0.6)
+    # ax2.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
+    # ax2.set_ylim(bottom=0)
 
 
 # Main plotting block
@@ -577,13 +626,15 @@ fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
 #     fontsize=16,
 # )
 
+idx_x = 0
+idx_z = 1
 # Plot for X parameter on the left column
-plot_performance_on_axes(axes[:, 0], "X", idx_x, 0)
+plot_performance_on_axes(axes[:, 0], "X", idx_x)
 axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)
 axes[1, 0].set_title("Precision (X-parameter)", fontsize=14)
 
 # Plot for Z parameter on the right column
-plot_performance_on_axes(axes[:, 1], "Z", idx_z, 1)
+plot_performance_on_axes(axes[:, 1], "Z", idx_z)
 axes[0, 1].set_title("Bias (Z-parameter)", fontsize=14)
 axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
 
@@ -825,7 +876,7 @@ for i, x_dev in enumerate(x_dev_range):
         E_true_optimal = sim.compute_output_fields_direct()
         Z_noisy_optimal = measure_heterodyne(
             E_true_optimal,
-            total_photons,
+            photon_budget,
             nsamples=N_estimations,
             seed=(i * N_xz_deviations + j),
         )
@@ -853,7 +904,7 @@ for i, x_dev in enumerate(x_dev_range):
         E_true_random = sim.compute_output_fields_direct()
         Z_noisy_random = measure_heterodyne(
             E_true_random,
-            total_photons,
+            photon_budget,
             nsamples=N_estimations,
             seed=(i * N_xz_deviations + j) + N_xz_deviations**2,
         )
@@ -1096,7 +1147,7 @@ for i in range(N_points_on_ring):
     sim.set_input_field_kx(kx_array, wf_optimal)
     E_true = sim.compute_output_fields_direct()
     Z_noisy = measure_heterodyne(
-        E_true, total_photons, nsamples=N_estimations, seed=i
+        E_true, photon_budget, nsamples=N_estimations, seed=i
     )
     estimates = np.array(
         [
@@ -1164,7 +1215,7 @@ for k in range(N_random_waves_ensemble):
         sim.set_input_field_kx(kx_array, wf_random)
         E_true = sim.compute_output_fields_direct()
         Z_noisy = measure_heterodyne(
-            E_true, total_photons, nsamples=N_estimations, seed=k * 1000 + i
+            E_true, photon_budget, nsamples=N_estimations, seed=k * 1000 + i
         )
         estimates = np.array(
             [
@@ -1224,7 +1275,7 @@ for k in range(N_plane_waves_ensemble):
         E_true = sim.compute_output_fields_direct()
         Z_noisy = measure_heterodyne(
             E_true,
-            total_photons,
+            photon_budget,
             nsamples=N_estimations,
             seed=(k + N_random_waves_ensemble) * 1000 + i,
         )
@@ -1509,7 +1560,7 @@ for i, x_dev in enumerate(x_dev_range):
         E_true_optimal = sim.compute_zL_fields_direct()
         Z_noisy_optimal = measure_heterodyne(
             E_true_optimal,
-            total_photons,
+            photon_budget,
             nsamples=N_estimations,
             seed=(i * N_xz_deviations + j),
         )
@@ -1540,7 +1591,7 @@ for i, x_dev in enumerate(x_dev_range):
             E_true = sim.compute_zL_fields_direct()
             Z_noisy = measure_heterodyne(
                 E_true,
-                total_photons,
+                photon_budget,
                 nsamples=N_estimations,
                 seed=(i * N_xz_deviations + j) * N_random_ensemble + k,
             )

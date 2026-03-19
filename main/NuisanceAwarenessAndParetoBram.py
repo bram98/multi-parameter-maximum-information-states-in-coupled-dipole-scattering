@@ -24,87 +24,109 @@ max_angle = 80  # degrees, max angle for input modes
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3  # delta for building dS
 
-# %% 1) define dipole configurations
-movable_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(1.0, 0.0), number=7
-)
+# # %% 1) define dipole configurations
+# movable_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(1.0, 0.0), number=7
+# )
 
-frozen_dipoles_line = placedipoles.place_line_of_dipoles(
-    center=(-1.0, 0.0), number=7
-)
+# frozen_dipoles_line = placedipoles.place_line_of_dipoles(
+#     center=(-1.0, 0.0), number=7
+# )
 
-### Quasi-random double line
-movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(1.2, 0.0), number=6, small_dist=0.786, start_index=5
-)
-frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
-    center=(-1.0, 0.0), number=6, small_dist=0.786, start_index=22
-)
+# ### Quasi-random double line
+# movable_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+#     center=(1.2, 0.0), number=6, small_dist=0.786, start_index=5
+# )
+# frozen_dipoles_line = placedipoles.place_quasi_random_line_of_dipoles(
+#     center=(-1.0, 0.0), number=6, small_dist=0.786, start_index=22
+# )
 
-# %% 2) simulator geometry and input
-total_Ns_sim = movable_dipoles_line.shape[1]
-if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-    total_Ns_sim += frozen_dipoles_line.shape[1]
+# # %% 2) simulator geometry and input
+# total_Ns_sim = movable_dipoles_line.shape[1]
+# if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+#     total_Ns_sim += frozen_dipoles_line.shape[1]
 
-sim_kwargs = dict(
-    lambda_0=1.0,
-    Lz=8.0,
-    Lx=8.0,
-    # Ns=total_Ns_sim,  # Ns in sim_kwargs should be the total number of dipoles
-    # seed=123,
-    grid_points_x=300,  # Number of points for field calculation (output basis for S-matrix)
-)
-angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
+# sim_kwargs = dict(
+#     lambda_0=1.0,
+#     Lz=8.0,
+#     Lx=8.0,
+#     # Ns=total_Ns_sim,  # Ns in sim_kwargs should be the total number of dipoles
+#     # seed=123,
+#     grid_points_x=300,  # Number of points for field calculation (output basis for S-matrix)
+# )
+# angles_deg = np.linspace(-max_angle, max_angle, 100)  # Input angle channels
 
-k0 = 2 * np.pi / sim_kwargs["lambda_0"]
-kx_array = k0 * np.sin(np.deg2rad(angles_deg))
+# k0 = 2 * np.pi / sim_kwargs["lambda_0"]
+# kx_array = k0 * np.sin(np.deg2rad(angles_deg))
 
-# %% 3) Build partial derivatives for each param => dS[mu]
-print("Calculating dS for 3 parameters...")
-dS_tensor = placedipoles.calculate_dS_for_3_parameters(
-    sim_kwargs,
-    angles_deg,
-    movable_dipoles=movable_dipoles_line,
-    frozen_dipoles=frozen_dipoles_line,
-    delta_param=delta_param,
-    flux_normalize=True,
-)
-print(f"Built dS tensor with shape: {dS_tensor.shape}")
+# %% Loading in data
+project_name = "quasirandom_longrun - Copy"
+project_name = "quasirandom_shortrun_dist2-8"
+# project_name = "quasirandom_shortrun_dist2-6"
+# project_name = "quasirandom_shortrun_dist2-4"
+# project_name = "quasirandom_shortrun_dist3-0"
 
-# %% 4) Build the Fisher-operator array and set global variables
-fisher_calc = FisherMatrix(
-    dS=dS_tensor, param_names=param_names, delta=delta_param
-)
+# project_name = "quasirandom"
+# project_name = "square"
+data_folder = f"../data/{project_name}"
 
-# Correctly combine frozen and movable dipoles for visualization.
-if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
-    _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
-else:
-    # If there are no frozen dipoles, just use the movable ones.
-    _scatterers_vis = movable_dipoles_line
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+fisher_calc = FisherMatrix.load(folder=data_folder)
+# loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
+# loss_functions_sweep_dict = LossFunctionsDict.load(
+#     name="LossFunctionsSweepDict", folder=data_folder
+# )
 
-base_sim_for_vis = CoupledDipoleSimulator(**sim_kwargs)
-# base_sim_for_vis.scatterers = _scatterers_vis
-base_sim_for_vis.set_scatterers(
-    movable_scatterers=movable_dipoles_line,
-    frozen_scatterers=frozen_dipoles_line,
-)
+# print("Lossfunction Names")
+# for lf_name in loss_functions_dict.keys():
+#     print(f"\t- {lf_name}")
 
-# Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
-optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device for Optimizer: {optimizer_device}")
-optimizer = Optimizer(F_operator_tensor=fisher_calc.F, device=optimizer_device)
+# # %% 3) Build partial derivatives for each param => dS[mu]
+# print("Calculating dS for 3 parameters...")
+# dS_tensor = placedipoles.calculate_dS_for_3_parameters(
+#     sim_kwargs,
+#     angles_deg,
+#     movable_dipoles=movable_dipoles_line,
+#     frozen_dipoles=frozen_dipoles_line,
+#     delta_param=delta_param,
+#     flux_normalize=True,
+# )
+# print(f"Built dS tensor with shape: {dS_tensor.shape}")
 
-# Photon budget for normalization (can be defined once, used across sections)
-photon_budget = 1.0
+# # %% 4) Build the Fisher-operator array and set global variables
+# fisher_calc = FisherMatrix(
+#     dS=dS_tensor, param_names=param_names, delta=delta_param
+# )
 
-# Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 10
-single_run_iterations = 3000
+# # Correctly combine frozen and movable dipoles for visualization.
+# if frozen_dipoles_line is not None and frozen_dipoles_line.size > 0:
+#     _scatterers_vis = np.hstack((frozen_dipoles_line, movable_dipoles_line))
+# else:
+#     # If there are no frozen dipoles, just use the movable ones.
+#     _scatterers_vis = movable_dipoles_line
 
-# Globally store wavefronts and their J matrices
-optimized_wavefronts = {}
-fisher_matrices_for_wavefronts = {}
+# base_sim_for_vis = CoupledDipoleSimulator(**sim_kwargs)
+# # base_sim_for_vis.scatterers = _scatterers_vis
+# base_sim_for_vis.set_scatterers(
+#     movable_scatterers=movable_dipoles_line,
+#     frozen_scatterers=frozen_dipoles_line,
+# )
+
+# # Initialize Optimizer (used for Blocks 5, 6, and 7 onwards)
+# optimizer_device = "cuda" if torch.cuda.is_available() else "cpu"
+# print(f"Using device for Optimizer: {optimizer_device}")
+# optimizer = Optimizer(F_operator_tensor=fisher_calc.F, device=optimizer_device)
+
+# # Photon budget for normalization (can be defined once, used across sections)
+# photon_budget = 1.0
+
+# # Global optimization run settings (e.g., 10x3000 iterations)
+# multi_run_count = 10
+# single_run_iterations = 3000
+
+# # Globally store wavefronts and their J matrices
+# optimized_wavefronts = {}
+# fisher_matrices_for_wavefronts = {}
 
 # %% 5) Single-parameter MIS wavefronts and their Fisher Information Matrices
 
