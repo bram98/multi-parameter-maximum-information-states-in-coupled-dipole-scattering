@@ -1031,7 +1031,7 @@ class CoupledDipoleSimulator(Storable):
             self.solve_fields()
             E_output = self.compute_output_fields_direct()
             S[:, n] = E_output
-        S = np.fft.fft(S, axis=0, norm="forward")
+        S = np.fft.fft(S, axis=0, norm="ortho")
         S = np.fft.fftshift(S, axes=0)
 
         dx = self.x[1] - self.x[0]
