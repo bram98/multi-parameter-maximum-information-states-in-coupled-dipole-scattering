@@ -20,7 +20,9 @@ def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
     with the quantum mechanical model where the variance of a quadrature
-    measurement is 1/2.
+    measurement is 1/2. If E = P + i Q, then [P, Q] = i/2 and the vacuum
+    variance is 1/4. Measuring P and Q jointly gives variance 1/2 for each
+    quadrature.
     """
     signal_field = E * np.sqrt(photon_budget)
     # The variance of the noise on each quadrature (real, imag) is 1/2.
@@ -76,9 +78,12 @@ if __name__ == "__main__":
     theta0 = np.array([0.1, 0.2, 0.3])
     E0 = np.random.randn(5, 2).view(complex).squeeze()
     dE = np.random.randn(3, 5, 2).view(complex).squeeze()
+    # dE = np.eye(3, 5, dtype=complex)
     noise = np.random.randn(5) * 0.05
 
     E = E0 + dE[0] * theta0[0]
+    s = "Estimation without noise"
+    print(s, "\n" + "-" * len(s))
 
     print(
         "Single parameter estimate: ",
@@ -88,8 +93,29 @@ if __name__ == "__main__":
     E = E = E0 + theta0 @ dE
 
     print(
-        f"Multilinear parameter estimate:\n{best_estimate_multi(np.array([E, E+noise]), E0, dE)}"
+        f"Multilinear parameter estimate:\n{best_estimate_multi(np.array([E, E+noise]), E0, dE)}\n"
     )
+
+    s = "Verifying CRLB"
+    print(s, "\n" + "-" * len(s))
+
+    photon_budget = 1
+    J = dE.conj() @ dE.T
+    J = J + J.T
+    J = J.real * photon_budget
+
+    Z_noisy = measure_heterodyne(
+        E,
+        photon_budget,
+        nsamples=int(1e5),
+    )
+    theta_est = best_estimate_multi(Z_noisy, E0, dE)
+    theta_std = np.std(theta_est, axis=1)
+
+    crlb = np.sqrt(np.diag(np.linalg.inv(J)))
+
+    print(f"{'Standard dev.:':<15}", theta_std)
+    print(f"{'CRLB:':<15}", crlb)
 
 
 # %% 0) settings
@@ -106,11 +132,11 @@ multi_run_count = 5
 single_run_iterations = 4000
 
 # %% Loading in data
-project_name = "quasirandom_longrun - Copy"
-project_name = "quasirandom_shortrun_dist2-8"
+# project_name = "quasirandom_longrun - Copy"
+# project_name = "quasirandom_shortrun_dist2-8"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
-# project_name = "quasirandom_shortrun_dist3-0"
+project_name = "quasirandom_longrun_dist2-1"
 
 # project_name = "quasirandom"
 # project_name = "square"
@@ -133,7 +159,7 @@ for lf_name in loss_functions_dict.keys():
 
 # %%
 
-sim.visualize_intensity()
+sim.visualize_intensity(title="a")
 # %% 6) Run simulation with the multi-parameter estimator
 N_estimations = int(1e3)
 theta0_rad = 0.0
@@ -152,7 +178,7 @@ all_estimates_mis_x = []
 
 kx_array = sim.k_x_array
 dS = fisher_calc.dS
-S = fisher_calc.S
+# S = fisher_calc.S
 param_names = fisher_calc.param_names
 
 
@@ -168,7 +194,8 @@ dS = placedipoles.calculate_dS_for_3_parameters(
     delta_param=delta_param,
     flux_normalize=False,
 )
-
+fisher_calc = FisherMatrix(dS=dS, S=S, use_heterodyne=True)
+optimizer = Optimizer(fisher_calc.F)
 
 # %%
 photon_budget = 1e3
@@ -204,7 +231,8 @@ for strategy in strategies:
         [dS[i] @ wf[strategy] for i in used_params[strategy]]
     )
     J_indices = np.ix_(used_params[strategy], used_params[strategy])
-    J[strategy] = lf[strategy].J[J_indices]
+    # J[strategy] = lf[strategy].J[J_indices]
+    J[strategy] = optimizer.J_fisher_info_matrix(E0[strategy])
     all_estimates[strategy] = []
 
 sim.set_scatterers(
@@ -229,7 +257,7 @@ sim.set_input_field_kx(kx_array, wf["full_fim"], flux_normalize=False)
 # plt.plot(E3+.0, label="E3", ls='-.')
 # plt.legend()
 # plt.show()
-
+E_true_arr = []
 
 print("\nStarting estimation loop...")
 for i, theta_dev in enumerate(theta_deviations):
@@ -262,6 +290,7 @@ for i, theta_dev in enumerate(theta_deviations):
         E_true = np.fft.fft(E_true, norm="ortho")
         E_true = np.fft.fftshift(E_true)
 
+        # E_true_arr.append(E_true - (E0[strategy] ))
         # dtheta = np.array([x_true_pos, z_true_pos, theta_true])
         # dtheta = dtheta[used_params[strategy]]
         # E_true_test = E0[strategy] + dtheta @ dE[strategy]
@@ -272,6 +301,9 @@ for i, theta_dev in enumerate(theta_deviations):
         estimates = best_estimate_multi(Z_noisy, E0[strategy], dE[strategy])
         all_estimates[strategy].append(estimates)
         if strategy == "full_fim":
+
+            # E_true_arr.append(E_true - (E0[strategy] + theta_true*dE[strategy][2]))
+            E_true_arr.append(E_true - (E0[strategy]))
             # plt.plot(E_true, label="matrix")
             # plt.plot(E_true2, label="compute")
             # plt.legend()
@@ -282,7 +314,7 @@ for i, theta_dev in enumerate(theta_deviations):
                 np.mean(estimates, axis=1),
                 f"--- [{x_true_pos:.3f} {z_true_pos:.3f} {theta_true:.3f}]",
             )
-
+E_true_arr = np.array(E_true_arr)
 
 print("\nSimulation loop finished.")
 
@@ -293,6 +325,7 @@ def plot_performance_on_axes(axes, strategies, param_name, param_index):
     Plots bias and precision for a given parameter on a set of two axes.
     `axes` should be a tuple or list of two axes: (ax_bias, ax_precision).
     """
+    global bias, std
     ax1, ax2 = axes
 
     if param_name == "X":
@@ -303,6 +336,7 @@ def plot_performance_on_axes(axes, strategies, param_name, param_index):
         strategies = [
             strategy for strategy in strategies if strategy != "mis_x"
         ]
+    print(strategies)
     bias = {}
     std = {}
     for strategy in strategies:
@@ -376,7 +410,7 @@ def plot_performance_on_axes(axes, strategies, param_name, param_index):
         Jinv = np.linalg.inv(Jcur)
         idx = np.where(np.array(used_params[strategy]) == param_index)[0]
         sigma_cur = np.sqrt(Jinv[idx, idx])
-        print(sigma_cur, std[strategy][12])
+        print(sigma_cur, std[strategy][12], strategy)
         ax2.axhline(sigma_cur, color=styles[strategy]["color"])
 
 
