@@ -122,6 +122,7 @@ def annotate_subplots_abc(
         axes[i].annotate(format_str.format(label), **default_annotate_args)
 
 
+print(f"save_plots={save_plots}")
 # %% Incident plane wave
 
 planewave = np.zeros_like(sim.k_x_array)

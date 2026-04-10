@@ -20,10 +20,11 @@ def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
     with the quantum mechanical model where the variance of a quadrature
-    measurement is 1/2. If E = P + i Q, then [P, Q] = i/2 and the vacuum
-    variance is 1/4. Measuring P and Q jointly gives variance 1/2 for each
-    quadrature.
+    measurement of is 1/2 for a coherent field with one photon on average. If
+    E = P + i Q, then [P, Q] = i/2 and the vacuum variance is 1/4. Measuring P
+    and Q jointly gives variance 1/2 for each quadrature.
     """
+    E = np.ascontiguousarray(E)
     signal_field = E * np.sqrt(photon_budget)
     # The variance of the noise on each quadrature (real, imag) is 1/2.
     # Therefore, the standard deviation is sqrt(0.5).
@@ -99,7 +100,7 @@ if __name__ == "__main__":
     s = "Verifying CRLB"
     print(s, "\n" + "-" * len(s))
 
-    photon_budget = 1
+    photon_budget = 1e1
     J = dE.conj() @ dE.T
     J = J + J.T
     J = J.real * photon_budget
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     Z_noisy = measure_heterodyne(
         E,
         photon_budget,
-        nsamples=int(1e5),
+        nsamples=int(1e3),
     )
     theta_est = best_estimate_multi(Z_noisy, E0, dE)
     theta_std = np.std(theta_est, axis=1)
@@ -116,6 +117,10 @@ if __name__ == "__main__":
 
     print(f"{'Standard dev.:':<15}", theta_std)
     print(f"{'CRLB:':<15}", crlb)
+
+    Sigma = theta_est[:, None, :] * theta_est[None, :, :]
+    Sigma = np.mean(Sigma, axis=2)
+    print(Sigma)
 
 
 # %% 0) settings
@@ -133,10 +138,10 @@ single_run_iterations = 4000
 
 # %% Loading in data
 # project_name = "quasirandom_longrun - Copy"
-# project_name = "quasirandom_shortrun_dist2-8"
+project_name = "quasirandom_shortrun_dist2-8"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
-project_name = "quasirandom_longrun_dist2-1"
+# project_name = "quasirandom_longrun_dist2-1"
 
 # project_name = "quasirandom"
 # project_name = "square"
@@ -161,7 +166,7 @@ for lf_name in loss_functions_dict.keys():
 
 sim.visualize_intensity(title="a")
 # %% 6) Run simulation with the multi-parameter estimator
-N_estimations = int(1e3)
+N_estimations = int(1e5)
 theta0_rad = 0.0
 x_true_pos = 0.0
 z_true_pos = 0.0
@@ -198,7 +203,7 @@ fisher_calc = FisherMatrix(dS=dS, S=S, use_heterodyne=True)
 optimizer = Optimizer(fisher_calc.F)
 
 # %%
-photon_budget = 1e3
+photon_budget = 1e2
 optimality_criterion = "det"
 lf = {}
 wf = {}
@@ -219,9 +224,12 @@ lf["mis_z"] = loss_functions_dict["z"]
 
 used_params["nuisance_aware"] = range(3)
 used_params["full_fim"] = range(3)
-used_params["subdet_xz"] = [0, 1]
-used_params["mis_x"] = [0]
-used_params["mis_z"] = [1]
+# used_params["subdet_xz"] = [0, 1]
+# used_params["mis_x"] = [0]
+# used_params["mis_z"] = [1]
+used_params["subdet_xz"] = range(3)
+used_params["mis_x"] = range(3)
+used_params["mis_z"] = range(3)
 
 
 for strategy in strategies:
@@ -232,7 +240,7 @@ for strategy in strategies:
     )
     J_indices = np.ix_(used_params[strategy], used_params[strategy])
     # J[strategy] = lf[strategy].J[J_indices]
-    J[strategy] = optimizer.J_fisher_info_matrix(E0[strategy])
+    J[strategy] = optimizer.J_fisher_info_matrix(wf[strategy])[J_indices]
     all_estimates[strategy] = []
 
 sim.set_scatterers(
@@ -258,6 +266,7 @@ sim.set_input_field_kx(kx_array, wf["full_fim"], flux_normalize=False)
 # plt.legend()
 # plt.show()
 E_true_arr = []
+E_lin_arr = []
 
 print("\nStarting estimation loop...")
 for i, theta_dev in enumerate(theta_deviations):
@@ -303,7 +312,9 @@ for i, theta_dev in enumerate(theta_deviations):
         if strategy == "full_fim":
 
             # E_true_arr.append(E_true - (E0[strategy] + theta_true*dE[strategy][2]))
-            E_true_arr.append(E_true - (E0[strategy]))
+            # E_true_arr.append(E_true - (E0[strategy]))
+            E_true_arr.append(E_true)
+            E_lin_arr.append(E0[strategy] + theta_true * dE[strategy][2])
             # plt.plot(E_true, label="matrix")
             # plt.plot(E_true2, label="compute")
             # plt.legend()
@@ -315,65 +326,74 @@ for i, theta_dev in enumerate(theta_deviations):
                 f"--- [{x_true_pos:.3f} {z_true_pos:.3f} {theta_true:.3f}]",
             )
 E_true_arr = np.array(E_true_arr)
+E_lin_arr = np.array(E_lin_arr)
+
+# plt.plot(E_true_arr[:, 12])
+# plt.plot(E_lin_arr[:, 12])
+plt.imshow(np.abs(E_true_arr - E_lin_arr))
+plt.colorbar()
+plt.show()
 
 print("\nSimulation loop finished.")
 
 
 # %% 7) Plotting Bias and Precision for X and Z Parameters
-def plot_performance_on_axes(axes, strategies, param_name, param_index):
+def plot_performance_on_axes(ax1, strategies, param_name, param_index):
     """
     Plots bias and precision for a given parameter on a set of two axes.
     `axes` should be a tuple or list of two axes: (ax_bias, ax_precision).
     """
     global bias, std
-    ax1, ax2 = axes
+    # ax1, ax2 = axes
 
     if param_name == "X":
         strategies = [
             strategy for strategy in strategies if strategy != "mis_z"
         ]
+        true_pos = 0
     elif param_name == "Z":
         strategies = [
             strategy for strategy in strategies if strategy != "mis_x"
         ]
+        true_pos = 0
     print(strategies)
     bias = {}
     std = {}
     for strategy in strategies:
         idx = np.where(np.array(used_params[strategy]) == param_index)[0]
-        bias[strategy] = [
-            np.mean(est[idx]) - x_true_pos for est in all_estimates[strategy]
-        ]
+        bias[strategy] = [np.mean(est[idx]) for est in all_estimates[strategy]]
         std[strategy] = [np.std(est[idx]) for est in all_estimates[strategy]]
+        bias[strategy] = np.array(bias[strategy]) - true_pos
+        std[strategy] = np.array(std[strategy])
 
     # --- Define Plotting Styles ---
     # Inspired by result_Pareto_frontier.py
     opt_criterion_label = f"{OPTIMALITY_CRITERION}-Opt."
     styles = {
         "full_fim": {
-            "label": rf"{opt_criterion_label} ($\mathcal{{J}}$)",
-            "color": "#1f77b4",  # Blue
-            "marker": "o",
+            "label": "Full",
+            "color": "green",  # Blue
+            "marker": "^",
         },
         "subdet_xz": {
-            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi}})$",
-            "color": "#ff7f0e",  # Orange
-            "marker": "s",
+            "label": rf"Subblock",
+            "color": "red",  # Orange
+            "marker": "x",
         },
         "nuisance_aware": {
-            "label": rf"{opt_criterion_label} ($\mathcal{{J}}_{{\psi|\phi}})$",
-            "color": "#2ca02c",  # Green
-            "marker": "d",
+            "label": rf"Partial",
+            "color": "blue",  # Green
+            "marker": "s",
         },
         "mis_x": {
-            "label": r"MIS$_x$",
-            "color": "#d62728",  # Red
-            "marker": "^",
+            "label": r"Scalar",
+            "color": "purple",  # Red
+            "marker": ".",
         },
         "mis_z": {
-            "label": r"MIS$_z$",
-            "color": "#d62728",  # Red
-            "marker": "^",
+            "label": r"Scalar",
+            "color": "purple",  # Red
+            "marker": ".",
         },
     }
 
@@ -385,37 +405,47 @@ def plot_performance_on_axes(axes, strategies, param_name, param_index):
             theta_deviations,
             bias[strategy],
             linestyle="-",
-            markersize=8,
+            markersize=6,
             lw=2,
             **styles[strategy],
         )
-        ax2.plot(
+        ax1.fill_between(
             theta_deviations,
-            std[strategy],
-            linestyle="--",
-            lw=2,
-            **styles[strategy],
+            bias[strategy] - std[strategy],
+            bias[strategy] + std[strategy],
+            linestyle="None",
+            lw=0,
+            color=styles[strategy]["color"],
+            alpha=0.2,
         )
+        # ax2.plot(
+        #     theta_deviations,
+        #     std[strategy],
+        #     linestyle="--",
+        #     lw=2,
+        #     **styles[strategy],
+        # )
 
     ax1.axhline(0, color="k", linestyle="--", label="Unbiased")
-    ax1.set_ylabel(
-        f"Estimation Bias of $\hat{{{param_name.lower()}}}$", fontsize=14
-    )
-    ax1.legend(fontsize=11)
+    ax1.set_ylabel(f"Estimation Bias of $\hat{{{param_name.lower()}}}$")
+    ax1.legend()
     ax1.grid(True, which="both", linestyle=":", alpha=0.6)
+    # ax1.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
     ax1.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 
-    for strategy in strategies:
-        Jcur = J[strategy] * photon_budget
-        Jinv = np.linalg.inv(Jcur)
-        idx = np.where(np.array(used_params[strategy]) == param_index)[0]
-        sigma_cur = np.sqrt(Jinv[idx, idx])
-        print(sigma_cur, std[strategy][12], strategy)
-        ax2.axhline(sigma_cur, color=styles[strategy]["color"])
+    # for strategy in strategies:
+    #     Jcur = J[strategy] * photon_budget
+    #     Jinv = np.linalg.inv(Jcur)
+    #     idx = np.where(np.array(used_params[strategy]) == param_index)[0]
+    #     sigma_cur = np.sqrt(Jinv[idx, idx])
+    #     print(sigma_cur, std[strategy][12], strategy)
+    #     ax2.axhline(sigma_cur, color=styles[strategy]["color"])
 
 
 # Main plotting block
-fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
+fig, axes = plt.subplots(
+    nrows=2, figsize=(TEXTWIDTH, TEXTWIDTH), sharex=True, sharey=False, dpi=DPI
+)
 # fig.suptitle(
 #     f"Estimator Performance ({OPTIMALITY_CRITERION}-Optimality, N_est={N_estimations})",
 #     fontsize=16,
@@ -424,20 +454,83 @@ fig, axes = plt.subplots(2, 2, figsize=(20, 10), sharex=True, sharey=False)
 idx_x = 0
 idx_z = 1
 # Plot for X parameter on the left column
-plot_performance_on_axes(axes[:, 0], strategies, "X", idx_x)
-axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)
-axes[1, 0].set_title("Precision (X-parameter)", fontsize=14)
+plot_performance_on_axes(axes[0], strategies, "X", idx_x)
+# axes[0, 0].set_title("Bias (X-parameter)", fontsize=14)
+# axes[1, 0].set_title("Precision (X-parameter)", fontsize=14)
 
 # Plot for Z parameter on the right column
-plot_performance_on_axes(axes[:, 1], strategies, "Z", idx_z)
-axes[0, 1].set_title("Bias (Z-parameter)", fontsize=14)
-axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
+plot_performance_on_axes(axes[1], strategies, "Z", idx_z)
+# axes[0, 1].set_title("Bias (Z-parameter)", fontsize=14)
+# axes[1, 1].set_title("Precision (Z-parameter)", fontsize=14)
+axes[0].set_ylim(None, 7.8e-2)
+axes[1].set_ylim(None, 7.8e-2)
 
+annotate_subplots_abc(axes)
+
+axes[1].set_xlabel(r"Nuisance Deviation $ \phi$ (radians)")
 
 # Final adjustments
 plt.tight_layout(rect=[0, 0, 1, 0.96])
+figname = f"est_with_nuisance_PB-{photon_budget:.0e}_Nest-{N_estimations:.0e}_{optimality_criterion}"
+plt.savefig(save_folder / (figname + ".pdf"))
+plt.savefig(save_folder / (figname + ".png"))
 plt.show()
 
+# %%
+fig, axes = plt.subplots(ncols=5)
+# Jmax = np.max([np.abs(J0) for J0 in J.values()])
+# Jmin = np.min([np.abs(J0) for J0 in J.values()])
+
+
+Sigma = {}
+for key, value in J.items():
+    Sigma[key] = np.linalg.inv(value)
+
+Jmax = np.max([np.abs(J0) for J0 in J.values()])
+Jmin = np.min([np.abs(J0) for J0 in J.values()])
+Jmax = np.log1p(Jmax)
+Jmin = np.log1p(Jmin)
+
+Sigmamax = np.max([np.abs(Sigma0) for Sigma0 in Sigma.values()])
+Sigmamin = np.min([np.abs(Sigma0) for Sigma0 in Sigma.values()])
+Sigmamax = np.log1p(Sigmamax)
+Sigmamin = np.log1p(Sigmamin)
+
+for ax, strategy in zip(axes, strategies):
+    ax.imshow(
+        np.log1p(np.abs(J[strategy])),
+        vmin=Jmin,
+        vmax=Jmax,
+        cmap="magma",
+    )
+    # print(np.abs(J[strategy][0, 2]), 'x',  strategy)
+    # print(np.abs(J[strategy][1, 2]), 'z',  strategy)
+    print(
+        "{:.3E}".format(np.abs(np.linalg.inv(J[strategy])[0, 2])),
+        "x",
+        strategy,
+    )
+    # print('{:.3E}'.format(np.abs(np.linalg.inv(J[strategy])[1, 2])), "z", strategy)
+    ax.set_title(strategy)
+
+
+fig, axes = plt.subplots(ncols=5)
+for ax, strategy in zip(axes, strategies):
+    ax.imshow(
+        np.log1p(np.abs(Sigma[strategy])),
+        vmin=Sigmamin,
+        vmax=Sigmamax / 8,
+        cmap="magma",
+    )
+    # print(np.abs(J[strategy][0, 2]), 'x',  strategy)
+    # print(np.abs(J[strategy][1, 2]), 'z',  strategy)
+    print(
+        "{:.3E}".format(np.abs(np.linalg.inv(J[strategy])[0, 2])),
+        "x",
+        strategy,
+    )
+    # print('{:.3E}'.format(np.abs(np.linalg.inv(J[strategy])[1, 2])), "z", strategy)
+    ax.set_title(strategy)
 
 # %% 8) Print J for one of the optimal states
 # Choose which J to print, e.g., NuisanceAware or Subdet_XZ
