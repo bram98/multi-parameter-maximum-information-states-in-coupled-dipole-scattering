@@ -48,6 +48,11 @@ The `data/` folder is ignored by Git to prevent large files from being tracked i
 - Are generated during simulations or analyses.
 - Are used locally for testing and development purposes.
 
+## How to use
+After installing, go to the main folder. Run the `make_fisher_matrix.py` file. The files are designed to be run cell-by-cell. Sometimes I use `sys.exit()` after the import cell for easy reloading in Spyder, but they are commented out usually. In `make_fisher_matrix` the simulation is setup, the different lossfunctions are defined and then optimized to maximize Fisher information. The result is a `LossfunctionsDict` which stores every different lossfunction as well as its optimal Fisher matrix and wavefront. The results are saved to disk in the `data/` folder.
+
+Next, go to the file `generate_plots.py`. The results from `make_fisher_matrix.py` are loaded from disk and the different cells are used to generate all plots used in the paper or presentations. The plots are saved in `figures/`. The only exception is for the 'Bias' plot in the appendix, which is generated inside the `nuisance_aware_estimation.py` because of time constraints.
+
 ## Contributors
 - Bram Verreussel
 - Jacob Seifert
