@@ -136,8 +136,6 @@ sim.set_input_field_amplitudes(planewave)
 fig, ax = plt.subplots(dpi=DPI, figsize=(sim.Lz, sim.Lx))
 sim.visualize_intensity(title="", ax=ax, use_colorbar=False)
 plt.axis("off")
-# fig.subplots_adjust(bottom=0, top=1, left=0, right=1)
-# plt.autoscale(tight=True)
 plt.tight_layout(pad=0)
 if save_plots:
     plt.savefig(
@@ -148,8 +146,6 @@ plt.show()
 
 # %% 3D test
 from matplotlib import cm
-
-# fig, ax = plt.subplots(subplot_kw=dict(projection='3d'))
 
 X = sim.Z_grid
 Y = sim.X_grid
@@ -175,20 +171,6 @@ plt.show()
 
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 lf_names = ["x", "z", "phi", "x_inv", "z_inv", "phi_inv", "det"]
-# lf_names = ["det", "tr_inv", "spec_rad"]
-# lf_names = [
-#     "x",
-#     "z",
-#     "phi",
-#     "x_inv",
-#     "z_inv",
-#     "phi_inv",
-#     "tr_norm",
-#     "det",
-#     "tr_inv",
-#     "spec_rad",
-# ]
-# lf_names = ["x", "det"]
 for lf in loss_functions_dict.select_only(lf_names).values():
 
     sim.set_input_field_amplitudes(lf.wavefront)
@@ -198,7 +180,6 @@ for lf in loss_functions_dict.select_only(lf_names).values():
     #     figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
     # )
 
-    # name = lf.shortname.replace(" (scalar)", "")
     name = lf.displayname.replace("Singe parameter ", "")
     name = name.replace("Single parameter ", "")
 
@@ -228,9 +209,7 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         use_colorbar=use_colorbar,
         **colorbar_label,
     )
-    # plt.clim(0, 10)
     plt.tight_layout(h_pad=0.0, w_pad=0.0)
-    # plt.figure(fig)
     if save_plots:
         optimized_path = (
             save_folder
@@ -242,76 +221,6 @@ for lf in loss_functions_dict.select_only(lf_names).values():
         print(f"Saved plot to {optimized_path}")
     plt.show()
 
-
-# %%
-
-sim = CoupledDipoleSimulator.load(folder=data_folder)
-# lf_names = ["x", "phi", "z"]
-lf_names = ["det", "tr_inv", "spec_rad"]
-lf_names = [
-    "x",
-    "z",
-    "phi",
-    "x_inv",
-    "z_inv",
-    "phi_inv",
-    "tr_norm",
-    "det",
-    "tr_inv",
-    "spec_rad",
-]
-
-fig, ax = plt.subplots(nrows=5, ncols=2, figsize=(0.95 * TEXTWIDTH, None))
-
-for lf in loss_functions_dict.select_only(lf_names).values():
-
-    sim.set_input_field_amplitudes(lf.wavefront)
-
-    # fig, ax = plt.subplots(figsize=(5.0, 4.5), dpi=DPI)
-    fig, ax = plt.subplots(
-        figsize=(0.495 * TEXTWIDTH, 0.45 * TEXTWIDTH), dpi=DPI
-    )
-
-    # name = lf.shortname.replace(" (scalar)", "")
-    name = lf.displayname.replace("Singe parameter ", "")
-    name = name.replace("Single parameter ", "")
-
-    # add colorbar label to last plot
-    if lf.name == lf_names[-1]:
-        colorbar = True
-        colorbar_label = {}
-    else:
-        colorbar = False
-        colorbar_label = dict(colorbar_label=None)
-
-    # print(lf.name, lf_names[-1])
-    sim.visualize_intensity(
-        title=f"Maximum Information State\nfor {name}",
-        ax=ax,
-        # imshow_kwargs=dict(vmax=91),
-        movable_kwargs=dict(
-            marker="o", facecolors="none", edgecolors="r", s=80, c=None
-        ),
-        frozen_kwargs=dict(
-            marker="s", facecolors="none", edgecolors="r", s=80, c=None
-        ),
-        legend_kwargs=dict(fontsize=9),
-        colorbar=colorbar,
-        **colorbar_label,
-    )
-    # plt.clim(0, 10)
-    # plt.tight_layout(pad=0.0)
-    # plt.figure(fig)
-    if save_plots:
-        optimized_path = (
-            save_folder
-            / Path(f"optimized_wavefronts_{project_name}")
-            / Path(f"optimized_{lf.name}.png")
-        )
-        optimized_path.parents[0].mkdir(exist_ok=True)
-        plt.savefig(optimized_path)
-        print(f"Saved plot to {optimized_path}")
-    plt.show()
 
 # %% Double optimized plot
 
@@ -345,7 +254,7 @@ plt.show()
 max_intensity = 65
 
 
-fig = plt.figure(figsize=(0.495 * TEXTWIDTH, 0.27 * TEXTWIDTH), dpi=DPI)
+fig = plt.figure(figsize=(0.98 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
 # fig = plt.figure(figsize=(6, 4), dpi=DPI)
 axes = ImageGrid(
     fig,
@@ -385,9 +294,6 @@ axes.cbar_axes[0].colorbar(plots2["field_img"], extend="max")
 
 annotate_subplots_abc(axes, format_str="({})", background="dark")
 
-# axes[1].set_ylabel("")
-# axes.cbar_axes[0].legend([plots2['frozen_plot']], ['lol'], loc='best')
-# axes[0].legend([plots2['frozen_plot']], ['lol'])
 
 handles, labels, handler_map = add_dots_to_legend(
     axes[1].get_legend_handles_labels()
@@ -717,7 +623,7 @@ pareto_groups_sweep = [
     ),
     PlotGroup(
         interp_sweep_dict,
-        legend_label="Time Sharing",
+        legend_label="Naive Time Sharing",
         color="k",
         linestyle="-",
         marker="^",
@@ -749,17 +655,14 @@ x_avoid, y_avoid = pareto_plot_sweep(
 )
 
 
-# %%
+# %% Angle animation
 """
-Animation showing all the incident scattering angles
+Animation showing all the incident scattering angles (only saved)
 """
 
 DPI = 300
 sim = CoupledDipoleSimulator.load(folder=data_folder)
 sim_kwargs = sim.get_kwargs()
-# sim_kwargs["grid_points_x"] = 40
-# sim_kwargs["k_x_array"] = None
-# sim_kwargs["theta_inc_deg"] = np.linspace(-70, 70, num=20)
 
 sim = CoupledDipoleSimulator(**sim_kwargs)
 E_kx_array = np.zeros_like(sim.theta_inc)
@@ -783,28 +686,61 @@ if save_plots:
 # fig.save()
 
 n_frames = 2 * len(E_kx_array) - 2
-# %%
+# %% Live angle animation
+"""
+Live version of angle animation
+"""
+
+DPI = 300
+sim = CoupledDipoleSimulator.load(folder=data_folder)
+sim_kwargs = sim.get_kwargs()
+# Reduced grid points for faster live animation
+sim_kwargs["grid_points_x_vis"] = 150
+sim_kwargs["grid_points_z_vis"] = 150
+
+sim_ani = CoupledDipoleSimulator(**sim_kwargs)
+E_kx_array = np.zeros_like(sim.theta_inc)
+zero_index = np.argmin(np.abs(sim.k_x_array))
+E_kx_array[zero_index] = 1
+sim_ani.set_input_field_amplitudes(E_kx_array / 2.17, flux_normalize=True)
+
+n_frames = 2 * len(E_kx_array) - 2
+
 
 fig, ax = plt.subplots()
 
 
 def init():
-    pass
+    global plot_data
+    plot_data = sim_ani.visualize_intensity(
+        dpi=100,
+        ax=ax,
+        title="Field Intensity Over Slab",
+        use_colorbar=True,
+        imshow_kwargs=dict(cmap="turbo"),
+    )
+    plot_data["field_img"].set_clim(0, 8)
 
 
 def update(i):
-    global E_kx_array
+    global E_kx_array, fig, plot_data
     print(f"\rAnimating frame {i+1:>2} / {n_frames} ", end="")
-    fig.clear()
-    ax.clear()
+    # fig.clear()
+    # ax.clear()
+
+    # for other_ax in fig.axes:
+    #     if other_ax is not ax:
+    #         other_ax.remove()
+
     # Boomerang effect, quite wasteful to redo the computations but oh well
-    # i = i + 1
     i = min(2 * len(E_kx_array) - 2 - i, i)
     E_kx_array *= 0
     E_kx_array[i] = 1
-    sim.set_input_field_amplitudes(E_kx_array)
+    sim_ani.set_input_field_amplitudes(E_kx_array)
 
-    sim.visualize_intensity(dpi=DPI, ax=ax, title="Field Intensity Over Slab")
+    sim_ani.reset()
+    sim_ani.compute_total_field()
+    plot_data["field_img"].set_data(np.abs(sim_ani.E_total) ** 2)
 
 
 ani = matplotlib.animation.FuncAnimation(
@@ -816,7 +752,7 @@ if save_plots:
     ani.save(save_folder / f"{fig_name}.gif")
     ani.save(save_folder / f"{fig_name}.mp4")
 
-plt.show()
+# plt.show()
 
 # %% Sensitivity animation
 """
@@ -848,7 +784,7 @@ frozen_dipoles_orig = sim.frozen_scatterers.copy()
 x = np.linspace(-1, 1, num=7)
 
 
-# %%%
+# %%% Precomputation
 
 # --- 1. PRE-COMPUTATION ("PRELOADING") ---
 
@@ -895,7 +831,7 @@ global_vmax = 26
 global_vmin = 0
 print(f"\nPre-computation complete for {len(precomputed_frames)} frames.")
 
-# %%%
+# %%% Animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # --- 2. ANIMATION ---
@@ -1005,7 +941,6 @@ def update(i):
 
 
 # Create the animation
-# blit=True is the key to smoothness!
 
 frames = np.arange(2 * len(precomputed_frames) - 2)
 frames = np.min([frames, len(frames) - frames], axis=0)

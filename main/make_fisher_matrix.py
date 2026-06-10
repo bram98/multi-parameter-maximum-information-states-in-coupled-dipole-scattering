@@ -21,7 +21,7 @@ from scatteringlibs.lossfunctions import (
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
-sys.exit()
+# sys.exit()
 
 
 # %%
@@ -29,8 +29,11 @@ sys.exit()
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
 data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
-save_state = True  # If True, save state to disk
-# %% 1) define dipole configurations
+save_state = False  # If True, save state to disk
+
+
+print(f"save_state={save_state}")
+# %% Define dipole configurations
 movable_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
     center=(1.4, 0.0), number=6, small_dist=0.786, start_index=5
 )
@@ -41,7 +44,7 @@ frozen_dipoles = placedipoles.place_quasi_random_line_of_dipoles(
 # movable_dipoles = placedipoles.place_square_of_dipoles(side=1.57)
 # frozen_dipoles = None
 
-# %% 2) simulator geometry and input space
+# %% Simulator geometry and input space
 
 N_modes = 45
 lambda_0 = 1.0
@@ -81,7 +84,7 @@ sim_for_vis.visualize_intensity(
 )
 print()
 
-# %% 3) Build partial derivatives for each param => dS[mu]
+# %% Build partial derivatives for each param => dS[mu]
 param_names = ["shiftX", "shiftZ", "rotation"]
 delta_param = 1e-3
 
@@ -97,7 +100,7 @@ dS_tensor = placedipoles.calculate_dS_for_3_parameters(
     flux_normalize=True,
 )
 print(f"Built dS tensor with shape: {dS_tensor.shape}")
-# %% 4) Build the Fisher-operator array and set global variables
+# %% Build the Fisher-operator array and set global variables
 fisher_calc = FisherMatrix(
     dS=dS_tensor, S=S, param_names=param_names, delta=delta_param
 )
@@ -120,13 +123,6 @@ optimizer = Optimizer(
 # Photon budget for normalization (can be defined once, used across sections)
 photon_budget = 1.0
 
-# Global optimization run settings (e.g., 10x3000 iterations)
-multi_run_count = 5
-single_run_iterations = 3000
-
-# Globally store wavefronts and their J matrices
-optimized_wavefronts = {}
-fisher_matrices_for_wavefronts = {}
 
 if save_state:
     sim.save(folder=data_folder)
@@ -334,10 +330,18 @@ loss_functions_dict["dropped_tr_norm"] = LossFunction(
 """
 Optimize
 """
+
+"""
+Loading the 'quick' setting allows for quick optimization, but the results will
+not be fully converged. Loading 'thorough' will take quite a bit longer 
+(>1 hour) but are guaranteed to be converged. You can never be 100% sure it is 
+converged but you know what I mean.
+"""
+
 loss_functions_dict.load_optimization_settings(
-    "thorough",
+    # "thorough",
+    "quick",
     folder="../optimization_settings",
-    # "quick", folder="../optimization_settings"
 )
 
 
@@ -400,14 +404,11 @@ Lossfunctions that contain a sweep over a parameter
 
 loss_functions_sweep_dict = LossFunctionsDict()
 
-# sweep_dict["xz_inv"]
-
 
 loss_functions_sweep_dict["xz_scalar"] = LossFunctionSweep(
     lossfunctions.sweep_xz_F,
     name="xz_scalar",
     displayname=f"Interpolation x-z (scalar)",
-    # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
     shortname=rf"$x\leftrightarrow z$ (scalar)",
     maximize=True,
     method="eig",
@@ -419,7 +420,6 @@ loss_functions_sweep_dict["xz_joint"] = LossFunctionSweep(
     lossfunctions.sweep_xz_inv_J,
     name="xz_joint",
     displayname=f"Interpolation x-z (joint)",
-    # shortname=rf"$\mathcal{{J}}^{{-1}}_{{{param}{param}}}$",
     shortname=rf"$x\leftrightarrow z$ (joint)",
     maximize=False,
     method="torch",
@@ -471,51 +471,6 @@ if save_state:
     )
     print(f"Saved sweep loss functions to '{data_folder}'")
 
-
-# %%
-from scipy.optimize import curve_fit
-
-ss = [
-    loss_functions_sweep_dict["xz_scalar"],
-    # loss_functions_sweep_dict["xz_joint_eps0.1"],
-]
-for name, s in loss_functions_sweep_dict.items():
-    J_invs = [np.linalg.inv(J) for J in s.Js]
-    zs = np.array([J[1, 1] for J in s.Js])
-    xs = np.array([J[0, 0] for J in s.Js])
-    z = np.array([J_inv[1, 1] for J_inv in J_invs])
-    x = np.array([J_inv[0, 0] for J_inv in J_invs])
-    plt.plot(z[:], x[:], label=name)
-plt.xlabel("z")
-plt.ylabel("x")
-# plt.xlim()
-
-
-def f(z, m, n, c, z0, x0):
-    return (c / (z - z0) ** m) ** (1 / n) + x0
-
-
-def f2(z, m, n, r, b, z0, x0):
-    return (np.abs(r - b * (np.abs(z - z0)) ** m)) ** (1 / n) + x0
-
-
-def f_lin(z, c, z0, x0):
-    return c * (z - z0) + x0
-
-
-p, cov = curve_fit(f2, z, x, p0=(-1, -1, 100.0, 1.5, 0, 0.042))
-# p, cov = curve_fit(f_lin, 1/z, 1/x, p0=(-1., 50, 20))
-p = (-1, -1, 100.0, 1.5, 0, 0.042)
-# plt.figure()
-plt.plot(z, f2(z, *p), label="fit")
-# plt.plot(1/z, f_lin(1/z, *p), label="fit")
-# plt.xscale("log")
-# plt.yscale("log")
-plt.legend()
-plt.title(
-    r"Interpolation of Scalar CRLB: $\langle E|\left((1-\alpha)F_{xx} + \alpha F_{zz}\right)|E\rangle$"
-)
-plt.show()
 
 # %%
 """

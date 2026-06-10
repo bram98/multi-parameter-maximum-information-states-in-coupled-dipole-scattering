@@ -617,10 +617,24 @@ class CoupledDipoleSimulator(Storable):
         )
         imshow_kwargs_default.update(imshow_kwargs)
 
-        field_img = ax.pcolormesh(
-            self.Z_grid / self.lambda_0,
-            self.X_grid / self.lambda_0,
+        # field_img = ax.pcolormesh(
+        #     self.Z_grid / self.lambda_0,
+        #     self.X_grid / self.lambda_0,
+        #     display_function(self.E_total),
+        #     **imshow_kwargs,
+        # )
+        dz = self.Z_grid[0, 1] - self.Z_grid[0, 0]
+        dx = self.X_grid[1, 0] - self.X_grid[0, 0]
+        extent = [
+            np.min(self.Z_grid) - 0.5 * dz,
+            np.max(self.Z_grid) + 0.5 * dz,
+            np.min(self.X_grid) - 0.5 * dx,
+            np.max(self.X_grid) + 0.5 * dx,
+        ]
+        field_img = ax.imshow(
             display_function(self.E_total),
+            extent=extent,
+            origin="lower",
             **imshow_kwargs,
         )
 
