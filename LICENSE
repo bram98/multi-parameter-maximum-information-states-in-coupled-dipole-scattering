@@ -1,0 +1,24 @@
+# License for Multi-Parameter Maximum Information States Project
+
+## Copyright Notice
+This project and all associated files are © Bram Verreussel, Jacob Seifert, Allard Mosk, Utrecht University, and ASML. All rights reserved.
+
+## Usage Restrictions
+1. **Non-Commercial Use Only**:
+   This code and associated materials are provided solely for non-commercial academic research purposes. Any commercial use requires prior written approval from ASML and Utrecht University.
+
+2. **Confidentiality**:
+   The content of this repository contains proprietary and potentially patentable material. Distribution, sharing, or publication without explicit written consent from ASML and Utrecht University is strictly prohibited.
+
+3. **Patent Rights**:
+   Any discoveries, results, or innovations derived from this work may be subject to patent applications filed by ASML or Utrecht University. Users are responsible for ensuring compliance with applicable intellectual property rights.
+
+4. **Publication**:
+   Results obtained using this code or research derived from it may not be published or publicly disclosed without prior approval from ASML and Utrecht University.
+
+## Future License
+If ASML and Utrecht University determine that no patent will be filed and no further restrictions are necessary, this repository may transition to an open license (e.g., MIT or Apache 2.0). Notification of such a change will be documented in this repository.
+
+## Disclaimer
+This software is provided "as-is" without any warranty of any kind, express or implied.
+
