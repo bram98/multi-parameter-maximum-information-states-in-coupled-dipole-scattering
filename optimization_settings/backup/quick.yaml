@@ -1,0 +1,73 @@
+x_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+z_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+phi_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+det:
+  steps: 2000
+  lr: 0.01
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+  multiruns: null
+spec_rad:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.1
+  lr_decay_step_size: 500
+  multiruns: null
+tr_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 1000
+  multiruns: null
+partial_det:
+  steps: 2000
+  lr: 0.01
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+partial_spec_rad:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.1
+  lr_decay_step_size: 1000
+  multiruns: null
+partial_tr_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 1000
+  multiruns: null
+dropped_det:
+  steps: 2000
+  lr: 0.01
+  lr_decay: 0.2
+  lr_decay_step_size: 500
+  multiruns: null
+dropped_spec_rad:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.1
+  lr_decay_step_size: 1000
+  multiruns: null
+dropped_tr_inv:
+  steps: 2000
+  lr: 0.1
+  lr_decay: 0.2
+  lr_decay_step_size: 1000
+  multiruns: null
