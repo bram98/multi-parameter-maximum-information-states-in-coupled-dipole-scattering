@@ -28,8 +28,11 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
    git clone git@git.science.uu.nl:linx/multi-parameter-maximum-information-states-in-coupled-dipole-scattering.git
    cd multi-parameter-max-info-states
    ```
-
-2. Install dependencies with `pip`:
+2. (optional) Create a fresh environment, for example with Conda. If you encounter issues with Cuda, remove every mention of `cu118`. You can then either run the code on the CPU or install Torch with CUDA manually.
+   ```bash
+   conda create -n MMIS python=3.10
+   ```
+4. Install dependencies with `pip`:
    ```bash
    pip install -r requirements.txt
    ```
@@ -39,6 +42,7 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 The `data/` folder is ignored by Git to prevent large files from being tracked in the repository. This folder is intended for files that:
 - Are generated during simulations or analyses.
 - Are used locally for testing and development purposes.
+The data used in the paper can be found in the `arhived_data` folder named quasirandom_shortrun_dist2-8. 
 
 ## Contributors
 - Bram Verreussel
