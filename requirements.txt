@@ -8,9 +8,6 @@ adjustText==1.3.0
 dill==0.4.0
 cmap
 
-# project libraries
--e ./libraries/fourierfun
--e .
 
 # development tools
 pre-commit==4.2.0
