@@ -322,6 +322,7 @@ class Optimizer(Storable):
         loss_history,
         title="Torch Optimization Loss",
         first_step=None,
+        final_step=None,
         ax=None,
     ):
 
@@ -340,7 +341,9 @@ class Optimizer(Storable):
             lh = np.array(lh)
 
             steps_array = np.arange(len(lh))
-            ax.plot(steps_array[first_step:], lh[first_step:])
+            ax.plot(
+                steps_array[first_step:final_step], lh[first_step:final_step]
+            )
         ax.set_xlabel("Optimization Steps")
         ax.set_ylabel("Loss Value")
         # plt.yscale("log")

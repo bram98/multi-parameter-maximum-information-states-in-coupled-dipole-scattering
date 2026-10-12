@@ -1234,3 +1234,77 @@ def sweep_xz_inv_J_eps(eps):
         return xz_inv_J
 
     return _sweep_xz_inv_J_eps
+
+
+def convert_to_heterodyne(
+    fisher_calc,
+    optimizer=None,
+    loss_functions_dict: LossFunctionsDict = None,
+    loss_functions_sweep_dict: LossFunctionsDict = None,
+):
+    """
+    Converts from homodyne to heterodyne, by dividing by 2 in the right places.
+    You should only need this when you made a mess of the prefactor like I did.
+    When fisher_calc.use_heterodyne is set to True, this function does nothing.
+    """
+    if fisher_calc.use_heterodyne:
+        print("use_heterodyne flag was already True. No action taken")
+        return fisher_calc, loss_functions_dict, loss_functions_sweep_dict
+
+    # fisher_calc lazily updates F when this flag is changed
+    fisher_calc.use_heterodyne = True
+
+    if optimizer is not None:
+        optimizer.F_op = fisher_calc.F
+        optimizer.Ft = None
+
+    if loss_functions_dict is not None:
+        for lf in loss_functions_dict.values():
+            if lf._J is None:
+                continue
+            lf._J *= 0.5
+
+    if loss_functions_sweep_dict is not None:
+        for lf in loss_functions_sweep_dict.values():
+            if lf._Js is None:
+                continue
+
+            for J in lf._Js:
+                J *= 0.5
+
+
+def convert_to_homodyne(
+    fisher_calc,
+    optimizer=None,
+    loss_functions_dict: LossFunctionsDict = None,
+    loss_functions_sweep_dict: LossFunctionsDict = None,
+):
+    """
+    Converts from homodyne to heterodyne, by dividing by 2 in the right places.
+    You should only need this when you made a mess of the prefactor like I did.
+    When fisher_calc.use_heterodyne is set to False, this function does nothing.
+    """
+    if not fisher_calc.use_heterodyne:
+        print("use_heterodyne flag was already False. No action taken")
+        return fisher_calc, loss_functions_dict, loss_functions_sweep_dict
+
+    # fisher_calc lazily updates F when this flag is changed
+    fisher_calc.use_heterodyne = False
+
+    if optimizer is not None:
+        optimizer.F_op = fisher_calc.F
+        optimizer.Ft = None
+
+    if loss_functions_dict is not None:
+        for lf in loss_functions_dict.values():
+            if lf._J is None:
+                continue
+            lf._J *= 2
+
+    if loss_functions_sweep_dict is not None:
+        for lf in loss_functions_sweep_dict.values():
+            if lf._Js is None:
+                continue
+
+            for J in lf._Js:
+                J *= 2

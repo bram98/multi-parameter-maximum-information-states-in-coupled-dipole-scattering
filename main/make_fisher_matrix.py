@@ -16,7 +16,7 @@ from scatteringlibs.lossfunctions import (
     LossFunctionSweep,
     dropped_lossfunction,
     dropped_lossfunction_F,
-    partial_lossfunction,
+    partial_lossfunction_given_nuisance,
 )
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
@@ -28,8 +28,9 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
-data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
-save_state = False  # If True, save state to disk
+# data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
+data_folder = "../data/quasirandom_longrun_dist2-8"  # Where to save state
+save_state = True  # If True, save state to disk
 
 
 print(f"save_state={save_state}")
@@ -242,7 +243,9 @@ dropped_fisher_latex = (
 # r"A-Opt. ($\mathcal J$)"
 # Partial Determinant
 loss_functions_dict["partial_det"] = LossFunction(
-    partial_lossfunction(lossfunctions.determinant_of_J, nuisance_index),
+    partial_lossfunction_given_nuisance(
+        lossfunctions.determinant_of_J, nuisance_index
+    ),
     "partial_det",
     displayname="D-optimality (partial)",
     shortname=rf"D-Opt",
@@ -252,7 +255,9 @@ loss_functions_dict["partial_det"] = LossFunction(
 
 # Partial Spectral Radius
 loss_functions_dict["partial_spec_rad"] = LossFunction(
-    partial_lossfunction(lossfunctions.min_eigenvalue_of_J, nuisance_index),
+    partial_lossfunction_given_nuisance(
+        lossfunctions.min_eigenvalue_of_J, nuisance_index
+    ),
     "partial_spec_rad",
     displayname="E-optimality (partial) ",
     shortname=rf"E-Opt.",
@@ -263,7 +268,9 @@ loss_functions_dict["partial_spec_rad"] = LossFunction(
 
 # Partial Trace of inverse
 loss_functions_dict["partial_tr_inv"] = LossFunction(
-    partial_lossfunction(lossfunctions.trace_of_J_inv, nuisance_index),
+    partial_lossfunction_given_nuisance(
+        lossfunctions.trace_of_J_inv, nuisance_index
+    ),
     "partial_tr_inv",
     displayname="A-optimality (partial) ",
     shortname=rf"A-Opt.",
@@ -339,8 +346,8 @@ converged but you know what I mean.
 """
 
 loss_functions_dict.load_optimization_settings(
-    # "thorough",
-    "quick",
+    "thorough2",
+    # "quick",
     folder="../optimization_settings",
 )
 
@@ -362,10 +369,11 @@ Check convergence by showing loss histories
 """
 
 for loss_function in loss_functions_dict.values():
-    if loss_function.method == "torch" and loss_function._J is not None:
+    if loss_function.method == "torch" and loss_function._J is not None and "":
         optimizer.plot_torch_loss(
             loss_function.loss_history,
-            first_step=-500,
+            first_step=3000,
+            final_step=4000,
             title=f"{loss_function.displayname} Optimization Loss",
         )
 
@@ -433,7 +441,7 @@ Optimize sweeps
 
 loss_functions_sweep_dict.load_optimization_settings(
     # "quick_sweep", folder="../optimization_settings"
-    "thorough_sweep",
+    "thorough_sweep2",
     folder="../optimization_settings",
 )
 
@@ -473,18 +481,18 @@ if save_state:
 
 
 # %%
-"""
-Change names without having to run optimizier
-"""
-data_folder = "../data/quasirandom_longrun"
+# """
+# Change names without having to run optimizier
+# """
+# data_folder = "../data/quasirandom_longrun"
 
-loss_functions_dict_load = LossFunctionsDict.load(folder=data_folder)
+# loss_functions_dict_load = LossFunctionsDict.load(folder=data_folder)
 
-for name, loss_function in loss_functions_dict.items():
-    loss_function._J = loss_functions_dict_load[name].J
-    loss_function.loss_history = loss_functions_dict_load[name].loss_history
+# for name, loss_function in loss_functions_dict.items():
+#     loss_function._J = loss_functions_dict_load[name].J
+#     loss_function.loss_history = loss_functions_dict_load[name].loss_history
 
-if save_state:
-    loss_functions_dict.save(folder=data_folder)
+# if save_state:
+#     loss_functions_dict.save(folder=data_folder)
 
-    print(f"Renamed loss functions in '{data_folder}'")
+#     print(f"Renamed loss functions in '{data_folder}'")
