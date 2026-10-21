@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from scipy import stats
 
+import scatteringlibs.lossfunctions
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
@@ -18,6 +19,60 @@ sys.exit()
 
 
 # %% -1) define functions
+def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
+    """
+    Models a camera with complex field detection under shot noise, consistent
+    with the quantum mechanical model where the variance of a quadrature
+    measurement of is 1/2 for a coherent field with one photon on average. If
+    E = P + i Q, then [P, Q] = i/2 and the vacuum variance is 1/4. Measuring P
+    and Q jointly gives variance 1/2 for each quadrature.
+    """
+    E = np.ascontiguousarray(E).astype(np.complex128)
+    signal_field = E * np.sqrt(photon_budget)
+    # The variance of the noise on each quadrature (real, imag) is 1/2.
+    # Therefore, the standard deviation is sqrt(0.5).
+    noise_std_dev = np.sqrt(0.5)
+    E_real = signal_field.view(np.float64)
+    rng = np.random.RandomState(seed)
+    if nsamples is None:
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=noise_std_dev, random_state=rng
+        )
+    else:
+        field_samples = stats.norm.rvs(
+            loc=E_real,
+            scale=noise_std_dev,
+            size=(nsamples, *E_real.shape),
+            random_state=rng,
+        )
+    return field_samples.view(np.complex128) / np.sqrt(photon_budget)
+
+
+def measure_noisy(E, noise_std_dev, nsamples=None, seed=None):
+    """
+    Models a camera with complex field detection under shot noise, consistent
+    with the quantum mechanical model where the variance of a quadrature
+    measurement of is 1/2 for a coherent field with one photon on average. If
+    E = P + i Q, then [P, Q] = i/2 and the vacuum variance is 1/4. Measuring P
+    and Q jointly gives variance 1/2 for each quadrature.
+    """
+    E = np.ascontiguousarray(E).astype(np.complex128)
+    E_real = E.view(np.float64)
+    rng = np.random.RandomState(seed)
+    if nsamples is None:
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=noise_std_dev, random_state=rng
+        )
+    else:
+        field_samples = stats.norm.rvs(
+            loc=E_real,
+            scale=noise_std_dev,
+            size=(nsamples, *E_real.shape),
+            random_state=rng,
+        )
+    return field_samples.view(np.complex128)
+
+
 def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
     """
     Models a camera with complex field detection under shot noise, consistent
@@ -81,7 +136,6 @@ if __name__ == "__main__":
     theta0 = np.array([0.1, 0.2, 0.3])
     E0 = np.random.randn(5, 2).view(complex).squeeze()
     dE = np.random.randn(3, 5, 2).view(complex).squeeze()
-    # dE = np.eye(3, 5, dtype=complex)
     noise = np.random.randn(5) * 0.05
 
     E = E0 + dE[0] * theta0[0]
@@ -90,10 +144,10 @@ if __name__ == "__main__":
 
     print(
         "Single parameter estimate: ",
-        best_estimate([E, E + noise * 0.1], E0, dE[0]),
+        best_estimate([E, E + noise], E0, dE[0]),
     )
 
-    E = E = E0 + theta0 @ dE
+    E = E0 + theta0 @ dE
 
     print(
         f"Multilinear parameter estimate:\n{best_estimate_multi(np.array([E, E+noise]), E0, dE)}\n"
@@ -102,7 +156,7 @@ if __name__ == "__main__":
     s = "Verifying CRLB"
     print(s, "\n" + "-" * len(s))
 
-    photon_budget = 1e1
+    photon_budget = 1e3
     J = dE.conj() @ dE.T
     J = J + J.T
     J = J.real * photon_budget
@@ -122,7 +176,7 @@ if __name__ == "__main__":
 
     Sigma = theta_est[:, None, :] * theta_est[None, :, :]
     Sigma = np.mean(Sigma, axis=2)
-    print(Sigma)
+    print("Sigma: \n", Sigma)
 
 
 # %% 0) settings
@@ -163,6 +217,136 @@ original_frozen_dipoles = sim.frozen_scatterers.copy()
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
     print(f"\t- {lf_name}")
+
+# %% Noisy measurements
+
+lf = loss_functions_dict["det"]
+fisher_calc.use_heterodyne = True
+optimizer = Optimizer(fisher_calc.F)
+
+E = lf.wavefront
+
+det_arr = []
+det_std_arr = []
+n = 50
+noise_readout_arr = np.ones(n)
+noise_heterodyne = 0.5
+# I_in = np.linalg.norm(E)**2
+I_in_arr = np.geomspace(5e1, 1e10, num=n)
+
+noise_arr = np.sqrt(noise_readout_arr**2 + noise_heterodyne**2)
+
+SNR_arr = np.sqrt(I_in_arr) / noise_arr
+
+for I_in, noise_readout in zip(I_in_arr, noise_arr):
+    E_noisy = measure_noisy(E * np.sqrt(I_in), noise_readout, nsamples=100)
+
+    E_noisy *= 1 / np.linalg.norm(E_noisy, axis=1)[:, np.newaxis]
+
+    J_noisy = [optimizer.J_fisher_info_matrix(E_) for E_ in E_noisy]
+    det_noisy = np.linalg.det(J_noisy)
+    det_arr.append(np.mean(det_noisy))
+    det_std_arr.append(np.std(det_noisy))
+
+det_arr = np.array(det_arr)
+det_std_arr = np.array(det_std_arr)
+
+plt.plot(1 / SNR_arr, det_arr)
+plt.fill_between(
+    1 / SNR_arr, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.1
+)
+plt.xlabel("1/SNR")
+
+
+# %%
+
+dS0 = fisher_calc.dS
+dS0_flat = dS0.flatten()
+
+fisher_calc_noisy = FisherMatrix(dS0, use_heterodyne=True)
+
+
+det_arr = []
+det_std_arr = []
+n = 50
+noise_readout_arr = np.ones(n)
+noise_heterodyne = 0.5
+# I_in = np.linalg.norm(E)**2
+I_in_arr = np.geomspace(2e-1, 1e6, num=n)
+
+noise_arr = np.sqrt(noise_readout_arr**2 + noise_heterodyne**2)
+
+SNR_arr = np.sqrt(I_in_arr) / noise_arr
+
+E_noisy_arr = []
+for i, (I_in, noise_readout) in enumerate(zip(I_in_arr, noise_arr)):
+    dS_noisy = measure_noisy(
+        dS0_flat * np.sqrt(I_in), noise_readout, nsamples=10
+    )
+    dS_noisy = dS_noisy.reshape((-1,) + dS0.shape) / np.sqrt(I_in)
+
+    J_noisy_arr = []
+    for j, dS in enumerate(dS_noisy):
+        print(i, j)
+        fisher_calc_noisy.dS = dS
+        optimizer_noisy = Optimizer(fisher_calc_noisy.F)
+
+        result = optimizer_noisy.torch_optimize_loss(
+            lossfunctions.determinant_of_J,
+            steps=500,
+            lr=1e-2,
+            maximize=True,
+            E_init=lf.wavefront,
+            E_init_strength=1.0,
+        )
+        E_noisy = result["bestvec"]
+        E_noisy_arr.append(E_noisy)
+        J_noisy_arr.append(optimizer.J_fisher_info_matrix(E_noisy))
+    det_noisy = np.linalg.det(J_noisy_arr)
+    det_arr.append(np.mean(det_noisy))
+    det_std_arr.append(np.std(det_noisy))
+
+det_arr = np.array(det_arr)
+det_std_arr = np.array(det_std_arr)
+
+
+# %%
+
+fig, ax = plt.subplots(figsize=(0.495 * TEXTWIDTH, 0.4 * TEXTWIDTH), dpi=DPI)
+plt.plot(1 / SNR_arr, det_arr)
+plt.fill_between(
+    1 / SNR_arr, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.1
+)
+plt.axhline(2714.871457318225 / 2)
+plt.axvline(1)
+# plt.xlabel("1/SNR")
+# plt.ylabel('D-optimality')
+# plt.tight_layout()
+# plt.savefig(r'C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.png')
+# plt.savefig(r'C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.pdf')
+# plt.show()
+# %%
+
+# Analytically calculate detection noise degradation (No random samples needed!)
+det_arr = []
+
+J_ideal_norm1 = optimizer.J_fisher_info_matrix(E)  # Base J for 1 photon
+
+
+I_in_arr = np.geomspace(2e4, 1e5)
+
+for I_in, noise_readout in zip(I_in_arr, noise_readout_arr):
+    # Total variance = heterodyne variance (0.5) + readout variance
+    total_variance = 0.5 + noise_readout**2
+
+    # The Fisher matrix scales directly by Intensity / (2 * total_variance)
+    # Note: If noise_readout = 0, this multiplier is exactly I_in
+    J_noisy_det = J_ideal_norm1 * (I_in / (2 * total_variance))
+
+    det_arr.append(np.linalg.det(J_noisy_det))
+
+plt.plot(1 / SNR_arr, det_arr)
+
 
 # %%
 
