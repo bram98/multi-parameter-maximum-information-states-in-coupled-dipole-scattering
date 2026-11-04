@@ -30,7 +30,8 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
-project_name = "quasirandom_longrun_dist2-6"
+# project_name = "quasirandom_longrun_dist2-6"
+project_name = "quasirandom_longrun_dist2-8"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
 # project_name = "quasirandom_longrun_dist3-0"

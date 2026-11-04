@@ -1056,6 +1056,69 @@ class CoupledDipoleSimulator(Storable):
 
         return S, (k_in, k_out)
 
+    def calculate_dS(
+        self,
+        shifts: np.ndarray,
+        deltas: np.ndarray,
+        symmetric: bool = True,
+        flux_normalize: bool = True,
+    ):
+        """
+        Calculates the d_\mu S tensor. Calculates a numerical derivative by
+        applying the shifts to the movable dipoles and calculating the
+        scattering matrix. Calculates a symmetric derivate when symmetric==True
+        and a forward derivative otherwise. Assumes `deltas` is the step size.
+
+        Args:
+            shifts: array of shape (p, 2, len(self.movable_dipoles[0]))
+                shifts to apply to each dipole. p is the number of parameters
+            deltas: array of shape (p,)
+                The step size to use in numerical derivative. If
+                symmetric==True, will be multiplied by 2
+            symmetric:
+                whether to use symmetric or forward derivative. Default: True
+
+        """
+        shifts = np.asarray(shifts)
+        deltas = np.asarray(deltas)
+        p = len(deltas)
+
+        if symmetric:
+            deltas *= 2
+
+        sim_plus = self.copy()
+        sim_minus = self.copy()
+        movable_dipoles = sim.movable_scatterers.copy()
+        # movable_plus = movable_dipoles + shifts
+
+        N_in = len(self.k_x_array)
+        N_out = self.grid_points_x
+        dS = np.zeros((p, N_out, N_in), dtype=complex)
+
+        if not symmetric:
+            S_minus, _ = sim_minus.build_scattering_matrix(
+                flux_normalize=flux_normalize
+            )
+
+        for i in range(p):
+            movable_plus = movable_dipoles + shifts[i]
+            sim_plus.set_scatterers(movable_scatterers=movable_plus)
+
+            S_plus, _ = sim_plus.build_scattering_matrix(
+                flux_normalize=flux_normalize
+            )
+
+            if symmetric:
+                movable_minus = movable_dipoles - shifts[i]
+                sim_minus.set_scatterers(movable_scatterers=movable_minus)
+
+                S_minus, _ = sim_minus.build_scattering_matrix(
+                    flux_normalize=flux_normalize
+                )
+
+            dS[i] = (S_plus[i] - S_minus[i]) / deltas[i]
+        return dS[i]
+
     @property
     def Ns(self):
         """
