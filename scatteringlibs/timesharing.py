@@ -7,6 +7,19 @@ from scatteringlibs.lossfunctions import LossFunction, LossFunctionSweep
 from scatteringlibs.optimizer import Optimizer
 from scatteringlibs.storable import Storable
 
+# %%
+
+
+def print_norm(msg, E):
+    E_np = E.cpu().detach().numpy()
+    print(msg, np.linalg.norm(E_np, axis=1))
+
+
+def print_norm2(msg, Ereal, Eimag):
+    Ereal_np = Ereal.cpu().detach().numpy()
+    Eimag_np = Eimag.cpu().detach().numpy()
+    print(msg, np.linalg.norm(Ereal_np + 1j * Eimag_np, axis=1))
+
 
 class TimeSharingOptimizer(Optimizer):
 
@@ -45,6 +58,7 @@ class TimeSharingOptimizer(Optimizer):
             device=self.device,
             dtype=torch.float64,
         )
+        exposure_times.requires_grad = False
 
         if self.Ft is None:
             self.Ft = torch.from_numpy(self.F_op).to(
@@ -67,10 +81,14 @@ class TimeSharingOptimizer(Optimizer):
 
         E_coeffs_complex = torch.complex(E_param_real, E_param_imag)
         # Initial normalization
-        current_norms = torch.linalg.norm(E_coeffs_complex, axis=0)
-        scale = np.sqrt(photon_budget) / current_norms
+        current_norms = torch.linalg.norm(E_coeffs_complex, axis=1)
+        scales = np.sqrt(photon_budget) / current_norms
 
-        E_coeffs_complex *= scale[torch.newaxis, :]
+        E_param_real *= scales[:, torch.newaxis]
+        E_param_imag *= scales[:, torch.newaxis]
+
+        # print_norm("init", E_coeffs_complex)
+        # print_norm2("init", E_param_real, E_param_imag)
 
         E_param_real.requires_grad = True
         E_param_imag.requires_grad = True
@@ -91,24 +109,20 @@ class TimeSharingOptimizer(Optimizer):
         for step in range(steps):
             opt.zero_grad()
             E_coeffs_complex = torch.complex(E_param_real, E_param_imag)
-            # E_coeffs_complex = torch.complex(E_param_real, E_param_imag)
+
+            # print_norm("loc1", E_coeffs_complex)
+            # print_norm2("loc1", E_param_real, E_param_imag)
 
             # Normalized E for calculating J (soft normalization within gradient path)
             # This normalization affects the gradient direction.
-            current_norms_E = torch.linalg.norm(E_coeffs_complex, axis=0)
+            current_norms_E = torch.linalg.norm(E_coeffs_complex, axis=1)
 
             scales = np.sqrt(photon_budget) / current_norms_E
 
-            E_norm = E_coeffs_complex * scales[torch.newaxis, :]
-            # E_norm_for_J = (
-            #     torch.sqrt(
-            #         torch.tensor(
-            #             photon_budget, dtype=torch.float64, device=self.device
-            #         )
-            #         / current_norm_sq_E
-            #     )
-            #     * E_coeffs_complex
-            # )
+            E_norm = E_coeffs_complex * scales[:, torch.newaxis]
+
+            # print_norm("soft", E_norm)
+            # print_norm2("soft", E_param_real, E_param_imag)
 
             # Calculate J_mat = <E_norm_for_J | F_op | E_norm_for_J>
             J_mat_torch = torch.einsum(
@@ -128,11 +142,15 @@ class TimeSharingOptimizer(Optimizer):
 
             # Hard normalization after step (project back to sphere)
             with torch.no_grad():
-                current_norms_E = torch.linalg.norm(E_coeffs_complex, axis=0)
+                current_norms_E = torch.linalg.norm(E_coeffs_complex, axis=1)
 
                 scales = np.sqrt(photon_budget) / current_norms_E
 
-                E_norm = E_coeffs_complex * scales[torch.newaxis, :]
+                E_param_real *= scales[:, torch.newaxis]
+                E_param_imag *= scales[:, torch.newaxis]
+
+                # print_norm("hard", E_norm)
+                # print_norm2("hard", E_param_real, E_param_imag)
 
             current_loss_val = (
                 loss.item()
@@ -183,14 +201,10 @@ class TimeSharingOptimizer(Optimizer):
         # if verbose:
         #     print()
 
-        # self.loss_history_torch = run_loss_history
-
         result = {
             "bestval": best_val_loss,
             "bestvec": (
-                Optimizer.normalize_wavefront(best_vec_coeffs, photon_budget)
-                if best_vec_coeffs is not None
-                else None
+                best_vec_coeffs if best_vec_coeffs is not None else None
             ),
             "loss_history": run_loss_history,
         }
@@ -215,6 +229,7 @@ class TimeSharingOptimizer(Optimizer):
         base_seed=None,
         E_init=None,
         E_init_strength: float = 0.1,
+        seed=None,
     ):
         """
         When you try your best but you don't succeed
@@ -296,6 +311,7 @@ class LossFunctionTimeSharing(LossFunctionSweep):
         multiruns=None,
         E_init_strength: float = 0.1,
         n_sweep: int = 10,
+        n_exposure_times: int = 10,
         alpha_min: float = 0,
         alpha_max: float = 1,
     ):
@@ -319,6 +335,10 @@ class LossFunctionTimeSharing(LossFunctionSweep):
         )
         self.loss_functions = loss_function
         self.J_arrays = []
+        self.n_exposure_times = n_exposure_times
+        t = np.linspace(0, 0.5, num=n_exposure_times, endpoint=True)
+        self.exposure_times = np.array([1 - t, t]).T
+        # self.exposure_times = np.ones((n_exposure_times, 1))
 
     def optimize(
         self,
@@ -415,85 +435,102 @@ class LossFunctionTimeSharing(LossFunctionSweep):
             self.bestvals = []
             # print(multiruns)
             if multiruns is None:
-                result = optimizer.torch_optimize_loss_timesharing(
-                    self.loss_function(self.alpha[0]),
-                    [1, 0],
-                    steps=steps_init,
-                    print_prepend=f"Alpha: {self.alpha[0]:.3f}/{self.alpha[-1]}, ",
-                    **optimize_kwargs,
-                )
-                self.loss_history.append(result["loss_history"])
-                wavefront_init = result["bestvec"]
-                self._wavefronts.append(wavefront_init)
+                for alpha in self.alpha:
 
-                # print(wavefront_init)
-                for alpha in self.alpha[1:]:
-                    result = optimizer.torch_optimize_loss_timesharing(
-                        self.loss_function(alpha),
-                        [1 - alpha, alpha],
-                        steps=steps,
-                        print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, ",
-                        E_init=wavefront_init,
-                        **optimize_kwargs,
-                    )
-                    self.loss_history.append(result["loss_history"])
-                    self._wavefronts.append(result["bestvec"])
-                    self.bestvals.append(result["bestval"])
+                    self._wavefronts.append([])
+                    self.loss_history.append([])
+                    self.bestvals.append([])
+
+                    for exposure_time in self.exposure_times:
+                        result = optimizer.torch_optimize_loss_timesharing(
+                            self.loss_function(alpha),
+                            exposure_time,
+                            steps=steps,
+                            print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, \tExposures={exposure_time} ",
+                            E_init=None,
+                            **optimize_kwargs,
+                        )
+                        self.loss_history[-1].append(result["loss_history"])
+                        self._wavefronts[-1].append(result["bestvec"])
+                        self.bestvals[-1].append(result["bestval"])
 
             else:
-                result = optimizer.torch_optimize_loss_timesharing_multirun(
-                    self.loss_function(self.alpha[0]),
-                    [1, 0],
-                    steps=steps_init,
-                    runs=multiruns,
-                    print_prepend=f"Alpha: {self.alpha[0]:.3f}/{self.alpha[-1]}, ",
-                    **optimize_multirun_kwargs,
-                )
-                self.loss_history.append(result["all_loss_histories"])
-                wavefront_init = result["bestvec"]
-                self._wavefronts.append(wavefront_init)
-                self.bestvals.append(result["bestval"])
+                print("NOT IMPLEMENTED")
+                for alpha in self.alpha:
 
-                for alpha in self.alpha[1:]:
-                    result = optimizer.torch_optimize_loss_timesharing_multirun(
-                        self.loss_function(alpha),
-                        [1 - alpha, alpha],
-                        steps=steps,
-                        runs=multiruns,
-                        print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, ",
-                        E_init=wavefront_init,
-                        **optimize_multirun_kwargs,
-                    )
-                    self.loss_history.append(result["all_loss_histories"])
-                    self._wavefronts.append(result["bestvec"])
-                    self.bestvals.append(result["bestval"])
-                    # print(
-                    #     f'Optimization sweep alpha={alpha}/{alpha[-1]}  Best loss: {result["bestval"]}'
-                    # )
+                    self._wavefronts.append([])
+                    self.loss_history.append([])
+                    self.bestvals.append([])
 
-            # self._wavefront = LossFunction.normalize_wavefront(
-            #     result["bestvec"]
-            # )
-            # self.bestval = result["bestval"]
-            # print(result)
+                    for exposure_time in self.exposure_times:
+                        result = optimizer.torch_optimize_loss_timesharing_multirun(
+                            self.loss_function(alpha),
+                            exposure_time,
+                            steps=steps,
+                            print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, \tExposures={exposure_time} ",
+                            E_init=None,
+                            runs=multiruns,
+                            **optimize_kwargs,
+                        )
+                        self.loss_history[-1].append(
+                            result["all_loss_histories"]
+                        )
+                        self._wavefronts[-1].append(result["bestvec"])
+                        self.bestvals[-1].append(result["bestval"])
+                # result = optimizer.torch_optimize_loss_timesharing_multirun(
+                #     self.loss_function(self.alpha[0]),
+                #     [1, 0],
+                #     steps=steps_init,
+                #     runs=multiruns,
+                #     print_prepend=f"Alpha: {self.alpha[0]:.3f}/{self.alpha[-1]}, ",
+                #     **optimize_multirun_kwargs,
+                # )
+                # self.loss_history.append(result["all_loss_histories"])
+                # wavefront_init = result["bestvec"]
+                # self._wavefronts.append(wavefront_init)
+                # self.bestvals.append(result["bestval"])
+
+                # for alpha in self.alpha[1:]:
+                #     result = optimizer.torch_optimize_loss_timesharing_multirun(
+                #         self.loss_function(alpha),
+                #         [1 - alpha, alpha],
+                #         steps=steps,
+                #         runs=multiruns,
+                #         print_prepend=f"Alpha: {alpha:.3f}/{self.alpha[-1]}, ",
+                #         E_init=wavefront_init,
+                #         **optimize_multirun_kwargs,
+                #     )
+                #     self.loss_history.append(result["all_loss_histories"])
+                #     self._wavefronts.append(result["bestvec"])
+                #     self.bestvals.append(result["bestval"])
+
         print()
-        self._Js = []
+
         self._J_arrays = []
+        self._Js = []
         for alpha, wavefront_list in zip(self.alpha, self._wavefronts):
-            # print(wavefront.shape)
+
             self._J_arrays.append([])
-            for wavefront in wavefront_list:
-                J_cur = optimizer.J_fisher_info_matrix(wavefront)
-                self._J_arrays[-1].append(J_cur)
-            self._J_arrays[-1] = np.array(self._J_arrays[-1])
-            exposure_times = np.array([1 - alpha, alpha])[
-                :, np.newaxis, np.newaxis
-            ]
-            J_total = np.sum(self._J_arrays[-1] * exposure_times, axis=0)
-            print(
-                J_total.shape, exposure_times.shape, self._J_arrays[-1].shape
-            )
-            self._Js.append(J_total)
+            self._Js.append([])
+
+            for exposure_time, wavefronts_shared in zip(
+                self.exposure_times, wavefront_list
+            ):
+                J_arrays = [
+                    optimizer.J_fisher_info_matrix(wavefront)
+                    for wavefront in wavefronts_shared
+                ]
+                # J_cur = optimizer.J_fisher_info_matrix(wavefront)
+                self._J_arrays[-1].append(J_arrays)
+                J_total = np.einsum("tij, t -> ij", J_arrays, exposure_time)
+
+                self._Js[-1].append(J_total)
+
+        self._J_arrays = np.array(self._J_arrays)
+        self._Js = np.array(self._Js)
+        self.loss_history = np.array(self.loss_history)
+        self._wavefronts = np.array(self._wavefronts)
+        self.bestvals = np.array(self.bestvals)
 
         if verbose:
             print(
@@ -502,26 +539,127 @@ class LossFunctionTimeSharing(LossFunctionSweep):
 
 
 if __name__ == "__main__":
+    project_folder = "../data/quasirandom_longrun_dist2-1/"
     fisher_calc = FisherMatrix.load(
-        folder="../data/quasirandom_shortrun_dist2-8/"
+        folder="../data/quasirandom_longrun_dist2-1/"
     )
-    tso = TimeSharingOptimizer(fisher_calc.F)
+    tso = TimeSharingOptimizer(fisher_calc.F, n_exposures=2)
     o = Optimizer(fisher_calc.F)
 
-    lf_J = lambda J: torch.linalg.det(J)
+    # lf_J = lambda J: torch.linalg.det(J)
+    def lf_J(alpha):
+        def _lf_J(J):
+            J_inv = torch.linalg.inv(J)
+            return (1 - alpha) * J_inv[0, 0] + alpha * J_inv[1, 1]
+
+        return _lf_J
 
     lf = LossFunctionTimeSharing(
-        lf_J, "det_timesharing", steps=200, steps_init=200, n_sweep=5
+        lf_J,
+        "det_timesharing",
+        steps=100,
+        steps_init=100,
+        n_sweep=3,
+        n_exposure_times=3,
+        multiruns=None,
+        maximize=False,
     )
     lf.optimize(tso)
 
+# %%
 
-# result = o.torch_optimize_loss(lf_J)
+lfmr = LossFunctionTimeSharing(
+    lf_J,
+    "det_timesharing",
+    steps=10000,
+    steps_init=10000,
+    n_sweep=11,
+    n_exposure_times=5,
+    multiruns=10,
+    maximize=False,
+)
+lfmr.optimize(tso)
 
-# plt.plot(result["loss_history"][1000:], label="raw")
-# for t in np.linspace(0, 1, num=10):
-#     result = tso.torch_optimize_loss_timesharing(lf_J, [1 - t, t])
+# %%
+l = lf.loss_history.shape[-1]
+plt.plot(lf.loss_history.reshape((-1, l)).T[2000:, :])
+plt.show()
 
-#     plt.plot(result["loss_history"][1000:], label=f"ts - {t:.1f}")
+# %%
+l = lfmr.loss_history.shape[-1]
+plt.plot(lfmr.loss_history.reshape((-1, l)).T[:, :])
+plt.show()
 
-# plt.legend()
+# %%
+J_inv = np.linalg.inv(lf._Js)
+sigma_x = J_inv[:, :, 0, 0]
+sigma_z = J_inv[:, :, 1, 1]
+
+plt.plot(sigma_x, sigma_z, label="tiemsharing")
+plt.legend()
+plt.show()
+# plt.plot(sigma_x.T, sigma_z.T)
+# plt.show()
+# %%
+lf_ref = LossFunctionSweep(
+    lf_J,
+    "det_timesharing_ref",
+    steps=10000,
+    steps_init=10000,
+    n_sweep=11,
+    multiruns=10,
+    method="torch",
+    maximize=False,
+)
+lf_ref.optimize(o)
+lf_ref._Js = np.array(lf_ref._Js)
+lf_ref.loss_history = np.array(lf_ref.loss_history)
+
+# %%
+l_ref = lf_ref.loss_history.shape[-1]
+plt.plot(lf_ref.loss_history.reshape((-1, l_ref)).T[-500:, :])
+plt.show()
+
+# %%
+J_inv_ref = np.linalg.inv(lf_ref._Js)
+sigma_x_ref = J_inv_ref[:, 0, 0]
+sigma_z_ref = J_inv_ref[:, 1, 1]
+
+timesharing_labels = [
+    f"timesharing {exp_time}" for exp_time in lf.exposure_times
+]
+plt.plot(sigma_x, sigma_z, label=timesharing_labels)
+plt.plot(sigma_x_ref, sigma_z_ref, label="single exp")
+plt.xlim(0.0675, 0.08)
+plt.ylim(0.0225, 0.04)
+plt.legend()
+plt.show()
+
+
+# %%
+wf = lf_ref.wavefronts[5]
+delta = 0.000001
+n = len(wf)
+
+# np.random.seed(10)
+dE = np.random.randn(n) + 1j * np.random.rand(n)
+dE -= np.vecdot(wf, dE) / np.vecdot(wf, wf) * wf
+
+wf_plus = wf + delta * dE
+wf_min = wf - delta * dE
+wf_plus /= np.linalg.norm(wf_plus)
+wf_min /= np.linalg.norm(wf_min)
+
+J_plus = o.J_fisher_info_matrix(wf_plus)
+J_min = o.J_fisher_info_matrix(wf_min)
+
+Sigma_plus = np.linalg.inv(J_plus)
+Sigma_min = np.linalg.inv(J_min)
+dSigma = (Sigma_plus - Sigma_min) / (2 * delta)
+
+# print((J_plus - J_min)/(2*delta))
+print(dSigma)
+
+# %%
+lf.save(folder=project_folder, name="timesharing")
+lf_ref.save(folder=project_folder, name="timesharing_ref")

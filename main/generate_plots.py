@@ -18,7 +18,7 @@ from pareto_plot_nuisance import (
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
-from scatteringlibs.matplotlibmagic import (
+from scatteringlibs.matplotlibmagic import (  # lighten_colors,
     PlotGroup,
     add_dots_to_legend,
     make_leftax_look_like_inset,
@@ -30,10 +30,11 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 sys.exit()
 
 # %% Loading in data
+# project_name = "quasirandom_longrun_dist2-6"
 project_name = "quasirandom_longrun_dist2-8"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
-# project_name = "quasirandom_shortrun_dist3-0"
+# project_name = "quasirandom_longrun_dist3-0"
 
 # project_name = "quasirandom"
 # project_name = "square"
@@ -85,6 +86,7 @@ def annotate_subplots_abc(
     axes: list[Axes],
     format_str: str = "{})",
     background: str = "white",
+    offsets: list = None,
     **annotate_kwargs,
 ):
     """
@@ -98,6 +100,13 @@ def annotate_subplots_abc(
         **annotate_kwargs: keyword args that are passed to plt.annotate.
     """
 
+    if offsets is None:
+        offsets = [(0, 0) for ax in axes]
+
+    for i in range(len(offsets)):
+        if offsets[i] is None:
+            offsets[i] = (0, 0)
+
     default_annotate_args = dict(
         xy=(0, 1),
         xycoords="axes fraction",
@@ -107,6 +116,7 @@ def annotate_subplots_abc(
         fontsize=SUBPLOT_ANNOTATION_FONTSIZE,
         bbox=dict(pad=3.0, edgecolor="none"),
     )
+    xytext = np.array((+0.5, -0.5))
 
     if background == "white":
         default_annotate_args["bbox"].update(dict(facecolor="w"))
@@ -118,6 +128,7 @@ def annotate_subplots_abc(
 
     for i in range(len(axes)):
         label = string.ascii_lowercase[i]
+        default_annotate_args["xytext"] = xytext + offsets[i]
         axes[i].annotate(format_str.format(label), **default_annotate_args)
 
 
@@ -439,168 +450,146 @@ if save_plots:
 plt.show()
 
 
-# %% Pareto plot
-
-"""
-Select the different loss functions (optimality criteria) from the 
-loss_functions_dict
-"""
-
-lf_dict_single_param = loss_functions_dict.select_only(["x", "z"])
-lf_dict_single_param_inv = loss_functions_dict.select_only(["x_inv", "z_inv"])
-lf_dict_dropped = loss_functions_dict.select_only(
-    ["dropped_det", "dropped_spec_rad", "dropped_tr_inv", "dropped_tr_norm"]
-)
-lf_dict_full = loss_functions_dict.select_only(
-    ["det", "spec_rad", "tr_inv", "tr_norm"]
-)
-lf_dict_partial = loss_functions_dict.select_only(
-    [
-        "partial_det",
-        "partial_spec_rad",
-        "partial_tr_inv",
-    ]
-)
+# %% Bar plot of CRLBs (review)
 
 
-"""
-Control the formatting of the different groups here.
-"""
-pareto_groups = [
-    PlotGroup(
-        lf_dict_single_param,
-        # legend_label="Single-param. optimality",
-        legend_label="Scalar",
-        color="purple",
-        marker=".",
-    ),
-    PlotGroup(
-        lf_dict_single_param_inv,
-        legend_label="Full",
-        color="green",
-        marker="^",
-    ),
-    PlotGroup(
-        lf_dict_full,
-        legend_label="Full",
-        color="green",
-        marker="^",
-    ),
-    PlotGroup(
-        lf_dict_dropped,
-        legend_label="Subblock",
-        color="red",
-        marker="x",
-    ),
-    PlotGroup(
-        lf_dict_partial,
-        legend_label="Partial",
-        color="blue",
-        marker="s",
-    ),
-]
-pareto_groups_sweep = [
-    # PlotGroup(
-    #     loss_functions_sweep_dict.select_only(["xz_scalar"]),
-    #     legend_label="Linear\nCombination",
-    #     color="purple",
-    #     linestyle="-",
-    #     marker="",
-    #     # marker="x",
-    # ),
-    PlotGroup(
-        loss_functions_sweep_dict.select_only(["xz_joint"]),
-        legend_label="Linear\nCombination",
-        color="green",
-        linestyle="-",
-        marker="",
-        # marker="x",
-    ),
+barplot_lossfunctions = [
+    "x",
+    "z",
+    "phi",
+    # "tr",
+    "tr_norm",
+    "det",
+    "tr_inv",
+    "spec_rad",
+    # "dropped_spec_rad",
+    # "partial_spec_rad",
 ]
 
-
-x_idx = 1  # Display Z on x-axis
-y_idx = 0  # Display X on y-axis
-
-"""
-Use this line to plot all the components incrementally. (1, 4) means plot 1 
-pareto_groups_sweep plot and 4 pareto_groups plots. Nice for presentations to
-introduce elements one at a time.
-"""
-include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
-include_plot_indices = [(3, 5)]
-
+loss_functions_dict_bar = loss_functions_dict.select_only(
+    barplot_lossfunctions
+)
 PHOTON_BUDGET = 1e3
 
-for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
+optimized_crlbs = crlbanalysis.compute_crlb_for_optimized(
+    loss_functions_dict_bar,
+    photon_budget=PHOTON_BUDGET,
+)
+plane_wave_crlbs = crlbanalysis.compute_crlb_for_planewaves(
+    sim_kwargs=sim.get_kwargs(),
+    F_operator_tensor=fisher_calc.F,
+    photon_budget=PHOTON_BUDGET,
+    kx_array=sim.k_x_array,
+)
+random_wavefronts_crlbs = crlbanalysis.compute_crlb_for_random_wavefronts(
+    F_operator_tensor=fisher_calc.F,
+    photon_budget=PHOTON_BUDGET,
+    num_samples=100,
+)
 
-    # fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
-    fig, ax = plt.subplots(
-        figsize=(0.95 * TEXTWIDTH, 0.7 * TEXTWIDTH), dpi=DPI
-    )
 
-    wavelength_unit_order = -3
-    wavelength_unit = 10 ** (-wavelength_unit_order)
-    if wavelength_unit_order == 0:
-        wavelength_unit_str = ""
-    else:
-        wavelength_unit_str = rf"$10^{{{wavelength_unit_order}}}$ "
+optimized_crlbs_joint, optimized_crlbs_scalar = optimized_crlbs
+plane_wave_crlbs_joint, plane_wave_crlbs_scalar = plane_wave_crlbs
+random_wavefronts_crlbs_joint, random_wavefronts_crlbs_scalar = (
+    random_wavefronts_crlbs
+)
 
-    x_avoid, y_avoid = pareto_plot_sweep(
-        pareto_groups_sweep[:sweep_index],
-        x_idx,
-        y_idx,
-        ax=ax,
-        wavelength_unit=wavelength_unit,
-        photon_budget=PHOTON_BUDGET,
-    )
+loss_function_names = loss_functions_dict_bar.shortnames()
 
-    # x_avoid += [0.228]
-    # y_avoid += [0.252]
-    pareto_plot(
-        pareto_groups[:scatter_index],
-        x_idx,
-        y_idx,
-        xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
-        ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
-        # title=r"Nuisance Aware Optimality Criteria",
-        title="",
-        ax=ax,
-        grid_kwargs=GRID_KWARGS,
-        use_logscale=False,
-        adjust_text_kwargs=dict(
-            force_static=0.24,
-            force_text=0.2,
-            force_explode=(0.0, 0.0),
-            force_pull=0.15,
-            expand=(1.8, 1.8),
-            min_arrow_len=40,
-            iter_lim=1000,
-            avoid_self=True,
-            max_move=(5000, 5000),
-            ensure_inside_axes=True,
-        ),
-        x_avoid=x_avoid,
-        y_avoid=y_avoid,
-        # xlim=(0.2*PHOTON_BUDGET, None),
-        # ylim=(0.233*PHOTON_BUDGET, 0.288*PHOTON_BUDGET),
-        wavelength_unit=wavelength_unit,
-        photon_budget=PHOTON_BUDGET,
-    )
 
-    # Plot  z = x
-    x = np.array([0, 1000])
-    plt.plot(x, x, ls="-", c="#AAA", lw=1, alpha=0.5)
+fig, axes = plt.subplots(
+    ncols=2,
+    # figsize=(14, 6),
+    figsize=(1.4 * TEXTWIDTH, 0.7 * TEXTWIDTH),
+    width_ratios=[len(loss_function_names) * 1.3 + 1, 2 + 1],
+    dpi=DPI,
+    layout="constrained",
+)
 
-    if save_plots:
-        fig_name = f"{project_name}_pareto_plot_nuisance_PB-{PHOTON_BUDGET:.2e}_fig{i}"
-        plt.savefig(save_folder / f"{fig_name}.png")
-        plt.savefig(save_folder / f"{fig_name}.pdf")
-        print(f"Saved pareto plot to '{fig_name}'")
-# ax.set_aspect("equal")
+
+wavelength_unit_order = -3
+wavelength_unit = 10 ** (-wavelength_unit_order)
+if wavelength_unit_order == 0:
+    wavelength_unit_str = ""
+else:
+    wavelength_unit_str = rf"$10^{{{wavelength_unit_order}}}$ "
+
+cmap = matplotlib.cm.tab10
+joint_colors = [cmap(i) for i in range(3)]
+scalar_colors = lighten_colors(joint_colors, factor=0.3)
+# scalar_colors = [cmap(i) for i in range(1, 12, 4)]
+
+visualize_crlb_barplot_review(
+    loss_function_names=loss_function_names,
+    param_legends=[
+        "CRLB of x",
+        "CRLB of z",
+        r"CRLB of $\phi$",
+    ],
+    optimized_crlbs_joint=optimized_crlbs_joint,
+    optimized_crlbs_scalar=optimized_crlbs_scalar,
+    ax=axes[0],
+    # title="Optimized Wavefronts",
+    title="",
+    xtick_fontsize=None,
+    ytick_fontsize=None,
+    axes_label_fontsize=None,
+    ylim=(-0.000, None),
+    hatches=("xxx",) * 3,
+    hatch_color=(1.0,) * 3 + (0.5,),
+    scalar_colors=scalar_colors,
+    joint_colors=joint_colors,
+    bar_width=0.15,
+    joint_opacity=1.0,
+    # y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
+    y_label=rf"Cramér-Rao Lower Bound",
+    rotate_labels=False,
+    wavelength_unit=wavelength_unit,
+)
+
+visualize_crlb_boxplot(
+    loss_function_names=loss_function_names,
+    param_legends=[
+        "CRLB of x",
+        "CRLB of z",
+        r"CRLB of $\phi$",
+    ],
+    plane_wave_crlbs_joint=plane_wave_crlbs_joint,
+    random_wavefronts_crlbs_joint=random_wavefronts_crlbs_joint,
+    ax=axes[1],
+    y_label=None,
+    ylim=(0, None),
+    bar_width=0.17,
+    joint_colors=joint_colors,
+    joint_opacity=1.0,
+    hatches=(None,) * 3,
+    # title="Plane Waves and Random Wavefronts",
+    title="",
+    fontsize=None,
+    # ref_lines=[0, 0.0185*PHOTON_BUDGET],
+    # ref_lines=[0, 500],
+    wavelength_unit=wavelength_unit,
+)
+
+axes[0].set_xlim(-0.65, 6.65)
+axes[1].set_xlim(-0.45, 1.45)
+annotate_subplots_abc(axes, background="white")
+
+make_leftax_look_like_inset(
+    fig, leftax=axes[0], rightax=axes[1], moveticksright=True
+)
+fig.set_constrained_layout_pads(wspace=0.1)
+
+if save_plots:
+
+    fig_name = f"{project_name}_crlb_barplot_PB-{PHOTON_BUDGET:.2e}"
+    plt.savefig(save_folder / (fig_name + ".png"))
+    plt.savefig(save_folder / (fig_name + ".pdf"))
+    print(f"Saved CRLB bar plot to '{save_folder}\{fig_name}'")
 plt.show()
 
-# %% Pareto plot (review)
+
+# %% Pareto plot
 
 """
 Select the different loss functions (optimality criteria) from the 
@@ -695,7 +684,6 @@ PHOTON_BUDGET = 1e3
 
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
-    # fig, ax = plt.subplots(figsize=(6, 4), dpi=DPI)
     fig, ax = plt.subplots(
         figsize=(0.95 * TEXTWIDTH, 0.7 * TEXTWIDTH), dpi=DPI
     )
@@ -753,6 +741,9 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
     x = np.array([0, 1000])
     plt.plot(x, x, ls="-", c="#AAA", lw=1, alpha=0.5)
 
+    ax.set_xlim(5.7, None)
+    annotate_subplots_abc([ax, ax_fake])
+
     if save_plots:
         fig_name = f"{project_name}_pareto_plot_nuisance_PB-{PHOTON_BUDGET:.2e}_fig{i}"
         plt.savefig(save_folder / f"{fig_name}.png")
@@ -760,30 +751,101 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         print(f"Saved pareto plot to '{fig_name}'")
 # ax.set_aspect("equal")
 plt.show()
+
+
 # %% Convergence
 
 max_val = -np.inf
 
+fig, ax = plt.subplots(figsize=(0.45 * TEXTWIDTH, 0.4 * TEXTWIDTH), dpi=DPI)
+
 index = 0
+offset = -0.2
+names = []
 for plot_group in pareto_groups:
     for name, lf in plot_group.data.items():
         if lf.method != "torch":
             continue
+        if "partial" in lf.name:
+            offset = -6 + 0.2
+        if "dropped" in lf.name:
+            offset = -3 + 0.0
+        names.append(lf.shortname)
         loss_history = np.array(lf.loss_history)
         if lf.maximize:
             loss_history = 1 / loss_history
         final_values = np.min(loss_history, axis=1)
-        final_values /= np.min(final_values)
-        print(final_values)
+        final_values -= np.min(final_values)
         plt.scatter(
-            index * np.ones(10),
+            index * np.ones(10) + offset,
             final_values,
             label=lf.displayname,
             c=plot_group.color,
             marker=plot_group.marker,
+            alpha=0.5,
         )
         index += 1
+names = names[:5]
+plt.xticks(ticks=np.arange(len(names)), labels=names)
+plt.ylabel("loss - best loss")
 
+handles, labels = ax.get_legend_handles_labels()
+labels = ["Full", "Subblock", "Partial"]
+ax.legend(np.array(handles)[[0, 5, 8]], labels)
+
+if save_plots:
+    fig_name = f"{project_name}_convergence"
+    plt.savefig(save_folder / f"{fig_name}.png")
+    plt.savefig(save_folder / f"{fig_name}.pdf")
+    print(f"Saved convergence plot to '{fig_name}'")
+plt.show()
+# %%
+
+latex_table = [
+    r"\begin{table*}[htbp]",
+    r"\centering",
+    r"\resizebox{\textwidth}{!}{%",  # Scales table to fit page width if it's too wide
+    r"\begin{tabular}{l *{10}{c}}",
+    r"\hline",
+    r"Optimization Target & "
+    + " & ".join([f"Run {i+1}" for i in range(10)])
+    + r" \\",
+    r"\hline",
+]
+
+for plot_group in pareto_groups:
+    for name, lf in plot_group.data.items():
+        if lf.method != "torch":
+            continue
+
+        loss_history = np.array(lf.loss_history)
+        if lf.maximize:
+            loss_history = 1 / loss_history
+
+        final_values = np.min(loss_history, axis=1)
+        sorted_values = np.sort(final_values)
+
+        # Escape underscores for LaTeX
+        safe_name = name.replace("_", r"\_")
+
+        # Format values to 3 decimal places in scientific notation
+        formatted_vals = [f"{v:.8e}" for v in sorted_values]
+
+        row = f"{safe_name} & " + " & ".join(formatted_vals) + r" \\"
+        latex_table.append(row)
+
+latex_table.extend(
+    [
+        r"\hline",
+        r"\end{tabular}%",
+        r"}",
+        r"\caption{Sorted final loss values across 10 independent optimization runs.}",
+        r"\label{tab:convergence_sorted}",
+        r"\end{table*}",  # Using table* allows it to span two columns in double-column formats
+    ]
+)
+
+print("\n".join(latex_table))
 
 # for i, lf in enumerate(loss_functions_dict.values()):
 #     if lf.method != 'torch':
@@ -797,8 +859,6 @@ for plot_group in pareto_groups:
 #     plt.scatter(i*np.ones(10), final_values, label=lf.displayname)
 # plt.yscale("log")
 # plt.ylim(1 - 0.5e-7, 1 + 0.9e-6)
-plt.legend()
-plt.show()
 
 
 # %% Measurement interpolation
@@ -1203,7 +1263,14 @@ for name, display_name in new_names.items():
 
 
 def generate_fisher_latex_table(
-    lf_dict, prec_j=1, prec_sigma=3, tabcolsep="3.0pt", vmove="-6.0pt"
+    lf_dict,
+    prec_j=1,
+    prec_j_off=1,
+    prec_sigma=1,
+    prec_sigma_off=1,
+    photon_budget=1e3,
+    tabcolsep="3.0pt",
+    vmove="-6.0pt",
 ):
     """Generates the full LaTeX table environment with \\FI notation,
 
@@ -1211,10 +1278,10 @@ def generate_fisher_latex_table(
     """
 
     def fmt(val, prec):
-        rounded = round(float(val), prec)
-        if rounded == 0.0:  # Prevents outputting '-0.00'
-            rounded = 0.0
-        return f"{rounded:.{prec}f}"
+        # rounded = round(float(val), prec)
+        # if rounded == 0.0:  # Prevents outputting '-0.00'
+        #     rounded = 0.0
+        return f"{val:.{prec}e}"
 
     lines = [
         r"\begin{table}[htbp]",
@@ -1238,7 +1305,7 @@ def generate_fisher_latex_table(
     ]
 
     for lf in lf_dict.values():
-        J = np.array(lf.J, dtype=float)
+        J = np.array(lf.J, dtype=float) * photon_budget
         Sigma = np.linalg.inv(J)
 
         # Unique elements: (xx, zz, phiphi, xz, xphi, zphi)
@@ -1252,8 +1319,10 @@ def generate_fisher_latex_table(
             Sigma[1, 2],
         ]
 
-        j_strs = [fmt(v, prec_j) for v in j_vals]
-        sig_strs = [fmt(v, prec_sigma) for v in sig_vals]
+        j_strs = [fmt(v, prec_j) for v in j_vals[:3]]
+        j_strs += [fmt(v, prec_j_off) for v in j_vals[3:]]
+        sig_strs = [fmt(v, prec_sigma) for v in sig_vals[:3]]
+        sig_strs += [fmt(v, prec_sigma_off) for v in sig_vals[3:]]
 
         row_content = " & ".join(j_strs + sig_strs)
         name = lf.displayname
@@ -1268,6 +1337,4 @@ def generate_fisher_latex_table(
 # print(generate_fisher_latex_table(lf_print, prec_j=2, prec_sigma=3))
 
 # Usage:
-print(generate_fisher_latex_table(loss_functions_raw))
-
-# %%
+print(generate_fisher_latex_table(loss_functions_raw, photon_budget=1e3))

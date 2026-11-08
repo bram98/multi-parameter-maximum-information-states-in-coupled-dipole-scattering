@@ -30,6 +30,7 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
 # data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
 data_folder = "../data/quasirandom_longrun_dist2-8"  # Where to save state
+# data_folder = "../data/quasirandom_longrun_dist3-0"  # Where to save state
 save_state = True  # If True, save state to disk
 
 
@@ -369,11 +370,11 @@ Check convergence by showing loss histories
 """
 
 for loss_function in loss_functions_dict.values():
-    if loss_function.method == "torch" and loss_function._J is not None and "":
+    if loss_function.method == "torch" and loss_function._J is not None:
         optimizer.plot_torch_loss(
             loss_function.loss_history,
             first_step=3000,
-            final_step=4000,
+            # final_step=4000,
             title=f"{loss_function.displayname} Optimization Loss",
         )
 

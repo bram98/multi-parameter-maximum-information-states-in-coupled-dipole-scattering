@@ -18,7 +18,7 @@ class Optimizer(Storable):
 
         Args:
             F_operator_tensor (np.ndarray): The Fisher operator tensor,
-                                            expected shape (nparams, nparams, N_in, N_in).
+                                            expected shape (n_params, n_params, N_in, N_in).
             device (str, optional): Device for torch tensors. Defaults to "cuda".
         """
         if (
@@ -27,13 +27,13 @@ class Optimizer(Storable):
             or F_operator_tensor.shape[2] != F_operator_tensor.shape[3]
         ):
             raise ValueError(
-                f"F_operator_tensor must have shape (nparams, nparams, N_in, N_in). "
+                f"F_operator_tensor must have shape (n_params, n_params, N_in, N_in). "
                 f"Got {F_operator_tensor.shape}"
             )
         self.F_op = F_operator_tensor
         self.Ft = None  # Torch version, initialized when needed
         self.device = device
-        self.nparams, _, self.n_input_modes, _ = F_operator_tensor.shape
+        self.n_params, _, self.n_input_modes, _ = F_operator_tensor.shape
         # self.loss_history_torch = (
         #     None  # For storing loss from torch_optimize_loss
         # )
@@ -161,7 +161,7 @@ class Optimizer(Storable):
 
         Args:
             param_names (list, optional): List of parameter names. If None, uses indices.
-                                          Length must match self.nparams.
+                                          Length must match self.n_params.
             photon_budget (float, optional): Photon budget for normalizing wavefronts.
                                              Defaults to 1.0.
 
@@ -169,14 +169,14 @@ class Optimizer(Storable):
             dict: A dictionary where keys are parameter names (or indices) and
                   values are dictionaries {'eigenvalue': float, 'wavefront': np.ndarray}.
         """
-        if param_names is not None and len(param_names) != self.nparams:
+        if param_names is not None and len(param_names) != self.n_params:
             raise ValueError(
                 f"Length of param_names ({len(param_names)}) must match "
-                f"number of parameters in F_op ({self.nparams})."
+                f"number of parameters in F_op ({self.n_params})."
             )
 
         mis_results = {}
-        for i in range(self.nparams):
+        for i in range(self.n_params):
             F_single_param = self.F_op[i, i, :, :]
             lam_max, v_max = self.eig_optimize_matrix(
                 F_single_param, maximize=True, num=1
@@ -217,8 +217,8 @@ class Optimizer(Storable):
         """
 
         # 1. Compute normalization factors (1 / max_eigenvalue of each F_ii)
-        normalization_factors = np.zeros(self.nparams)
-        for i in range(self.nparams):
+        normalization_factors = np.zeros(self.n_params)
+        for i in range(self.n_params):
             F_ii = self.F_op[i, i, :, :]
             max_eig_val, _ = self.eig_optimize_matrix(
                 F_ii, maximize=True, num=1
@@ -236,7 +236,7 @@ class Optimizer(Storable):
         F_weighted_trace_op = np.zeros(
             (self.n_input_modes, self.n_input_modes), dtype=complex
         )
-        for i in range(self.nparams):
+        for i in range(self.n_params):
             F_weighted_trace_op += (
                 normalization_factors[i] * self.F_op[i, i, :, :]
             )
@@ -269,7 +269,7 @@ class Optimizer(Storable):
 
         Args:
             matrix_function_of_F (function): A function that takes the full F_op
-                                             (nparams, nparams, N_in, N_in) and
+                                             (n_params, n_params, N_in, N_in) and
                                              returns a 2D matrix (N_in, N_in)
                                              to be diagonalized.
             maximize (bool, optional): Maximize or minimize eigenvalues. Defaults to True.
@@ -294,21 +294,21 @@ class Optimizer(Storable):
             E_wavefront (np.ndarray): The input wavefront coefficients (N_in,).
 
         Returns:
-            np.ndarray: The (nparams, nparams) Fisher Information Matrix.
+            np.ndarray: The (n_params, n_params) Fisher Information Matrix.
         """
         E_c = E_wavefront.conj()
         # Einsum: 'mnij,i,j->mn'
-        # F_op is (nparams, nparams, N_in, N_in)
+        # F_op is (n_params, n_params, N_in, N_in)
         # E_c is (N_in,)
         # E_wavefront is (N_in,)
         # J_mat = np.einsum('mnij,i,j->mn', self.F_op, E_c, E_wavefront)
 
         # Loop implementation for clarity, einsum can be tricky with complex conjugates and is needlessly hard to read
         J_mat = np.zeros(
-            (self.nparams, self.nparams), dtype=float
+            (self.n_params, self.n_params), dtype=float
         )  # FIM is real
-        for mu in range(self.nparams):
-            for nu in range(self.nparams):
+        for mu in range(self.n_params):
+            for nu in range(self.n_params):
                 F_mu_nu_operator = self.F_op[mu, nu, :, :]  # (N_in, N_in)
                 # Expectation value: E_c.T @ F_mu_nu_operator @ E_wavefront
                 val = np.dot(E_c, np.dot(F_mu_nu_operator, E_wavefront))
@@ -322,7 +322,6 @@ class Optimizer(Storable):
         loss_history,
         title="Torch Optimization Loss",
         first_step=None,
-        final_step=None,
         ax=None,
     ):
 
@@ -341,9 +340,7 @@ class Optimizer(Storable):
             lh = np.array(lh)
 
             steps_array = np.arange(len(lh))
-            ax.plot(
-                steps_array[first_step:final_step], lh[first_step:final_step]
-            )
+            ax.plot(steps_array[first_step:], lh[first_step:])
         ax.set_xlabel("Optimization Steps")
         ax.set_ylabel("Loss Value")
         # plt.yscale("log")
@@ -381,7 +378,7 @@ class Optimizer(Storable):
 
     def torch_optimize_loss(
         self,
-        loss_function_of_J,  # Expects a function that takes J_mat (nparams, nparams) torch tensor
+        loss_function_of_J,  # Expects a function that takes J_mat (n_params, n_params) torch tensor
         steps=2000,
         lr=1e-3,
         verbose=True,
@@ -394,86 +391,71 @@ class Optimizer(Storable):
         lr_decay_step_size: int = 500,
         E_init: np.ndarray = None,
         E_init_strength: float = 0.1,
+        eps_tikonov: float = 1e-8,
     ):
         if seed is not None:
             torch.manual_seed(seed)
 
+        torch_real = dict(dtype=torch.float64, device=self.device)
+        torch_complex = dict(dtype=torch.complex128, device=self.device)
+
         if self.Ft is None:
-            self.Ft = torch.from_numpy(self.F_op).to(
-                dtype=torch.complex128, device=self.device
-            )
+            self.Ft = torch.from_numpy(self.F_op).to(**torch_complex)
         self.Ft.requires_grad = False  # F_op is fixed
 
-        E_param_real = torch.randn(
-            self.n_input_modes, dtype=torch.float64, device=self.device
-        )
-        E_param_imag = torch.randn(
-            self.n_input_modes, dtype=torch.float64, device=self.device
+        E = torch.randn(self.n_input_modes, **torch_real) + 1j * torch.randn(
+            self.n_input_modes, **torch_real
         )
 
         # Initial normalization
-        current_norm = torch.linalg.norm(E_param_real + 1j * E_param_imag)
+        current_norm = torch.linalg.norm(E)
         scale = np.sqrt(photon_budget) / current_norm
 
-        E_param_real *= scale
-        E_param_imag *= scale
+        E *= scale
 
         if E_init is not None:
             # Initialize E_param (wavefront coefficients)
-            E_init_real = torch.tensor(E_init.real, device=self.device)
-            E_init_imag = torch.tensor(E_init.imag, device=self.device)
+            E_init = torch.tensor(E_init, device=self.device)
+            E = E_init_strength * E_init + (1 - E_init_strength) * E
+            norm = torch.linalg.norm(E)
+            scale = np.sqrt(photon_budget) / norm
+            E *= scale
 
-            E_param_real = (
-                E_init_strength * E_init_real
-                + (1 - E_init_strength) * E_param_real
-            )
-            E_param_imag = (
-                E_init_strength * E_init_imag
-                + (1 - E_init_strength) * E_param_imag
-            )
-            current_norm = torch.linalg.norm(E_param_real + 1j * E_param_imag)
-            scale = np.sqrt(photon_budget) / current_norm
+        E.requires_grad = True
 
-        E_param_real.requires_grad = True
-        E_param_imag.requires_grad = True
+        photon_budget_sqrt = torch.tensor(np.sqrt(photon_budget), **torch_real)
 
-        current_E_complex = torch.complex(E_param_real, E_param_imag)
+        opt = torch.optim.Adam([E], lr=lr, maximize=maximize)
 
-        opt = torch.optim.Adam(
-            [E_param_real, E_param_imag], lr=lr, maximize=maximize
-        )
         if lr_decay is not None:
             scheduler = torch.optim.lr_scheduler.StepLR(
                 opt, lr_decay_step_size, gamma=lr_decay
             )
 
-        best_val_loss = -np.inf if maximize else np.inf
-        best_vec_coeffs = None
-        run_loss_history = []
-        vec_history_list = [] if record_vec_history else None
+        best_val_loss = torch.tensor(
+            -np.inf if maximize else np.inf, **torch_real
+        )
+        best_vec = torch.zeros(self.n_input_modes, **torch_complex)
+        loss_history = torch.zeros(steps, **torch_real)
+        vec_history = torch.zeros((steps, self.n_input_modes), **torch_complex)
+
+        tikonov_reg = torch.eye(self.n_params, **torch_real) * eps_tikonov
 
         for step in range(steps):
             opt.zero_grad()
 
-            E_coeffs_complex = torch.complex(E_param_real, E_param_imag)
-
             # Normalized E for calculating J (soft normalization within gradient path)
             # This normalization affects the gradient direction.
-            current_norm_sq_E = torch.sum(torch.abs(E_coeffs_complex) ** 2)
-            E_norm_for_J = (
-                torch.sqrt(
-                    torch.tensor(
-                        photon_budget, dtype=torch.float64, device=self.device
-                    )
-                    / current_norm_sq_E
-                )
-                * E_coeffs_complex
-            )
+            norm = torch.linalg.norm(E)
+            E_norm = E * photon_budget_sqrt / norm
 
             # Calculate J_mat = <E_norm_for_J | F_op | E_norm_for_J>
             J_mat_torch = torch.einsum(
-                "mnij, i,j -> mn", self.Ft, E_norm_for_J.conj(), E_norm_for_J
+                "mnij, i,j -> mn", self.Ft, E_norm.conj(), E_norm
             ).real
+
+            # Prevents numerical issues for singular J
+            J_mat_torch = J_mat_torch + tikonov_reg
 
             loss = loss_function_of_J(J_mat_torch)  # custom loss function
             loss.backward()
@@ -482,85 +464,49 @@ class Optimizer(Storable):
             if lr_decay is not None:
                 scheduler.step()
 
-            # Hard normalization after step (project back to sphere)
+            # Hard normalization after step (compensates numerical dir)
             with torch.no_grad():
-                E_current_complex_no_grad = torch.complex(
-                    E_param_real, E_param_imag
-                )
-                final_norm_sq = torch.sum(
-                    torch.abs(E_current_complex_no_grad) ** 2
-                )
-                scale_final = torch.sqrt(
-                    torch.tensor(
-                        photon_budget, dtype=torch.float64, device=self.device
-                    )
-                    / final_norm_sq
-                )
-                E_param_real *= scale_final
-                E_param_imag *= scale_final
+                norm_hard = torch.linalg.norm(E)
+                scale_hard = photon_budget_sqrt / norm_hard
+                E *= scale_hard
 
-            current_loss_val = (
-                loss.item()
-                if not (torch.isnan(loss) or torch.isinf(loss))
-                else (float("nan"))
-            )
-            run_loss_history.append(current_loss_val)
+            current_loss = loss.detach()
+
+            loss_history[step] = current_loss
+
+            if maximize:
+                improved = current_loss > best_val_loss
+            else:
+                improved = current_loss < best_val_loss
+
+            if improved:
+                best_val_loss = current_loss
+                best_vec = E.detach().clone()
 
             if record_vec_history:
-                # Store the normalized version of E_param
-                E_to_store_complex = torch.complex(
-                    E_param_real.detach(), E_param_imag.detach()
-                )
-                vec_history_list.append(
-                    E_to_store_complex.cpu().numpy().copy()
-                )
-
-            if not np.isnan(current_loss_val):
-                if maximize:
-                    if current_loss_val > best_val_loss:
-                        best_val_loss = current_loss_val
-                        best_vec_coeffs = (
-                            torch.complex(
-                                E_param_real.detach(), E_param_imag.detach()
-                            )
-                            .cpu()
-                            .numpy()
-                            .copy()
-                        )
-                else:
-                    if current_loss_val < best_val_loss:
-                        best_val_loss = current_loss_val
-                        best_vec_coeffs = (
-                            torch.complex(
-                                E_param_real.detach(), E_param_imag.detach()
-                            )
-                            .cpu()
-                            .numpy()
-                            .copy()
-                        )
+                vec_history[step] = E.detach()
 
             if verbose and (step + 1) % 50 == 0:
                 lr = opt.param_groups[0]["lr"]
                 print(
-                    f"\r{print_prepend} Step {step + 1:4d}/{steps}, loss={current_loss_val:.3e}, lr={lr:.3e}           ",
+                    f"\r{print_prepend} Step {step + 1:4d}/{steps}, loss={current_loss:.3e}, lr={lr:.3e}           ",
                     end="",
                 )
-        # if verbose:
-        #     print()
 
-        # self.loss_history_torch = run_loss_history
+        best_val_loss = best_val_loss.cpu().numpy()
+        best_vec = best_vec.cpu().numpy()
+        loss_history = loss_history.cpu().numpy()
+
+        if record_vec_history:
+            vec_history = vec_history.cpu().numpy()
 
         result = {
             "bestval": best_val_loss,
-            "bestvec": (
-                Optimizer.normalize_wavefront(best_vec_coeffs, photon_budget)
-                if best_vec_coeffs is not None
-                else None
-            ),
-            "loss_history": run_loss_history,
+            "bestvec": best_vec,
+            "loss_history": loss_history,
         }
         if record_vec_history:
-            result["vec_history"] = vec_history_list
+            result["vec_history"] = vec_history
 
         return result
 
@@ -579,6 +525,7 @@ class Optimizer(Storable):
         base_seed=None,
         E_init=None,
         E_init_strength: float = 0.1,
+        eps_tikonov: float = 1e-8,
     ):
         """
         When you try your best but you don't succeed
@@ -613,6 +560,7 @@ class Optimizer(Storable):
                 record_vec_history=False,  # Typically not needed for multi-run summary
                 E_init=E_init,
                 E_init_strength=E_init_strength,
+                eps_tikonov=eps_tikonov,
             )
 
             all_loss_histories.append(run_result["loss_history"])

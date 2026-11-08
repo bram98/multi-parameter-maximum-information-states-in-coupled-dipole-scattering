@@ -701,7 +701,7 @@ def normalized_trace_of_F(F: np.ndarray) -> np.ndarray:
     return trace_of_F(F_weighted(F, w))
 
 
-def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
+def _trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
     """
     Calculates the trace of the inverse of the Fisher Information Matrix J.
     For A-optimality, this value should be minimized.
@@ -711,7 +711,36 @@ def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The trace of J_mat_inv.
     """
     J_inv = torch.linalg.inv(J_mat)
+
     return torch.trace(J_inv)
+
+
+def _trace_inverse_cholesky(J_mat: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates trace of inverse using Cholesky decomposition. Write
+        J = L @ L^H.
+    Then L^-1 is efficiently calculated. Finally, tr( (L^-1)^T L^-1 ) is just
+    the Frobenius norm.
+    """
+    L = torch.linalg.cholesky(J_mat)
+    I = torch.eye(J_mat.shape[0], device=J_mat.device, dtype=J_mat.dtype)
+    L_inv = torch.linalg.solve_triangular(L, I, upper=False)
+    return (L_inv**2).sum()
+
+
+def trace_of_J_inv(J_mat: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates the trace of the inverse of the Fisher Information Matrix J.
+    For A-optimality, this value should be minimized.
+    Args:
+        J_mat (torch.Tensor): The Fisher Information Matrix (nparams, nparams).
+    Returns:
+        torch.Tensor: The trace of J_mat_inv.
+    """
+    if J_mat.shape[0] > 16:
+        return _trace_inverse_cholesky(J_mat)
+    else:
+        return _trace_of_J_inv(J_mat)
 
 
 def min_eigenvalue_of_J(J_mat: torch.Tensor) -> torch.Tensor:
@@ -760,6 +789,26 @@ def dropped_lossfunction_F(
     )
 
 
+def partial_lossfunction_given_poi(
+    loss_function: Callable, param_interest_indices
+) -> Callable:
+
+    poi_ind = None
+    nuis_ind = None
+
+    def wrapper(J):
+        nonlocal poi_ind, nuis_ind
+
+        if poi_ind is None or poi_ind.device != J.device:
+            poi_ind = torch.tensor(param_interest_indices, device=J.device)
+
+        J_interest = compute_J_interest(J, poi_ind)
+
+        return loss_function(J_interest)
+
+    return wrapper
+
+
 def partial_lossfunction(
     loss_function: Callable, nuisance_param_index: int = 2
 ) -> Callable:
@@ -799,6 +848,52 @@ def compute_F_interest_drop_nuisance(
     F_drop = np.delete(F_drop, nuisance_param_index, axis=1)
 
     return F_drop
+
+
+def compute_J_interest(
+    J_full: torch.Tensor, poi_ind: torch.Tensor
+) -> torch.Tensor:
+    """
+    Computes the Fisher information matrix for parameters of interest,
+    accounting for a single nuisance parameter using Schur complement. The
+    inverse of the resulting matrix is identical to calculating the inverse
+    of the full matrix and then taking the subblock of the parameter of
+    interest
+
+    Args:
+        J_full (torch.Tensor): The full Fisher Information Matrix.
+        param_interest_indices (list or array): List containing indices of
+            parameters of interest
+
+    Returns:
+        torch.Tensor: Schur complement of J_full in parameters of interest.
+    """
+    # assert J_full.shape[0] == J_full.shape[1]
+
+    all_indices = torch.arange(J_full.shape[0], device=J_full.device)
+    mask = torch.ones_like(all_indices, dtype=torch.bool)
+    mask[poi_ind] = False
+    nuis_flat = all_indices[mask]
+
+    if len(nuis_flat) == 0:
+        return J_full
+
+    poi_ind = poi_ind.unsqueeze(0)
+    nuis_ind = nuis_flat.unsqueeze(0)
+
+    J11 = J_full[poi_ind.T, poi_ind]
+    J12 = J_full[poi_ind.T, nuis_ind]
+    J21 = J_full[nuis_ind.T, poi_ind]
+    J22 = J_full[nuis_ind.T, nuis_ind]
+
+    # J22_inv, info = torch.linalg.inv_ex(J22, check_errors=False)
+
+    # J22_inv = torch.linalg.inv(J22)
+    # J_interest = J11 - J12 @ J22_inv @ J21
+    J22_inv_times_J21 = torch.linalg.solve(J22, J21)
+    J_interest = J11 - J12 @ J22_inv_times_J21
+
+    return J_interest
 
 
 def compute_J_interest_given_nuisance(
@@ -1234,77 +1329,3 @@ def sweep_xz_inv_J_eps(eps):
         return xz_inv_J
 
     return _sweep_xz_inv_J_eps
-
-
-def convert_to_heterodyne(
-    fisher_calc,
-    optimizer=None,
-    loss_functions_dict: LossFunctionsDict = None,
-    loss_functions_sweep_dict: LossFunctionsDict = None,
-):
-    """
-    Converts from homodyne to heterodyne, by dividing by 2 in the right places.
-    You should only need this when you made a mess of the prefactor like I did.
-    When fisher_calc.use_heterodyne is set to True, this function does nothing.
-    """
-    if fisher_calc.use_heterodyne:
-        print("use_heterodyne flag was already True. No action taken")
-        return fisher_calc, loss_functions_dict, loss_functions_sweep_dict
-
-    # fisher_calc lazily updates F when this flag is changed
-    fisher_calc.use_heterodyne = True
-
-    if optimizer is not None:
-        optimizer.F_op = fisher_calc.F
-        optimizer.Ft = None
-
-    if loss_functions_dict is not None:
-        for lf in loss_functions_dict.values():
-            if lf._J is None:
-                continue
-            lf._J *= 0.5
-
-    if loss_functions_sweep_dict is not None:
-        for lf in loss_functions_sweep_dict.values():
-            if lf._Js is None:
-                continue
-
-            for J in lf._Js:
-                J *= 0.5
-
-
-def convert_to_homodyne(
-    fisher_calc,
-    optimizer=None,
-    loss_functions_dict: LossFunctionsDict = None,
-    loss_functions_sweep_dict: LossFunctionsDict = None,
-):
-    """
-    Converts from homodyne to heterodyne, by dividing by 2 in the right places.
-    You should only need this when you made a mess of the prefactor like I did.
-    When fisher_calc.use_heterodyne is set to False, this function does nothing.
-    """
-    if not fisher_calc.use_heterodyne:
-        print("use_heterodyne flag was already False. No action taken")
-        return fisher_calc, loss_functions_dict, loss_functions_sweep_dict
-
-    # fisher_calc lazily updates F when this flag is changed
-    fisher_calc.use_heterodyne = False
-
-    if optimizer is not None:
-        optimizer.F_op = fisher_calc.F
-        optimizer.Ft = None
-
-    if loss_functions_dict is not None:
-        for lf in loss_functions_dict.values():
-            if lf._J is None:
-                continue
-            lf._J *= 2
-
-    if loss_functions_sweep_dict is not None:
-        for lf in loss_functions_sweep_dict.values():
-            if lf._Js is None:
-                continue
-
-            for J in lf._Js:
-                J *= 2

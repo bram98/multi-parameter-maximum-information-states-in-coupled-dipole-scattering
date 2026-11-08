@@ -288,3 +288,23 @@ def add_dots_to_legend(handles_and_labels, **plot_kwargs):
     # are placed on top of each other.
     handler_map = {tuple: CenteringHandlerTuple(ndivide=1)}
     return handles, labels, handler_map
+
+
+def interpolate_colors(colors, interp_color, factor=0.4):
+    """
+    Interpolates an array of colors. factor==0 means the original color,
+    factor==1 means interp_color
+    """
+    colors = np.asarray(colors)
+    alphas = colors[:, 3]
+    interp_colors = (1 - factor) * colors + factor * interp_color
+    interp_colors[:, 3] = alphas
+    return interp_colors
+
+
+def lighten_colors(colors, factor):
+    """
+    Lightens an array of colors. factor==0 means the original color, factor==1
+    means white
+    """
+    return interpolate_colors(colors, np.ones(4), factor=factor)
