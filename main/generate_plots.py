@@ -1269,3 +1269,5 @@ def generate_fisher_latex_table(
 
 # Usage:
 print(generate_fisher_latex_table(loss_functions_raw))
+
+# %%
