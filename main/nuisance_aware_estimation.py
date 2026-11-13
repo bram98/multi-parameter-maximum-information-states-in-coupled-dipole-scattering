@@ -230,9 +230,9 @@ det_arr = []
 det_std_arr = []
 n = 50
 noise_readout_arr = np.ones(n)
-noise_heterodyne = 0.5
+noise_heterodyne = np.sqrt(0.5) ** 2
 # I_in = np.linalg.norm(E)**2
-I_in_arr = np.geomspace(5e1, 1e10, num=n)
+I_in_arr = np.geomspace(2e-1, 1e10, num=n)
 
 noise_arr = np.sqrt(noise_readout_arr**2 + noise_heterodyne**2)
 
@@ -242,8 +242,10 @@ for I_in, noise_readout in zip(I_in_arr, noise_arr):
     E_noisy = measure_noisy(E * np.sqrt(I_in), noise_readout, nsamples=100)
 
     E_noisy *= 1 / np.linalg.norm(E_noisy, axis=1)[:, np.newaxis]
+    # E_noisy *= 1 / np.sqrt(I_in) # Wrong: noisy states get huge intensity
 
     J_noisy = [optimizer.J_fisher_info_matrix(E_) for E_ in E_noisy]
+    # det_noisy = np.linalg.det(J_noisy)**(1/3)
     det_noisy = np.linalg.det(J_noisy)
     det_arr.append(np.mean(det_noisy))
     det_std_arr.append(np.std(det_noisy))
@@ -256,9 +258,10 @@ plt.fill_between(
     1 / SNR_arr, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.1
 )
 plt.xlabel("1/SNR")
+plt.ylabel("D-optimality$^{1/3}$")
 
 
-# %%
+# %% Noisy measurements V2
 
 dS0 = fisher_calc.dS
 dS0_flat = dS0.flatten()
@@ -268,32 +271,42 @@ fisher_calc_noisy = FisherMatrix(dS0, use_heterodyne=True)
 
 det_arr = []
 det_std_arr = []
-n = 50
-noise_readout_arr = np.ones(n)
-noise_heterodyne = 0.5
+n = 20
+noise_std_heterodyne = np.sqrt(0.5)
+Iin = 100000.0
+I_in_arr = np.ones(n) * Iin
+
+one_over_SNR = np.linspace(1 / (np.sqrt(1.9 * Iin)), 1, num=n)
+
+noise_readout_arr = np.sqrt(
+    I_in_arr * one_over_SNR**2 - noise_std_heterodyne**2
+)
+
 # I_in = np.linalg.norm(E)**2
-I_in_arr = np.geomspace(2e-1, 1e6, num=n)
+# I_in_arr = np.geomspace(2e-1, 1e6, num=n)
 
 noise_arr = np.sqrt(noise_readout_arr**2 + noise_heterodyne**2)
 
-SNR_arr = np.sqrt(I_in_arr) / noise_arr
+# SNR_arr = np.sqrt(I_in_arr) / noise_arr
 
 E_noisy_arr = []
 for i, (I_in, noise_readout) in enumerate(zip(I_in_arr, noise_arr)):
     dS_noisy = measure_noisy(
-        dS0_flat * np.sqrt(I_in), noise_readout, nsamples=10
+        dS0_flat * np.sqrt(I_in), noise_readout, nsamples=30
     )
     dS_noisy = dS_noisy.reshape((-1,) + dS0.shape) / np.sqrt(I_in)
 
     J_noisy_arr = []
     for j, dS in enumerate(dS_noisy):
-        print(i, j)
+        print(
+            f"noise level {i+1}/{len(noise_arr)}  dS sample {j+1}/{len(dS_noisy)}"
+        )
         fisher_calc_noisy.dS = dS
         optimizer_noisy = Optimizer(fisher_calc_noisy.F)
 
         result = optimizer_noisy.torch_optimize_loss(
             lossfunctions.determinant_of_J,
-            steps=500,
+            steps=1000,
             lr=1e-2,
             maximize=True,
             E_init=lf.wavefront,
@@ -302,7 +315,7 @@ for i, (I_in, noise_readout) in enumerate(zip(I_in_arr, noise_arr)):
         E_noisy = result["bestvec"]
         E_noisy_arr.append(E_noisy)
         J_noisy_arr.append(optimizer.J_fisher_info_matrix(E_noisy))
-    det_noisy = np.linalg.det(J_noisy_arr)
+    det_noisy = np.linalg.det(J_noisy_arr) ** (1 / 3)
     det_arr.append(np.mean(det_noisy))
     det_std_arr.append(np.std(det_noisy))
 
@@ -310,21 +323,27 @@ det_arr = np.array(det_arr)
 det_std_arr = np.array(det_std_arr)
 
 
-# %%
+# %% plot noisy meas
+
 
 fig, ax = plt.subplots(figsize=(0.495 * TEXTWIDTH, 0.4 * TEXTWIDTH), dpi=DPI)
-plt.plot(1 / SNR_arr, det_arr)
+plt.plot(one_over_SNR, det_arr)
 plt.fill_between(
-    1 / SNR_arr, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.1
+    one_over_SNR, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.2
 )
-plt.axhline(2714.871457318225 / 2)
-plt.axvline(1)
-# plt.xlabel("1/SNR")
-# plt.ylabel('D-optimality')
-# plt.tight_layout()
-# plt.savefig(r'C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.png')
-# plt.savefig(r'C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.pdf')
-# plt.show()
+# plt.axhline(2714.871457318225 / 2)
+# plt.axvline(1)
+plt.xlabel("1/SNR")
+plt.ylabel("D-optimality$^{1/3}$")
+plt.tight_layout()
+plt.grid(**GRID_KWARGS)
+plt.savefig(
+    r"C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.png"
+)
+plt.savefig(
+    r"C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\noisy_measurement.pdf"
+)
+plt.show()
 # %%
 
 # Analytically calculate detection noise degradation (No random samples needed!)
@@ -692,7 +711,7 @@ plt.rcParams.update(
     }
 )
 
-# %%
+# %% BIAS PLOT
 
 
 def plot_bias(ax1, strategies, param_name, param_index):

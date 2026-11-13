@@ -523,6 +523,7 @@ class Optimizer(Storable):
         maximize=False,
         photon_budget=1.0,
         base_seed=None,
+        record_vec_history=False,
         E_init=None,
         E_init_strength: float = 0.1,
         eps_tikonov: float = 1e-8,
@@ -538,6 +539,8 @@ class Optimizer(Storable):
         if verbose and not print_prepend:
             print(f"\nStarting multi-run optimization ({runs} runs)...")
 
+        best_vals = []
+        best_vecs = []
         for i in range(runs):
             current_seed = None
             if base_seed is not None:
@@ -557,7 +560,7 @@ class Optimizer(Storable):
                 maximize=maximize,
                 seed=current_seed,
                 photon_budget=photon_budget,
-                record_vec_history=False,  # Typically not needed for multi-run summary
+                record_vec_history=record_vec_history,
                 E_init=E_init,
                 E_init_strength=E_init_strength,
                 eps_tikonov=eps_tikonov,
@@ -565,6 +568,9 @@ class Optimizer(Storable):
 
             all_loss_histories.append(run_result["loss_history"])
             current_best_val_run = run_result["bestval"]
+
+            best_vals.append(run_result["bestval"])
+            best_vecs.append(run_result["bestvec"])
 
             if not np.isnan(current_best_val_run):
                 if maximize:
@@ -583,8 +589,14 @@ class Optimizer(Storable):
                 f"\nMulti-run optimization complete. Overall best value: {overall_best_val:.3e}"
             )
 
+        best_vals = np.array(best_vals)
+        best_vecs = np.array(best_vecs)
+        all_loss_histories = np.array(all_loss_histories)
+
         return {
             "bestval": overall_best_val,
-            "bestvec": overall_best_vec,  # Already normalized by torch_optimize_loss
+            "bestvec": overall_best_vec,
+            "bestvals": best_vals,
+            "bestvecs": best_vecs,
             "all_loss_histories": all_loss_histories,
         }

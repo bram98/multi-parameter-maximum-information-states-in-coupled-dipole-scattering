@@ -24,12 +24,12 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 # sys.exit()
 
 
-# %%
+# %% Define data_folder and save_state
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
 # data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
-data_folder = "../data/quasirandom_longrun_dist2-8"  # Where to save state
+data_folder = "../data/quasirandom_longrun_dist2-8_mr"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist3-0"  # Where to save state
 save_state = True  # If True, save state to disk
 
@@ -481,7 +481,7 @@ if save_state:
     print(f"Saved sweep loss functions to '{data_folder}'")
 
 
-# %%
+# %% -
 # """
 # Change names without having to run optimizier
 # """

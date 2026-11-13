@@ -194,6 +194,7 @@ class LossFunction(Storable):
         multiruns=None,
         num_eig=1,
         verbose=True,
+        record_vec_history=False,
         lr=None,
         lr_decay=None,
         lr_decay_step_size=None,
@@ -256,6 +257,7 @@ class LossFunction(Storable):
                     lr_decay=lr_decay,
                     lr_decay_step_size=lr_decay_step_size,
                     verbose=verbose,
+                    record_vec_history=record_vec_history,
                     maximize=self.maximize,
                     photon_budget=photon_budget,
                     seed=seed,
@@ -270,11 +272,17 @@ class LossFunction(Storable):
                     lr_decay=lr_decay,
                     lr_decay_step_size=lr_decay_step_size,
                     verbose=verbose,
+                    record_vec_history=record_vec_history,
                     maximize=self.maximize,
                     photon_budget=photon_budget,
                     base_seed=seed,
                 )
                 self.loss_history = result["all_loss_histories"]
+
+                self.bestvals_mr = result["bestvals"]
+                self.bestvecs_mr = result["bestvecs"]
+                print("hello?")
+
             self._wavefront = LossFunction.normalize_wavefront(
                 result["bestvec"]
             )
@@ -283,6 +291,12 @@ class LossFunction(Storable):
             # print(result)
 
         self._J = optimizer.J_fisher_info_matrix(self._wavefront)
+
+        if multiruns is not None:
+            self._J_mr = []
+            for wavefront in self.bestvecs_mr:
+                self._J_mr.append(optimizer.J_fisher_info_matrix(wavefront))
+            self._J_mr = np.array(self._J_mr)
 
         if verbose:
             print(f"Optimized {self.name: <30}loss: {self.bestval:.5g}")
@@ -333,6 +347,15 @@ class LossFunction(Storable):
 
         return self._wavefronts
 
+    @property
+    def wavefronts_mr(self):
+        if self.bestvecs_mr is None:
+            raise ValueError(
+                "Wavefronts (multirun) are not defined. Please run optimizer first."
+            )
+
+        return self.bestvecs_mr
+
     # @wavefront.setter
     # def wavefront(self, wavefront):
     #     self._wavefront = wavefront
@@ -342,6 +365,12 @@ class LossFunction(Storable):
         if self._J is None:
             raise ValueError("J is not defined. Please run optimizer first.")
         return self._J
+
+    @property
+    def J_mr(self):
+        if self._J_mr is None:
+            raise ValueError("J is not defined. Please run optimizer first.")
+        return self._J_mr
 
     def __str__(self):
         return f"<LossFunction {self.name}>"
@@ -508,6 +537,8 @@ class LossFunctionSweep(LossFunction):
                     self.bestvals.append(result["bestval"])
 
             else:
+                self.bestvals_mr = []
+                self.bestvecs_mr = []
                 result = optimizer.torch_optimize_loss_multirun(
                     self.loss_function(self.alpha[0]),
                     steps=steps_init,
@@ -519,6 +550,8 @@ class LossFunctionSweep(LossFunction):
                 wavefront_init = result["bestvec"]
                 self._wavefronts.append(wavefront_init)
                 self.bestvals.append(result["bestval"])
+                self.bestvecs_mr.append(result["bestvecs"])
+                self.bestvals_mr.append(result["bestvals"])
 
                 for alpha in self.alpha[1:]:
                     result = optimizer.torch_optimize_loss_multirun(
@@ -532,6 +565,9 @@ class LossFunctionSweep(LossFunction):
                     self.loss_history.append(result["all_loss_histories"])
                     self._wavefronts.append(result["bestvec"])
                     self.bestvals.append(result["bestval"])
+
+                    self.bestvecs_mr.append(result["bestvecs"])
+                    self.bestvals_mr.append(result["bestvals"])
                     # print(
                     #     f'Optimization sweep alpha={alpha}/{alpha[-1]}  Best loss: {result["bestval"]}'
                     # )
@@ -542,9 +578,24 @@ class LossFunctionSweep(LossFunction):
             # self.bestval = result["bestval"]
             # print(result)
 
+        self.loss_history = np.array(self.loss_history)
+        self._wavefronts = np.array(self._wavefronts)
+        self.bestvals = np.array(self.bestvals)
+        self.bestvecs_mr = np.array(self.bestvecs_mr)
+        self.bestvals_mr = np.array(self.bestvals_mr)
+
         self._Js = []
         for wavefront in self._wavefronts:
             self._Js.append(optimizer.J_fisher_info_matrix(wavefront))
+
+        self._Js_mr = []
+        for wavefronts in self.bestvecs_mr:
+            self._Js_mr.append([])
+            for wavefront in wavefronts:
+                self._Js_mr[-1].append(
+                    optimizer.J_fisher_info_matrix(wavefront)
+                )
+        self._Js_mr = np.array(self._Js_mr)
 
         if verbose:
             print(
@@ -810,6 +861,30 @@ def partial_lossfunction_given_poi(
 
 
 def partial_lossfunction(
+    loss_function: Callable, param_interest_indices
+) -> Callable:
+
+    poi_ind = None
+    nuis_ind = None
+
+    def wrapper(J):
+        nonlocal poi_ind, nuis_ind
+
+        if poi_ind is None or poi_ind.device != J.device:
+            poi_ind = torch.tensor(param_interest_indices, device=J.device)
+
+        J_interest = compute_J_interest(J, poi_ind)
+
+        return loss_function(J_interest)
+
+    return wrapper
+
+    # return lambda J: loss_function(
+    #     compute_J_interest(J, param_interest_indices)
+    # )
+
+
+def partial_lossfunction_given_nuisance(
     loss_function: Callable, nuisance_param_index: int = 2
 ) -> Callable:
     return lambda J: loss_function(

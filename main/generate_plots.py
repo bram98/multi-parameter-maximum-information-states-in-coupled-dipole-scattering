@@ -18,9 +18,10 @@ from pareto_plot_nuisance import (
 from scatteringlibs import crlbanalysis, lossfunctions, placedipoles
 from scatteringlibs.fishermatrix import FisherMatrix
 from scatteringlibs.lossfunctions import LossFunction, LossFunctionsDict
-from scatteringlibs.matplotlibmagic import (  # lighten_colors,
+from scatteringlibs.matplotlibmagic import (
     PlotGroup,
     add_dots_to_legend,
+    lighten_colors,
     make_leftax_look_like_inset,
     register_turbo,
 )
@@ -31,7 +32,8 @@ sys.exit()
 
 # %% Loading in data
 # project_name = "quasirandom_longrun_dist2-6"
-project_name = "quasirandom_longrun_dist2-8"
+# project_name = "quasirandom_longrun_dist2-8"
+project_name = "quasirandom_longrun_dist2-8_mr"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
 # project_name = "quasirandom_longrun_dist3-0"
@@ -46,6 +48,7 @@ loss_functions_dict = LossFunctionsDict.load(folder=data_folder)
 loss_functions_sweep_dict = LossFunctionsDict.load(
     name="LossFunctionsSweepDict", folder=data_folder
 )
+optimizer = Optimizer(fisher_calc.F)
 
 print("Lossfunction Names")
 for lf_name in loss_functions_dict.keys():
@@ -409,7 +412,7 @@ crlbanalysis.visualize_crlb_barplot(
     ylim=(-0.000, None),
     hatch_color=(0.8,) * 3,
     joint_opacity=0.65,
-    # y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
+    # y_label=rf"CRLB ({wavelength_unit_str}wavelengths)",
     y_label=rf"Cramér-Rao Lower Bound",
     rotate_labels=False,
     wavelength_unit=wavelength_unit,
@@ -519,7 +522,7 @@ joint_colors = [cmap(i) for i in range(3)]
 scalar_colors = lighten_colors(joint_colors, factor=0.3)
 # scalar_colors = [cmap(i) for i in range(1, 12, 4)]
 
-visualize_crlb_barplot_review(
+crlbanalysis.visualize_crlb_barplot_review(
     loss_function_names=loss_function_names,
     param_legends=[
         "CRLB of x",
@@ -533,7 +536,7 @@ visualize_crlb_barplot_review(
     title="",
     xtick_fontsize=None,
     ytick_fontsize=None,
-    axes_label_fontsize=None,
+    axes_label_fontsize=12,
     ylim=(-0.000, None),
     hatches=("xxx",) * 3,
     hatch_color=(1.0,) * 3 + (0.5,),
@@ -541,13 +544,13 @@ visualize_crlb_barplot_review(
     joint_colors=joint_colors,
     bar_width=0.15,
     joint_opacity=1.0,
-    # y_label=rf"CRLB ({wavelength_unit_str}wavelenghts)",
+    # y_label=rf"CRLB ({wavelength_unit_str}wavelengths)",
     y_label=rf"Cramér-Rao Lower Bound",
     rotate_labels=False,
     wavelength_unit=wavelength_unit,
 )
 
-visualize_crlb_boxplot(
+crlbanalysis.visualize_crlb_boxplot(
     loss_function_names=loss_function_names,
     param_legends=[
         "CRLB of x",
@@ -574,6 +577,9 @@ visualize_crlb_boxplot(
 axes[0].set_xlim(-0.65, 6.65)
 axes[1].set_xlim(-0.45, 1.45)
 annotate_subplots_abc(axes, background="white")
+axes[0].set_xlabel("Optimization Goal", fontsize=12, labelpad=6.0)
+axes[1].set_xlabel("Unoptimized States", fontsize=12, labelpad=6.0)
+
 
 make_leftax_look_like_inset(
     fig, leftax=axes[0], rightax=axes[1], moveticksright=True
@@ -710,8 +716,8 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
         pareto_groups[:scatter_index],
         x_idx,
         y_idx,
-        xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
-        ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
+        xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelengths)",
+        ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelengths)",
         # title=r"Nuisance Aware Optimality Criteria",
         title="",
         ax=ax,
@@ -741,8 +747,8 @@ for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
     x = np.array([0, 1000])
     plt.plot(x, x, ls="-", c="#AAA", lw=1, alpha=0.5)
 
-    ax.set_xlim(5.7, None)
-    annotate_subplots_abc([ax, ax_fake])
+    # ax.set_xlim(5.7, None)
+    # annotate_subplots_abc([ax, ax_fake])
 
     if save_plots:
         fig_name = f"{project_name}_pareto_plot_nuisance_PB-{PHOTON_BUDGET:.2e}_fig{i}"
@@ -774,16 +780,27 @@ for plot_group in pareto_groups:
         loss_history = np.array(lf.loss_history)
         if lf.maximize:
             loss_history = 1 / loss_history
+
+        J = lf.J
+        Sigma = np.linalg.inv(J)
+        sigma = np.diag(Sigma)
+        print(sigma)
+
         final_values = np.min(loss_history, axis=1)
+        final_values /= np.min(final_values)
         final_values -= np.min(final_values)
-        plt.scatter(
-            index * np.ones(10) + offset,
-            final_values,
-            label=lf.displayname,
-            c=plot_group.color,
-            marker=plot_group.marker,
-            alpha=0.5,
-        )
+        # print(final_values)
+        print("MAX ", np.max(final_values), lf.name)
+        # plt.plot(final_values)
+        # plt.show()
+        # plt.scatter(
+        #     index * np.ones(10) + offset,
+        #     final_values,
+        #     label=lf.displayname,
+        #     c=plot_group.color,
+        #     marker=plot_group.marker,
+        #     alpha=0.5,
+        # )
         index += 1
 names = names[:5]
 plt.xticks(ticks=np.arange(len(names)), labels=names)
@@ -910,8 +927,8 @@ x_avoid, y_avoid = pareto_plot_sweep(
     ax=ax,
     wavelength_unit=wavelength_unit,
     grid_kwargs=GRID_KWARGS,
-    xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelenghts)",
-    ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelenghts)",
+    xlabel=rf"CRLB for $z$ ({wavelength_unit_str}wavelengths)",
+    ylabel=rf"CRLB for $x$ ({wavelength_unit_str}wavelengths)",
 )
 
 
@@ -1338,3 +1355,106 @@ def generate_fisher_latex_table(
 
 # Usage:
 print(generate_fisher_latex_table(loss_functions_raw, photon_budget=1e3))
+
+
+# %% Phase only modulation
+
+lf = loss_functions_dict["det"]
+
+Pin = 1.0
+Pin_pixel = Pin / len(lf.wavefront)
+E_te = lf.wavefront  # total energy
+
+E_te = E_te / np.linalg.norm(E_te) * np.sqrt(Pin)
+E_maxp = E_te / np.max(np.abs(E_te)) * np.sqrt(Pin_pixel)
+E_po = E_maxp / np.abs(E_maxp) * np.sqrt(Pin_pixel)
+
+norm_te = np.linalg.norm(E_te) ** 2
+norm_maxp = np.linalg.norm(E_maxp) ** 2
+norm_po = np.linalg.norm(E_po) ** 2
+
+J_te = optimizer.J_fisher_info_matrix(E_te)
+J_maxp = optimizer.J_fisher_info_matrix(E_maxp)
+J_po = optimizer.J_fisher_info_matrix(E_po)
+
+D_te = np.linalg.det(J_te) ** (1 / 3)
+D_maxp = np.linalg.det(J_maxp) ** (1 / 3)
+D_po = np.linalg.det(J_po) ** (1 / 3)
+
+# print(f'')
+# print(f"{'E_te':<8}{np.linalg.norm(E_te)**2:>8.2f}{D_te:>15.3e}")
+# print(f"{'E_maxp':<8}{np.linalg.norm(E_maxp)**2:>8.2f}{D_maxp:>15.3e}")
+# print(f"{'E_po':<8}{np.linalg.norm(E_po)**2:>8.2f}{D_po:>15.3e}")
+
+
+# s = rf"""
+# \begin{{table}}[]
+# \begin{{tabular}}{{@{{}}llll@{{}}}}
+# \toprule
+# Normalization           & Modulation & $P^{{\mathrm{{in}}}}=|E^{{\mathrm{{in}}}}|^2$ & D-opt$^*$ \\
+# Total power             & A+P & {  norm_te:.2f}                   & {  D_te:>15.3e}       \\
+# Largest power per pixel & A+P & {norm_maxp:.2f}                   & {D_maxp:>15.3e}       \\
+# Largest power per pixel & P   & {  norm_po:.2f}                   & {  D_po:>15.3e}       \\ \bottomrule
+# \end{{tabular}}
+# \end{{table}}
+# """
+
+# print(s)
+
+# Version 2
+
+s = rf"""
+\begin{{table}}[]
+\begin{{tabular}}{{@{{}}llll@{{}}}}
+\toprule
+Modulation 							& D-opt$^{1/3}$       \\ 
+Perfect amplitude and phase         & {D_te:>15.3e}       \\ 
+Phase-only, equal power per pixel 	& {D_po:>15.3e}       \\ \bottomrule
+\end{{tabular}}
+\end{{table}}
+"""
+
+print(s)
+
+# %% Intensity only detection
+
+delta_param = 1e-6
+
+lf = loss_functions_dict["det"]
+S0 = fisher_calc.S
+dS = fisher_calc.dS
+S1 = np.array([S0 - dS_ * delta_param for dS_ in dS])
+S2 = np.array([S0 + dS_ * delta_param for dS_ in dS])
+
+Ein = lf.wavefront
+Eout0 = S0 @ Ein
+Eout1 = np.array([S1_ @ Ein for S1_ in S1])
+Eout2 = np.array([S2_ @ Ein for S2_ in S2])
+
+I0 = np.abs(Eout0) ** 2
+I1 = np.abs(Eout1) ** 2
+I2 = np.abs(Eout2) ** 2
+phi1 = np.angle(Eout1)
+phi2 = np.angle(Eout2)
+
+dI = (I2 - I1) / (2 * delta_param)
+dphi = (phi2 - phi1) / (2 * delta_param)
+
+
+optimizer = Optimizer(fisher_calc.F)
+J = optimizer.J_fisher_info_matrix(Ein)
+dE = np.array([dS_ @ Ein for dS_ in dS])
+J2 = 2 * np.real(dE.conj() @ dE.T)
+J_int = (dI / (2 * I0)) @ dI.T
+J_phase = (2 * I0 * dphi) @ dphi.T
+
+print(S1.shape, dS.shape, Ein.shape, J.shape)
+print("J\n", J)
+print("J2\n", J2)
+print("J_int\n", J_int)
+print("J_phase\n", J_phase)
+print("J_int+J_phase - J\n", J_int + J_phase - J)
+
+print("D", np.linalg.det(J) ** (1 / 3))
+print("D-int", np.linalg.det(J_int) ** (1 / 3))
+print("D-phase", np.linalg.det(J_phase) ** (1 / 3))
