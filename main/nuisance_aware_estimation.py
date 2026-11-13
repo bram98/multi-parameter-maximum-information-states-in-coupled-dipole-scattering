@@ -102,6 +102,27 @@ def measure_heterodyne(E, photon_budget, nsamples=None, seed=None):
     return field_samples.view(np.complex128) / np.sqrt(photon_budget)
 
 
+def measure_noisy(E, noise_std_dev, nsamples=None, seed=None):
+    """
+    What happens when the detected wavefronts are noisy?
+    """
+    E = np.ascontiguousarray(E)
+    E_real = E.view(np.float64)
+    rng = np.random.RandomState(seed)
+    if nsamples is None:
+        field_samples = stats.norm.rvs(
+            loc=E_real, scale=noise_std_dev, random_state=rng
+        )
+    else:
+        field_samples = stats.norm.rvs(
+            loc=E_real,
+            scale=noise_std_dev,
+            size=(nsamples, *E_real.shape),
+            random_state=rng,
+        )
+    return field_samples.view(np.complex128) / np.sqrt(photon_budget)
+
+
 def best_estimate_multi(Z_noisy, E0, dE):
     """
     Optimal multi-parameter linear estimator. Assumes the model
@@ -365,6 +386,9 @@ for I_in, noise_readout in zip(I_in_arr, noise_readout_arr):
     det_arr.append(np.linalg.det(J_noisy_det))
 
 plt.plot(1 / SNR_arr, det_arr)
+
+
+# %%
 
 
 # %%
