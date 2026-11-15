@@ -781,26 +781,20 @@ for plot_group in pareto_groups:
         if lf.maximize:
             loss_history = 1 / loss_history
 
-        J = lf.J
-        Sigma = np.linalg.inv(J)
-        sigma = np.diag(Sigma)
-        print(sigma)
-
         final_values = np.min(loss_history, axis=1)
         final_values /= np.min(final_values)
         final_values -= np.min(final_values)
-        # print(final_values)
+        print(final_values)
         print("MAX ", np.max(final_values), lf.name)
-        # plt.plot(final_values)
-        # plt.show()
-        # plt.scatter(
-        #     index * np.ones(10) + offset,
-        #     final_values,
-        #     label=lf.displayname,
-        #     c=plot_group.color,
-        #     marker=plot_group.marker,
-        #     alpha=0.5,
-        # )
+
+        plt.scatter(
+            index * np.ones(10) + offset,
+            final_values,
+            label=lf.displayname,
+            c=plot_group.color,
+            marker=plot_group.marker,
+            alpha=0.5,
+        )
         index += 1
 names = names[:5]
 plt.xticks(ticks=np.arange(len(names)), labels=names)
@@ -816,6 +810,29 @@ if save_plots:
     plt.savefig(save_folder / f"{fig_name}.pdf")
     print(f"Saved convergence plot to '{fig_name}'")
 plt.show()
+
+# %% Convergence V2
+
+for lf in loss_functions_dict.values():
+    if lf.method != "torch":
+        continue
+    Js = lf.J_mr
+    Sigma = np.linalg.inv(Js)
+    sigma = np.sqrt(np.diagonal(Sigma, axis1=1, axis2=2))
+
+    sigma_reduced = sigma - np.min(sigma, axis=0)
+    sigma_reduced /= sigma
+    print(np.max(sigma_reduced, axis=0), lf.displayname)
+
+    sigma = np.sqrt(np.diagonal(Js, axis1=1, axis2=2))
+
+    # print(sigma_reduced)
+    # for sr in sigma_reduced:
+    #     plt.hist(sr)
+    #     plt.title(lf.name)
+    #     plt.show()
+
+
 # %%
 
 latex_table = [
