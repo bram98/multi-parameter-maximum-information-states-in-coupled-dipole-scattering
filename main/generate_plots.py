@@ -473,6 +473,7 @@ loss_functions_dict_bar = loss_functions_dict.select_only(
     barplot_lossfunctions
 )
 PHOTON_BUDGET = 1e3
+# PHOTON_BUDGET = 500
 
 optimized_crlbs = crlbanalysis.compute_crlb_for_optimized(
     loss_functions_dict_bar,

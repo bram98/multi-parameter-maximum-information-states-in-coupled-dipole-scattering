@@ -28,8 +28,8 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
-# data_folder = "../data/quasirandom_shortrun_dist2-8"  # Where to save state
-data_folder = "../data/quasirandom_longrun_dist2-8_mr"  # Where to save state
+data_folder = "../data/quasirandom_shortrun_dist2-8_v2"  # Where to save state
+# data_folder = "../data/quasirandom_longrun_dist2-8_mr"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist3-0"  # Where to save state
 save_state = True  # If True, save state to disk
 
