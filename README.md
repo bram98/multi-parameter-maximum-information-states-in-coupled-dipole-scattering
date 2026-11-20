@@ -21,14 +21,13 @@ This project explores the application of maximum information states (MIS) in com
 
 ## Installation
 ### Prerequisites
-Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies.
+Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies. If you want to use the archived data, you need to use Python 3.10.
 ### Steps
 1. Clone the repository:
    ```bash
    git clone git@git.science.uu.nl:linx/multi-parameter-maximum-information-states-in-coupled-dipole-scattering.git
-   cd multi-parameter-max-info-states
    ```
-2. Update the submodules:
+2. Update the submodules, make sure you are in the right folder:
 ```bash
    git submodule update --init
    git submodule update --recursive
@@ -37,9 +36,9 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 ```bash
     git submodule update --remote --merge
 ```
-2. Install dependencies with `pip`:
+2. Install dependencies with `pip`. Make sure you are in the right folder:
    ```bash
-   pip install -r requirements.txt
+   pip install .
    ```
 
 ## Data Folder Usage
