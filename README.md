@@ -43,7 +43,7 @@ Python 3.10 or later is recommended. Use `conda` or `pip` to manage dependencies
 
 ## Data Folder Usage
 
-The `data/` folder is ignored by Git to prevent large files from being tracked in the repository. This folder is intended for files that:
+The `data/` folder is ignored by Git to prevent large files from being tracked in the repository. The data used in the paper can be found in the arhived_data folder named quasirandom_shortrun_dist2-8, which you can copy into the data folder. This folder is intended for files that:
 - Are generated during simulations or analyses.
 - Are used locally for testing and development purposes.
 
