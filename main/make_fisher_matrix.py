@@ -28,8 +28,8 @@ from scatteringlibs.scatteringsimulation import CoupledDipoleSimulator
 
 # data_folder = "../data/quasirandom_longrun"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist2-2"  # Where to save state
-data_folder = "../data/quasirandom_shortrun_dist2-8_v2"  # Where to save state
-# data_folder = "../data/quasirandom_longrun_dist2-8_mr"  # Where to save state
+# data_folder = "../data/quasirandom_shortrun_dist2-8_v2"  # Where to save state
+data_folder = "../data/quasirandom_longrun_dist2-8_mr"  # Where to save state
 # data_folder = "../data/quasirandom_longrun_dist3-0"  # Where to save state
 save_state = True  # If True, save state to disk
 
@@ -184,14 +184,6 @@ loss_functions_dict["tr_norm"] = LossFunction(
     method="eig",
 )
 
-# loss_functions_dict["tr_norm_nuissance"] = LossFunction(
-#     tr_norm_nuissance,
-#     "tr_norm_nuissance",
-#     displayname="Nuissance Trace",
-#     shortname=r"$\operatorname{tr}_{N}^* J$",
-#     maximize=True,
-#     method="eig",
-# )
 
 # Determinant - D-optimality
 loss_functions_dict["det"] = LossFunction(

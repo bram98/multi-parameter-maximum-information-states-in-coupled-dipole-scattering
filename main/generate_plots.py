@@ -32,8 +32,8 @@ sys.exit()
 
 # %% Loading in data
 # project_name = "quasirandom_longrun_dist2-6"
-# project_name = "quasirandom_longrun_dist2-8"
-project_name = "quasirandom_longrun_dist2-8_mr"
+project_name = "quasirandom_longrun_dist2-8"
+# project_name = "quasirandom_longrun_dist2-8_mr"
 # project_name = "quasirandom_shortrun_dist2-6"
 # project_name = "quasirandom_shortrun_dist2-4"
 # project_name = "quasirandom_longrun_dist3-0"
@@ -160,6 +160,8 @@ plt.show()
 # %% 3D test
 from matplotlib import cm
 
+sim.compute_total_field()
+
 X = sim.Z_grid
 Y = sim.X_grid
 Z = np.abs(sim.E_total) ** 2
@@ -176,7 +178,7 @@ surf = ax.plot_surface(
 plt.axis("off")
 
 
-# ax.plot_wireframe(sim.Z_grid, sim.X_grid, , color=None, linewidth=1, cmap='viridis')
+# ax.plot_wireframe(X, Y, Z, color=None, linewidth=1, cmap='viridis')
 ax.set_zlim(0, 20)
 
 plt.show()
@@ -206,10 +208,8 @@ for lf in loss_functions_dict.select_only(lf_names).values():
 
     use_colorbar = True
 
-    # print(lf.name, lf_names[-1])
     sim.visualize_intensity(
         title=f"Maximum Information State for {name}",
-        # title=f"",
         ax=ax,
         imshow_kwargs=dict(cmap="turbo"),
         movable_kwargs=dict(
@@ -268,7 +268,6 @@ max_intensity = 65
 
 
 fig = plt.figure(figsize=(0.98 * TEXTWIDTH, 0.5 * TEXTWIDTH), dpi=DPI)
-# fig = plt.figure(figsize=(6, 4), dpi=DPI)
 axes = ImageGrid(
     fig,
     111,
@@ -454,7 +453,10 @@ plt.show()
 
 
 # %% Bar plot of CRLBs (review)
-
+"""
+Note: the data stored in "quasirandom_longrun_dist2-8" is off by a factor 
+sqrt 2. In the paper 500 photons are cited, which is correct.
+"""
 
 barplot_lossfunctions = [
     "x",
@@ -567,11 +569,8 @@ crlbanalysis.visualize_crlb_boxplot(
     joint_colors=joint_colors,
     joint_opacity=1.0,
     hatches=(None,) * 3,
-    # title="Plane Waves and Random Wavefronts",
     title="",
     fontsize=None,
-    # ref_lines=[0, 0.0185*PHOTON_BUDGET],
-    # ref_lines=[0, 500],
     wavelength_unit=wavelength_unit,
 )
 
@@ -688,6 +687,7 @@ include_plot_indices = [(0, 1), (0, 2), (1, 2), (1, 3), (1, 4), (1, 5)]
 include_plot_indices = [(3, 5)]
 
 PHOTON_BUDGET = 1e3
+# PHOTON_BUDGET = 500
 
 for i, (sweep_index, scatter_index) in enumerate(include_plot_indices):
 
@@ -813,25 +813,29 @@ if save_plots:
 plt.show()
 
 # %% Convergence V2
+"""
+To run this cell you need data from quasirandom_longrun_dist2-8_mr, which has
+saved the Js for each run. Note that this dataset has a correction factor 
+because I ran the code on my laptop and it used the wrong version. I dont have
+time to do it properly.
+"""
+dx_stupid_correction_factor = np.sqrt(sim.Lx / len(sim.k_x_array))
 
 for lf in loss_functions_dict.values():
     if lf.method != "torch":
         continue
     Js = lf.J_mr
+    Js *= dx_stupid_correction_factor**2
     Sigma = np.linalg.inv(Js)
     sigma = np.sqrt(np.diagonal(Sigma, axis1=1, axis2=2))
 
     sigma_reduced = sigma - np.min(sigma, axis=0)
     sigma_reduced /= sigma
-    print(np.max(sigma_reduced, axis=0), lf.displayname)
-
-    sigma = np.sqrt(np.diagonal(Js, axis1=1, axis2=2))
-
-    # print(sigma_reduced)
-    # for sr in sigma_reduced:
-    #     plt.hist(sr)
-    #     plt.title(lf.name)
-    #     plt.show()
+    max_sigma = np.max(sigma_reduced, axis=0)
+    print(
+        f"{max_sigma[0]:.2e} {max_sigma[1]:.2e} {max_sigma[2]:.2e}",
+        lf.displayname,
+    )
 
 
 # %%
@@ -881,19 +885,6 @@ latex_table.extend(
 )
 
 print("\n".join(latex_table))
-
-# for i, lf in enumerate(loss_functions_dict.values()):
-#     if lf.method != 'torch':
-#         continue
-#     loss_history = np.array(lf.loss_history)
-#     if lf.maximize:
-#         loss_history = 1/loss_history
-#     final_values = np.min(loss_history, axis=1)
-#     final_values /= np.min(final_values)
-#     print(final_values)
-#     plt.scatter(i*np.ones(10), final_values, label=lf.displayname)
-# plt.yscale("log")
-# plt.ylim(1 - 0.5e-7, 1 + 0.9e-6)
 
 
 # %% Measurement interpolation

@@ -571,31 +571,32 @@ class LossFunctionSweep(LossFunction):
                     # print(
                     #     f'Optimization sweep alpha={alpha}/{alpha[-1]}  Best loss: {result["bestval"]}'
                     # )
+                self.bestvecs_mr = np.array(self.bestvecs_mr)
+                self.bestvals_mr = np.array(self.bestvals_mr)
 
+                self._Js_mr = []
+                for wavefronts in self.bestvecs_mr:
+                    self._Js_mr.append([])
+                    for wavefront in wavefronts:
+                        self._Js_mr[-1].append(
+                            optimizer.J_fisher_info_matrix(wavefront)
+                        )
+                self._Js_mr = np.array(self._Js_mr)
             # self._wavefront = LossFunction.normalize_wavefront(
             #     result["bestvec"]
             # )
             # self.bestval = result["bestval"]
             # print(result)
 
-        self.loss_history = np.array(self.loss_history)
+        # Length of first loss_history might be different, so do not convert to
+        # array
+        # self.loss_history = np.array(self.loss_history)
         self._wavefronts = np.array(self._wavefronts)
         self.bestvals = np.array(self.bestvals)
-        self.bestvecs_mr = np.array(self.bestvecs_mr)
-        self.bestvals_mr = np.array(self.bestvals_mr)
 
         self._Js = []
         for wavefront in self._wavefronts:
             self._Js.append(optimizer.J_fisher_info_matrix(wavefront))
-
-        self._Js_mr = []
-        for wavefronts in self.bestvecs_mr:
-            self._Js_mr.append([])
-            for wavefront in wavefronts:
-                self._Js_mr[-1].append(
-                    optimizer.J_fisher_info_matrix(wavefront)
-                )
-        self._Js_mr = np.array(self._Js_mr)
 
         if verbose:
             print(

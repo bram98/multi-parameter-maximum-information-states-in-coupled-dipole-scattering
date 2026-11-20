@@ -336,6 +336,9 @@ for i, (I_in, noise_readout) in enumerate(zip(I_in_arr, noise_arr)):
         E_noisy = result["bestvec"]
         E_noisy_arr.append(E_noisy)
         J_noisy_arr.append(optimizer.J_fisher_info_matrix(E_noisy))
+    plt.plot(result["loss_history"][200:])
+    # plt.xlim(200, None)
+    plt.show()
     det_noisy = np.linalg.det(J_noisy_arr) ** (1 / 3)
     det_arr.append(np.mean(det_noisy))
     det_std_arr.append(np.std(det_noisy))
@@ -343,14 +346,28 @@ for i, (I_in, noise_readout) in enumerate(zip(I_in_arr, noise_arr)):
 det_arr = np.array(det_arr)
 det_std_arr = np.array(det_std_arr)
 
+# %%
+np.save(
+    r"C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\det_arr.npy",
+    det_arr,
+)
+np.save(
+    r"C:\Users\5914787\OneDrive\Bureaublad\PhD\Thesis\MPMIS for optical metrology\figures\det_std_arr.npy",
+    det_std_arr,
+)
 
 # %% plot noisy meas
 
+det_arr_n = det_arr / np.max(det_arr)
+det_std_arr_n = det_std_arr / np.max(det_arr)
 
 fig, ax = plt.subplots(figsize=(0.495 * TEXTWIDTH, 0.4 * TEXTWIDTH), dpi=DPI)
-plt.plot(one_over_SNR, det_arr)
+plt.plot(one_over_SNR, det_arr_n)
 plt.fill_between(
-    one_over_SNR, det_arr - det_std_arr, det_arr + det_std_arr, alpha=0.2
+    one_over_SNR,
+    det_arr_n - det_std_arr_n,
+    det_arr_n + det_std_arr_n,
+    alpha=0.2,
 )
 # plt.axhline(2714.871457318225 / 2)
 # plt.axvline(1)
